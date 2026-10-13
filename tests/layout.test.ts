@@ -18,6 +18,20 @@ describe('tramos', () => {
 });
 
 describe('calcularLayout', () => {
+  it('los módulos vecinos de un escritorio llevan su propio costado', () => {
+    const d: Diseno = {
+      ...disenoLibre('escritorio'),
+      estructura: 'unica',
+      separacionCuerpos: 0,
+      ancho: 450 + 800 + 450,
+      cuerpos: [cuerpo({ ancho: 450, puertas: 1 }), cuerpo({ tipo: 'escritorio', ancho: 800, alto: 750 }), cuerpo({ ancho: 450, cajones: 3 })],
+    };
+    const l = calcularLayout(d);
+    expect(l.cuerpos[0].ladoDer).toBe(true);
+    expect(l.cuerpos[2].ladoIzq).toBe(true);
+  });
+
+
   it('dos puertas de un cuerpo de 80 cm miden lo mismo y respetan la luz', () => {
     const d = closet({ ancho: 800, alto: 1700, cuerpos: [cuerpo({ ancho: 800, puertas: 2, cajones: 0 })], luzFrentes: 3, zocalo: 60 });
     const l = calcularLayout(d);

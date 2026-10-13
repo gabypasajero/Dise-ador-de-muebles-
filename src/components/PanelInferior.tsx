@@ -139,7 +139,7 @@ export function PanelInferior() {
             </div>
           )}
         </div>
-        <div role="tabpanel" className="pestana-panel">
+        <div role="tabpanel" className={`pestana-panel${actual === 'modulos' && d.plantilla !== 'tocador' ? ' modulos' : ''}`}>
           {actual === 'puertas' && <PestanaPuertas {...props} />}
           {actual === 'cajones' && <PestanaCajones {...props} />}
           {actual === 'modulos' && <PestanaModulos {...props} />}

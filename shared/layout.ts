@@ -122,8 +122,9 @@ export function calcularLayout(d: Diseno): Layout {
     const despensa = infantil && i === 0;
     const tope = cocina && !despensa ? alturaCuerpo - ct : alturaCuerpo - t;
 
-    const ladoIzq = modular || i === 0 || c.tipo === 'escritorio' || d.cuerpos[i - 1]?.tipo === 'hueco';
-    const ladoDer = modular || i === n - 1 || c.tipo === 'escritorio' || d.cuerpos[i + 1]?.tipo === 'hueco';
+    const aislado = (v: Diseno['cuerpos'][number] | undefined) => v?.tipo === 'hueco' || v?.tipo === 'escritorio';
+    const ladoIzq = modular || i === 0 || c.tipo === 'escritorio' || aislado(d.cuerpos[i - 1]);
+    const ladoDer = modular || i === n - 1 || c.tipo === 'escritorio' || aislado(d.cuerpos[i + 1]);
     // Con estructura única dos cuerpos vecinos comparten una división centrada en el límite.
     const inIzq = ladoIzq ? x0 + t : x0 + t / 2;
     const inDer = ladoDer ? x1 - t : x1 - t / 2;

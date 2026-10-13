@@ -214,20 +214,20 @@ export const useApp = create<Estado>((set, get) => ({
     const { pasado, diseno, futuro } = get();
     if (!pasado.length) return;
     const anterior = pasado[pasado.length - 1];
-    set({ diseno: anterior, pasado: pasado.slice(0, -1), futuro: [diseno, ...futuro], ultimoGrupo: null });
+    set({ diseno: anterior, pasado: pasado.slice(0, -1), futuro: [diseno, ...futuro], ultimoGrupo: null, moduloActivo: Math.min(get().moduloActivo, anterior.cuerpos.length - 1) });
   },
 
   rehacer() {
     const { pasado, diseno, futuro } = get();
     if (!futuro.length) return;
-    set({ diseno: futuro[0], futuro: futuro.slice(1), pasado: [...pasado, diseno], ultimoGrupo: null });
+    set({ diseno: futuro[0], futuro: futuro.slice(1), pasado: [...pasado, diseno], ultimoGrupo: null, moduloActivo: Math.min(get().moduloActivo, futuro[0].cuerpos.length - 1) });
   },
 
   restablecer() {
     const { disenoBase, diseno } = get();
     const base = disenoBase ?? disenoLibre(diseno.plantilla);
     get().cambiar(() => base);
-    set({ encuadre: get().encuadre + 1 });
+    set({ encuadre: get().encuadre + 1, moduloActivo: 0 });
   },
 
   cargarCotizacion(c) {

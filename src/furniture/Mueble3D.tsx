@@ -1,6 +1,6 @@
 import { Html, Line } from '@react-three/drei';
 import { useMemo } from 'react';
-import { calcularLayout } from '../../shared/layout';
+import { calcularLayout, esCocina } from '../../shared/layout';
 import { formatear } from '../../shared/reglas';
 import type { CatalogoMateriales, Diseno, Unidad } from '../../shared/tipos';
 import { MaterialesProvider } from './base3d';
@@ -92,8 +92,11 @@ function EtiquetasModulos({
   onElegir: (i: number) => void;
 }) {
   const l = useMemo(() => calcularLayout(d), [d]);
-  const elegido = l.cuerpos[Math.max(0, Math.min(l.cuerpos.length - 1, activo))];
+  const ia = Math.max(0, Math.min(l.cuerpos.length - 1, activo));
+  const elegido = l.cuerpos[ia];
   const z = d.profundidad + 4;
+  // Alto visible de cada módulo (casco más cubierta o techo).
+  const tope = (yTope: number) => Math.min(d.alto, yTope + (esCocina(d) ? d.cocina.espesorCubierta : d.espesor));
   return (
     // Ayuda visual: se oculta al capturar la miniatura de la cotización.
     <group name="ayudas">
@@ -102,8 +105,8 @@ function EtiquetasModulos({
           points={[
             [elegido.x0 + 6, 6, z],
             [elegido.x1 - 6, 6, z],
-            [elegido.x1 - 6, d.alto - 6, z],
-            [elegido.x0 + 6, d.alto - 6, z],
+            [elegido.x1 - 6, tope(elegido.yTope) - 6, z],
+            [elegido.x0 + 6, tope(elegido.yTope) - 6, z],
             [elegido.x0 + 6, 6, z],
           ]}
           color="#a8325e"
@@ -114,10 +117,11 @@ function EtiquetasModulos({
         />
       )}
       {l.cuerpos.map((lc) => (
-        <Html key={lc.cuerpo.id} position={[(lc.x0 + lc.x1) / 2, d.alto + 55, z]} center zIndexRange={[31, 0]}>
+        // Sobre el frente, cerca del borde superior: no tapa las cotas de ancho y profundidad.
+        <Html key={lc.cuerpo.id} position={[(lc.x0 + lc.x1) / 2, Math.max(120, tope(lc.yTope) - 110), z + 30]} center zIndexRange={[31, 0]}>
           <button
             type="button"
-            className={`etiqueta-modulo${lc.indice === activo ? ' activa' : ''}`}
+            className={`etiqueta-modulo${lc.indice === ia ? ' activa' : ''}`}
             title={`Módulo ${lc.indice + 1}: ${nombre(lc.indice)}, ${formatear(lc.cuerpo.ancho, unidad)}`}
             onClick={() => onElegir(lc.indice)}
           >

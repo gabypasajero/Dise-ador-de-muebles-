@@ -28,7 +28,7 @@ export function describirCuerpos(d: Diseno, unidad: Unidad): string[] {
   const l = calcularLayout(d);
   return d.cuerpos.map((c, i) => {
     const ancho = formatear(c.ancho, unidad);
-    if (c.tipo === 'horno') return `Módulo ${i + 1} (${ancho}): horno empotrado`;
+    if (c.tipo === 'horno') return `Módulo ${i + 1} (${ancho}): ${d.plantilla === 'cocina-infantil' ? 'horno de juguete' : 'horno empotrado'}`;
     if (c.tipo === 'hueco') return `Módulo ${i + 1} (${ancho}): espacio libre`;
     if (c.tipo === 'escritorio') return `Módulo ${i + 1} (${ancho}): escritorio de ${formatear(c.alto || 750, unidad)} de alto`;
     const partes: string[] = [];

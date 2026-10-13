@@ -1,19 +1,19 @@
 // Categorías de medidas del panel inferior: puertas, cajones, módulos y
 // espacios, equipamiento/interior. Cambian según el tipo de mueble.
 import { calcularLayout, calcularLayoutTocador, type Frente } from '../../shared/layout';
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import {
   ANCHO_MIN_CUERPO,
   ANCHO_MIN_HUECO,
   LIMITES,
   actualizarCuerpo,
-  agregarCuerpo,
   agregarModulo,
   anchoDisponible,
   fijarSeparacion,
   formatear,
   moverCuerpo,
   nombreModulo,
+  posicionMinima,
   presetsModulo,
   quitarCuerpo,
   type PresetModulo,
@@ -292,30 +292,67 @@ function CajonesTocador({ d, unidad, cambiar }: PropsPestana) {
 
 // ---------- Módulos y espacios ----------
 
+/** Agrega un módulo avisando si no cabe o si queda más angosto. Devuelve la posición en que quedó. */
+function agregarConAviso(d: Diseno, preset: PresetModulo, posicion: number, cambiar: Cambiar, unidad: Unidad): number | null {
+  const { avisar } = useApp.getState();
+  const maximo = formatear(LIMITES[d.plantilla].ancho[1], unidad);
+  const ancho = anchoDisponible(d, preset.tipo, preset.ancho, preset.anchoMinimo);
+  if (ancho == null) {
+    const necesita = preset.anchoMinimo ? ` de ${formatear(preset.anchoMinimo, unidad)}` : '';
+    avisar(`No cabe «${preset.texto}»${necesita}: el ancho máximo de este mueble es ${maximo}. Achica un módulo o el ancho total.`, 'error');
+    return null;
+  }
+  const i = Math.max(posicionMinima(d), Math.min(d.cuerpos.length, posicion));
+  cambiar((x) => agregarModulo(x, preset, i));
+  if (ancho < preset.ancho) avisar(`Se agregó «${preset.texto}» con ${formatear(ancho, unidad)}: es lo que quedaba hasta el máximo de ${maximo}.`, 'info');
+  return i;
+}
+
+/** Dónde se ajusta el resto del módulo, según las pestañas que tiene este mueble. */
+function ayudaModulo(d: Diseno, c: Cuerpo): string {
+  if (c.tipo === 'hueco') return 'Hueco libre para refrigerador, lavadora u otro equipo. La cubierta pasa por encima.';
+  if (c.tipo === 'horno') return d.plantilla === 'cocina-infantil' ? 'Horno de juguete con puerta con ventana.' : 'Horno empotrado de 60 cm con faja de melamina superior.';
+  if (c.tipo === 'escritorio') return 'Cubierta de trabajo: ajusta aquí su ancho y su alto.';
+  const pestanas = pestanasDe(d.plantilla).filter((p) => p.id === 'puertas' || p.id === 'cajones' || (p.id === 'equipamiento' && p.texto === 'Interior'));
+  if (!pestanas.length) return '';
+  const y = (xs: string[]) => (xs.length === 1 ? xs[0] : `${xs.slice(0, -1).join(', ')} y ${xs.at(-1)}`);
+  const que = y(pestanas.map((p) => p.texto.toLowerCase()));
+  return `Sus ${que} se ajustan en ${pestanas.length === 1 ? 'la pestaña' : 'las pestañas'} ${y(pestanas.map((p) => p.texto))}.`;
+}
+
+function nombreTipo(t: Cuerpo['tipo'], p: Plantilla): string {
+  return t === 'horno' && p === 'cocina-infantil' ? 'Horno de juguete' : NOMBRE_TIPO[t];
+}
+
 export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
   const guardado = useApp((s) => s.moduloActivo);
   const set = useApp((s) => s.set);
   const [insertarEn, setInsertarEn] = useState<number | null>(null);
+  const n = d.cuerpos.length;
+  const activo = Math.max(0, Math.min(n - 1, guardado));
+  const tira = useRef<HTMLDivElement>(null);
+  const panelInsertar = useRef<HTMLDivElement>(null);
+  // El panel de inserción se cierra si cambia el mueble, la cantidad de módulos (deshacer) o el módulo elegido.
+  useEffect(() => setInsertarEn(null), [n, d.plantilla, guardado]);
+  useEffect(() => {
+    if (insertarEn != null) panelInsertar.current?.scrollIntoView({ block: 'nearest' });
+  }, [insertarEn]);
+  // Con muchos módulos (o en el teléfono) el elegido queda a la vista en la tira.
+  useEffect(() => {
+    tira.current?.querySelector('.bloque-modulo.activo')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [activo, n]);
   if (d.plantilla === 'tocador') return <EstructuraTocador d={d} unidad={unidad} cambiar={cambiar} />;
 
   const tipos = tiposPermitidos(d.plantilla);
   const presets = presetsModulo(d.plantilla);
-  const n = d.cuerpos.length;
-  const activo = Math.max(0, Math.min(n - 1, guardado));
   const c = d.cuerpos[activo];
-  const maximo = LIMITES[d.plantilla].ancho[1];
+  const minPos = posicionMinima(d);
+  const insertar = insertarEn != null && insertarEn >= minPos && insertarEn <= n ? insertarEn : null;
 
   const agregar = (preset: PresetModulo, posicion: number) => {
     setInsertarEn(null);
-    const { avisar } = useApp.getState();
-    const ancho = anchoDisponible(d, preset.tipo, preset.ancho);
-    if (ancho == null) {
-      avisar(`No cabe otro módulo: el ancho máximo de este mueble es ${formatear(maximo, unidad)}. Achica un módulo o el ancho total.`, 'error');
-      return;
-    }
-    cambiar((x) => agregarModulo(x, preset, posicion));
-    set({ moduloActivo: posicion });
-    if (ancho < preset.ancho) avisar(`${preset.texto} agregado con ${formatear(ancho, unidad)}: es lo que quedaba hasta el máximo de ${formatear(maximo, unidad)}.`);
+    const i = agregarConAviso(d, preset, posicion, cambiar, unidad);
+    if (i != null) set({ moduloActivo: i });
   };
   const elegir = (i: number) => {
     setInsertarEn(null);
@@ -337,16 +374,15 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
         </div>
       </div>
 
-      <div className="tira-modulos" role="list" aria-label="Módulos del mueble, de izquierda a derecha">
+      <div className="tira-modulos" ref={tira} role="group" aria-label="Módulos del mueble, de izquierda a derecha">
         {d.cuerpos.map((m, i) => (
           <Fragment key={m.id}>
-            <BotonInsertar posicion={i} abierto={insertarEn === i} onClick={() => setInsertarEn(insertarEn === i ? null : i)} />
+            {i >= minPos && <BotonInsertar posicion={i} abierto={insertar === i} onClick={() => setInsertarEn(insertar === i ? null : i)} />}
             <button
               type="button"
-              role="listitem"
               className={`bloque-modulo ${m.tipo}${i === activo ? ' activo' : ''}`}
               style={{ flexGrow: m.ancho }}
-              aria-current={i === activo}
+              aria-pressed={i === activo}
               aria-label={`Módulo ${i + 1}: ${nombreModulo(m)}, ${formatear(m.ancho, unidad)}`}
               onClick={() => elegir(i)}
             >
@@ -358,20 +394,20 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
             </button>
           </Fragment>
         ))}
-        <BotonInsertar posicion={n} abierto={insertarEn === n} onClick={() => setInsertarEn(insertarEn === n ? null : n)} />
+        <BotonInsertar posicion={n} abierto={insertar === n} onClick={() => setInsertarEn(insertar === n ? null : n)} />
       </div>
 
-      {insertarEn != null ? (
-        <div className="modulos-insertar">
+      {insertar != null ? (
+        <div className="modulos-insertar" ref={panelInsertar}>
           <span>
-            {insertarEn === 0
+            {insertar === 0
               ? 'Agregar al comienzo (izquierda):'
-              : insertarEn === n
+              : insertar === n
                 ? 'Agregar al final (derecha):'
-                : `Agregar entre el módulo ${insertarEn} y el ${insertarEn + 1}:`}
+                : `Agregar entre el módulo ${insertar} y el ${insertar + 1}:`}
           </span>
           {presets.map((p) => (
-            <button key={p.id} type="button" className="boton secundario chico" title={p.ayuda} onClick={() => agregar(p, insertarEn)}>
+            <button key={p.id} type="button" className="boton secundario chico" title={p.ayuda} onClick={() => agregar(p, insertar)}>
               <IcoMas width={14} height={14} /> {p.texto}
             </button>
           ))}
@@ -390,7 +426,7 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
                 className="boton-icono"
                 aria-label="Mover a la izquierda"
                 title="Mover a la izquierda"
-                disabled={activo === 0}
+                disabled={activo - 1 < minPos}
                 onClick={() => {
                   cambiar((x) => moverCuerpo(x, activo, -1));
                   set({ moduloActivo: activo - 1 });
@@ -403,7 +439,7 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
                 className="boton-icono"
                 aria-label="Mover a la derecha"
                 title="Mover a la derecha"
-                disabled={activo === n - 1}
+                disabled={activo === n - 1 || activo < minPos}
                 onClick={() => {
                   cambiar((x) => moverCuerpo(x, activo, 1));
                   set({ moduloActivo: activo + 1 });
@@ -430,7 +466,7 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
             <Selector
               etiqueta="Tipo"
               valor={c.tipo}
-              opciones={tipos.map((t) => ({ valor: t, texto: NOMBRE_TIPO[t] }))}
+              opciones={tipos.map((t) => ({ valor: t, texto: nombreTipo(t, d.plantilla) }))}
               onCambio={(v) =>
                 cambiar((x) =>
                   actualizarCuerpo(x, activo, {
@@ -462,15 +498,7 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
               onCambio={(mm) => cambiar((x) => actualizarCuerpo(x, activo, { alto: mm }), `alto-esc-${c.id}`)}
             />
           )}
-          <p className="tenue">
-            {c.tipo === 'hueco'
-              ? 'Hueco libre para refrigerador, lavadora u otro equipo. La cubierta pasa por encima.'
-              : c.tipo === 'horno' && d.plantilla === 'cocina'
-                ? 'Horno empotrado de 60 cm con faja de melamina superior.'
-                : c.tipo === 'frentes'
-                  ? 'Sus puertas y cajones se ajustan en las pestañas Puertas y Cajones.'
-                  : 'Toca un módulo de la tira para editarlo.'}
-          </p>
+          <p className="tenue">{ayudaModulo(d, c)}</p>
         </div>
       )}
 
@@ -683,7 +711,14 @@ export function PestanaEquipamiento({ d, unidad, cambiar }: PropsPestana) {
                   : 'Agrega un módulo de 60 cm preparado para horno empotrado.'}
               </p>
               {!d.cuerpos.some((c) => c.tipo === 'horno') && (
-                <button type="button" className="boton secundario chico" onClick={() => cambiar((x) => agregarCuerpo(x, 'horno'))}>
+                <button
+                  type="button"
+                  className="boton secundario chico"
+                  onClick={() => {
+                    const horno = presetsModulo('cocina').find((p) => p.id === 'horno')!;
+                    agregarConAviso(d, horno, d.cuerpos.length, cambiar, unidad);
+                  }}
+                >
                   <IcoMas width={14} height={14} /> Agregar horno
                 </button>
               )}

@@ -115,7 +115,9 @@ describe('operaciones sobre el diseño', () => {
       for (const p of presets) {
         const base = disenoLibre(plantilla);
         const m = agregarModulo(base, p, 0);
-        expect(m.cuerpos[0].tipo).toBe(p.tipo);
+        // En la cocina infantil nada va delante de la despensa: queda en la posición 1.
+        const i = plantilla === 'cocina-infantil' ? 1 : 0;
+        expect(m.cuerpos[i].tipo).toBe(p.tipo);
         expect(suma(m)).toBe(m.ancho);
         const l = calcularLayout(m);
         for (const f of l.frentes) {
@@ -123,7 +125,7 @@ describe('operaciones sobre el diseño', () => {
           expect(f.rect.x1).toBeGreaterThan(f.rect.x0);
           expect(f.rect.y1).toBeGreaterThan(f.rect.y0);
         }
-        expect(nombreModulo(m.cuerpos[0]).length).toBeGreaterThan(0);
+        expect(nombreModulo(m.cuerpos[i]).length).toBeGreaterThan(0);
       }
     }
     expect(presetsModulo('tocador')).toEqual([]);
@@ -145,6 +147,43 @@ describe('operaciones sobre el diseño', () => {
     expect(m.ancho).toBeGreaterThanOrEqual(LIMITES.cocina.ancho[0]);
     expect(m.cocina.encimeraCuerpo).toBeLessThan(m.cuerpos.length);
     if (d.cocina.lavaplatosCuerpo !== 0) expect(m.cuerpos[m.cocina.lavaplatosCuerpo].id).toBe(lav);
+  });
+
+  it('cambiar el ancho de un módulo cambia el ancho total del mueble', () => {
+    const d = disenoLibre('cocina');
+    const m = actualizarCuerpo(d, 1, { ancho: d.cuerpos[1].ancho + 150 });
+    expect(m.cuerpos[1].ancho).toBe(d.cuerpos[1].ancho + 150);
+    expect(m.ancho).toBe(d.ancho + 150);
+    expect(suma(m)).toBe(m.ancho);
+  });
+
+  it('el horno empotrado solo se agrega si caben 60 cm', () => {
+    const horno = presetsModulo('cocina').find((p) => p.id === 'horno')!;
+    const d = fijarAncho(disenoLibre('cocina'), LIMITES.cocina.ancho[1] - 400);
+    expect(agregarModulo(d, horno)).toBe(d);
+    const holgado = fijarAncho(disenoLibre('cocina'), LIMITES.cocina.ancho[1] - 600);
+    expect(agregarModulo(holgado, horno).cuerpos.at(-1)).toMatchObject({ tipo: 'horno', ancho: 600 });
+  });
+
+  it('cocina infantil: la despensa alta sigue siendo el primer módulo', () => {
+    const d = disenoLibre('cocina-infantil');
+    const despensa = d.cuerpos[0].id;
+    const [puerta] = presetsModulo('cocina-infantil');
+    const m = agregarModulo(d, puerta, 0);
+    expect(m.cuerpos[0].id).toBe(despensa);
+    expect(m.cuerpos[1].ancho).toBe(300);
+    expect(moverCuerpo(m, 1, -1)).toBe(m);
+    expect(moverCuerpo(m, 0, 1)).toBe(m);
+    // Al quitar el módulo del lavaplatos o de la encimera, no pasan a la despensa.
+    for (let i = 1; i < m.cuerpos.length; i++) {
+      const q = quitarCuerpo(m, i);
+      expect(q.cocina.encimeraCuerpo).toBeGreaterThanOrEqual(1);
+      expect(q.cocina.lavaplatosCuerpo).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('la cómoda solo ofrece módulos de cajones', () => {
+    expect(presetsModulo('comoda').map((p) => p.id)).toEqual(['cajones']);
   });
 
   it('nombra los módulos según lo que tienen', () => {
