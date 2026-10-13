@@ -73,7 +73,17 @@ function clonar(d: Diseno): Diseno {
   };
 }
 
-function minCuerpo(c: Cuerpo): number {
+/** Ancho de un horno empotrado estándar: su módulo no se agranda ni se achica. */
+export const ANCHO_HORNO = 600;
+
+/** Módulos de medida fija: el horno empotrado de la cocina mide siempre 60 cm. */
+export function anchoFijo(p: Plantilla, c: Cuerpo): number | null {
+  return c.tipo === 'horno' && (p === 'cocina' || p === 'compacto') ? ANCHO_HORNO : null;
+}
+
+function minCuerpo(c: Cuerpo, p?: Plantilla): number {
+  const fijo = p ? anchoFijo(p, c) : null;
+  if (fijo != null) return fijo;
   return c.tipo === 'hueco' ? ANCHO_MIN_HUECO : ANCHO_MIN_CUERPO;
 }
 
@@ -114,15 +124,24 @@ function recalcular(out: Diseno, tramo: Tramo) {
   else if (tramo === 'retorno' && out.retorno) out.retorno.largo = out.profundidad + largoTramo(out, 'retorno');
 }
 
-/** Reparte un largo entre módulos de forma proporcional, respetando los mínimos. */
-function repartirModulos(cs: Cuerpo[], total: number) {
+/**
+ * Reparte un largo entre módulos de forma proporcional, respetando los
+ * mínimos. Los módulos de medida fija (horno) conservan su ancho y la
+ * diferencia la absorben los demás.
+ */
+function repartirModulos(cs: Cuerpo[], total: number, p?: Plantilla) {
   if (!cs.length) return;
-  const partes = repartir(total, cs.map((c) => c.ancho));
-  cs.forEach((c, i) => (c.ancho = partes[i]));
-  for (const c of cs) {
+  const fijos = p ? cs.filter((c) => anchoFijo(p, c) != null) : [];
+  fijos.forEach((c) => (c.ancho = anchoFijo(p!, c)!));
+  const libres = cs.filter((c) => !fijos.includes(c));
+  if (!libres.length) return;
+  const resto = total - fijos.reduce((s, c) => s + c.ancho, 0);
+  const partes = repartir(resto, libres.map((c) => c.ancho));
+  libres.forEach((c, i) => (c.ancho = partes[i]));
+  for (const c of libres) {
     const falta = minCuerpo(c) - c.ancho;
     if (falta > 0) {
-      const mayor = cs.reduce((a, b) => (b.ancho > a.ancho ? b : a));
+      const mayor = libres.reduce((a, b) => (b.ancho > a.ancho ? b : a));
       mayor.ancho -= falta;
       c.ancho += falta;
     }
@@ -149,11 +168,15 @@ function ajustarRetorno(out: Diseno) {
 export function fijarAncho(d: Diseno, ancho: number): Diseno {
   const out = clonar(d);
   const n = out.cuerpos.length;
-  const minimo = out.cuerpos.reduce((s, c) => s + minCuerpo(c), 0) + out.separacionCuerpos * Math.max(0, n - 1);
-  const objetivo = Math.max(limitar(Math.round(ancho), LIMITES[d.plantilla].ancho), minimo);
+  const p = out.plantilla;
+  const minimo = out.cuerpos.reduce((s, c) => s + minCuerpo(c, p), 0) + out.separacionCuerpos * Math.max(0, n - 1);
+  let objetivo = Math.max(limitar(Math.round(ancho), LIMITES[d.plantilla].ancho), minimo);
+  // Si todos los módulos son de medida fija (solo hornos), el ancho no puede cambiar.
+  if (n > 0 && out.cuerpos.every((c) => anchoFijo(p, c) != null)) objetivo = minimo;
   out.ancho = objetivo;
   if (n === 0) return out;
-  repartirModulos(out.cuerpos, objetivo - out.separacionCuerpos * (n - 1));
+  repartirModulos(out.cuerpos, objetivo - out.separacionCuerpos * (n - 1), p);
+  out.ancho = largoTramo(out, 'base');
   ajustarSuperiorCompacto(out);
   return out;
 }
@@ -195,7 +218,8 @@ export function fijarAnchoCuerpo(d: Diseno, indice: number, ancho: number, tramo
     return out;
   }
   const resto = largoTramo(out, tramo) - c.ancho;
-  c.ancho = Math.max(minCuerpo(c), Math.min(Math.round(ancho), maximoTramo(out, tramo) - resto));
+  const fijo = anchoFijo(out.plantilla, c);
+  c.ancho = fijo ?? Math.max(minCuerpo(c), Math.min(Math.round(ancho), maximoTramo(out, tramo) - resto));
   recalcular(out, tramo);
   if (tramo === 'base') ajustarSuperiorCompacto(out);
   return out;
@@ -234,6 +258,8 @@ export function actualizarCuerpo(d: Diseno, indice: number, cambios: Partial<Cue
   }
   if (tramo === 'aereos') c.cajones = 0;
   if (typeof ancho === 'number') return fijarAnchoCuerpo(out, indice, ancho, tramo);
+  const fijo = anchoFijo(out.plantilla, c);
+  if (fijo != null && c.ancho !== fijo) return fijarAnchoCuerpo(out, indice, fijo, tramo);
   return out;
 }
 
@@ -356,7 +382,10 @@ export function agregarCuerpo(
   posicion?: number,
   opciones: { cambios?: Partial<Cuerpo>; ancho?: number; anchoMinimo?: number; tramo?: Tramo } = {},
 ): Diseno {
-  const { cambios, ancho: anchoDeseado, anchoMinimo, tramo = 'base' } = opciones;
+  const { cambios, tramo = 'base' } = opciones;
+  const fijo = tramo === 'base' ? anchoFijo(d.plantilla, { tipo } as Cuerpo) : null;
+  const anchoDeseado = fijo ?? opciones.ancho;
+  const anchoMinimo = fijo ?? opciones.anchoMinimo;
   if (tramo === 'retorno' && !d.retorno) return d;
   const base =
     cambios ??
@@ -569,6 +598,11 @@ export function normalizar(d: Diseno): Diseno {
   out.zocalo = limitar(out.zocalo, [0, 200]);
   out.espesor = out.espesor === 18 ? 18 : 15;
   const n = out.cuerpos.length;
+  // El horno empotrado siempre mide lo mismo (diseños guardados con otro ancho se corrigen).
+  for (const c of out.cuerpos) {
+    const fijo = anchoFijo(out.plantilla, c);
+    if (fijo != null) c.ancho = fijo;
+  }
   const suma = out.cuerpos.reduce((s, c) => s + c.ancho, 0) + out.separacionCuerpos * Math.max(0, n - 1);
   if (suma !== out.ancho) out = fijarAncho(out, out.ancho);
   out.cocina.encimeraCuerpo = limitar(out.cocina.encimeraCuerpo, [0, Math.max(0, n - 1)]);

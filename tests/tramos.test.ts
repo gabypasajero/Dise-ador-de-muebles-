@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { clasificarProducto, disenoInicial, disenoLibre } from '../shared/catalogo';
 import { calcularLayout, calcularLayoutAereos, dimensionesTotales, disenoRetorno, extremosPrincipal } from '../shared/layout';
 import {
+  ANCHO_HORNO,
   LIMITES_RETORNO,
+  actualizarCuerpo,
   activarAereos,
   advertencias,
   agregarModulo,
@@ -213,5 +215,57 @@ describe('diseños guardados antes de la L y los aéreos', () => {
     expect(d.aereos.activo).toBe(false);
     expect(d.retorno).toBeNull();
     expect(calcularLayoutAereos(d)).toBeNull();
+  });
+});
+
+describe('horno empotrado de medida fija', () => {
+  const horno = (d: Diseno) => d.cuerpos.find((c) => c.tipo === 'horno')!;
+
+  it('el horno mide 60 cm aunque cambie el ancho total; se ajustan los demás módulos', () => {
+    const d = disenoLibre('cocina');
+    expect(horno(d).ancho).toBe(ANCHO_HORNO);
+    for (const ancho of [1100, 1800, 2400]) {
+      const m = fijarAncho(d, ancho);
+      expect(horno(m).ancho).toBe(ANCHO_HORNO);
+      expect(m.ancho).toBe(ancho);
+      expect(largoTramo(m, 'base')).toBe(ancho);
+    }
+  });
+
+  it('no se puede cambiar el ancho del módulo del horno', () => {
+    const d = disenoLibre('cocina');
+    const i = d.cuerpos.findIndex((c) => c.tipo === 'horno');
+    const m = fijarAnchoCuerpo(d, i, 750);
+    expect(m.cuerpos[i].ancho).toBe(ANCHO_HORNO);
+    expect(actualizarCuerpo(d, i, { ancho: 450 }).cuerpos[i].ancho).toBe(ANCHO_HORNO);
+  });
+
+  it('un módulo que pasa a ser horno toma los 60 cm, y uno nuevo solo se agrega si caben', () => {
+    const d = disenoLibre('cocina');
+    const i = d.cuerpos.findIndex((c) => c.tipo !== 'horno');
+    const m = actualizarCuerpo(d, i, { tipo: 'horno' });
+    expect(m.cuerpos[i].ancho).toBe(ANCHO_HORNO);
+    expect(m.ancho).toBe(largoTramo(m, 'base'));
+  });
+
+  it('los diseños guardados con otro ancho de horno se corrigen al abrirlos', () => {
+    const d = disenoLibre('cocina');
+    const viejo = { ...d, cuerpos: d.cuerpos.map((c) => (c.tipo === 'horno' ? { ...c, ancho: 520 } : c)) };
+    const n = normalizar(viejo);
+    expect(horno(n).ancho).toBe(ANCHO_HORNO);
+    expect(n.ancho).toBe(d.ancho);
+    expect(largoTramo(n, 'base')).toBe(n.ancho);
+  });
+
+  it('una ficha de otro ancho mantiene el horno en 60 cm', () => {
+    const d = disenoInicial(clasificarProducto(producto('Cocina full equipo: horno, encimera y lavaplatos · Clasic Pino Casina', '60 × 170 × 90 cm')));
+    expect(horno(d).ancho).toBe(ANCHO_HORNO);
+    expect(largoTramo(d, 'base')).toBe(1700);
+  });
+
+  it('el horno de juguete de la cocina infantil sí se adapta', () => {
+    const d = disenoLibre('cocina-infantil');
+    const m = fijarAncho(d, d.ancho + 300);
+    expect(m.cuerpos.find((c) => c.tipo === 'horno')!.ancho).not.toBe(d.cuerpos.find((c) => c.tipo === 'horno')!.ancho);
   });
 });

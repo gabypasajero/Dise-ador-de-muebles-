@@ -239,7 +239,9 @@ export function disenoInicial(p: ProductoCatalogo): Diseno {
   switch (p.plantilla) {
     case 'cocina': {
       if (/full equipo/.test(n)) {
-        const [a, b, c] = repartir(util, [600, 450, 450]);
+        // El horno empotrado mide siempre 60 cm: el resto se reparte entre cajones y puerta.
+        const a = 600;
+        const [b, c] = repartir(util - a, [450, 450]);
         d.cuerpos = [
           cuerpo({ tipo: 'horno', ancho: a }),
           cuerpo({ ancho: b, cajones: 3 }),

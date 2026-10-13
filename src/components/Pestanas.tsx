@@ -9,6 +9,7 @@ import {
   LIMITES_RETORNO,
   activarAereos,
   actualizarCuerpo,
+  anchoFijo,
   agregarModulo,
   anchoDisponible,
   cuerposDe,
@@ -389,7 +390,10 @@ function agregarConAviso(d: Diseno, preset: PresetModulo, posicion: number, camb
 /** Dónde se ajusta el resto del módulo, según las pestañas que tiene este mueble. */
 function ayudaModulo(d: Diseno, c: Cuerpo, tramo: Tramo): string {
   if (c.tipo === 'hueco') return tramo === 'aereos' ? 'Sin mueble: queda libre para una ventana o un extractor.' : 'Hueco libre para refrigerador, lavadora u otro equipo. La cubierta pasa por encima.';
-  if (c.tipo === 'horno') return d.plantilla === 'cocina-infantil' ? 'Horno de juguete con puerta con ventana.' : 'Horno empotrado de 60 cm con faja de melamina superior.';
+  if (c.tipo === 'horno')
+    return d.plantilla === 'cocina-infantil'
+      ? 'Horno de juguete con puerta con ventana.'
+      : 'Horno empotrado: el módulo mide siempre 60 cm. Al cambiar el ancho del mueble se ajustan los demás módulos.';
   if (c.tipo === 'escritorio') return 'Cubierta de trabajo: ajusta aquí su ancho y su alto.';
   if (c.tipo === 'campana') return 'Mueble más bajo con puertas: abajo queda la campana.';
   if (c.tipo === 'nicho') return 'Puerta abatible arriba y nicho abierto con repisa para el microondas.';
@@ -527,7 +531,10 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
               <span className={`numero-cuerpo${tramo !== 'base' ? ` ${tramo}` : ''}`}>{i + 1}</span>
               <span className="bloque-modulo-texto">
                 <span className="bloque-modulo-nombre">{nombreModulo(m)}</span>
-                <span className="bloque-modulo-ancho">{formatear(m.ancho, unidad)}</span>
+                <span className="bloque-modulo-ancho">
+                  {formatear(m.ancho, unidad)}
+                  {tramo === 'base' && anchoFijo(d.plantilla, m) != null ? ' · fijo' : ''}
+                </span>
               </span>
             </button>
           </Fragment>
@@ -619,12 +626,13 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
             />
           )}
           <CampoMedida
-            etiqueta="Ancho del módulo"
+            etiqueta={anchoFijo(d.plantilla, c) != null ? 'Ancho del módulo (fijo)' : 'Ancho del módulo'}
             compacto
             valor={c.ancho}
             unidad={unidad}
             min={c.tipo === 'hueco' ? ANCHO_MIN_HUECO : ANCHO_MIN_CUERPO}
             max={1500}
+            deshabilitado={anchoFijo(d.plantilla, c) != null}
             onCambio={(mm) => act({ ancho: mm }, `ancho-cuerpo-${c.id}`)}
           />
           {c.tipo === 'escritorio' && (
