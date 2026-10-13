@@ -188,9 +188,9 @@ describe('operaciones sobre el diseño', () => {
 
   it('nombra los módulos según lo que tienen', () => {
     const d = disenoLibre('cocina');
-    const [puerta, cajonera, horno, hueco] = presetsModulo('cocina');
-    const nombres = [puerta, cajonera, horno, hueco].map((p) => nombreModulo(agregarModulo(d, p, 0).cuerpos[0]));
-    expect(nombres).toEqual(['1 puerta', '3 cajones', 'Horno', 'Espacio libre']);
+    const preset = (id: string) => presetsModulo('cocina').find((p) => p.id === id)!;
+    const nombres = ['puerta', 'cajonera', 'cajon-puerta', 'horno', 'hueco'].map((id) => nombreModulo(agregarModulo(d, preset(id), 0).cuerpos[0]));
+    expect(nombres).toEqual(['1 puerta', '3 cajones', '1 cajón + 1 puerta', 'Horno', 'Espacio libre']);
     expect(nombreModulo({ ...d.cuerpos[0], tipo: 'frentes', puertas: 0, cajones: 0 })).toBe('Abierto');
   });
 

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { clasificarProducto, disenoInicial, disenoLibre } from '../../shared/catalogo';
-import { normalizar } from '../../shared/reglas';
+import { cuerposDe, normalizar, type Tramo } from '../../shared/reglas';
 import type { CatalogoMateriales, Cotizacion, Diseno, Escenario, Plantilla, ProductoCatalogo, Unidad, Usuario } from '../../shared/tipos';
 import { obtenerCatalogo, obtenerMateriales, type RespuestaCatalogo } from '../datos/catalogo';
 import { backend } from '../datos';
@@ -36,8 +36,18 @@ interface Estado {
   cotas: boolean;
   fotoRef: boolean;
   pestana: Pestana | null;
-  /** Módulo seleccionado en la pestaña «Módulos y espacios» (índice en diseno.cuerpos). */
+  /** Módulo seleccionado en la pestaña «Módulos y espacios» (índice dentro del tramo activo). */
   moduloActivo: number;
+  /** Tramo que se edita: principal, retorno de la L o aéreos. */
+  tramoActivo: Tramo;
+  /** Panel de medidas plegado (más espacio para el 3D). */
+  panelPlegado: boolean;
+  /** Alto elegido para las pestañas del panel (px); null = automático. */
+  altoPestanas: number | null;
+  /** Panel de colores oculto. */
+  coloresPlegados: boolean;
+  /** Cambia y recuerda en este equipo cómo se reparte la pantalla. */
+  fijarVista: (cambios: Partial<VistaGuardada>) => void;
   vista: Vista;
   encuadre: number;
 
@@ -68,6 +78,35 @@ interface Estado {
 }
 
 const CLAVE_BORRADOR = 'dto-borrador-v1';
+const CLAVE_VISTA = 'dto-vista-v1';
+
+interface VistaGuardada {
+  panelPlegado: boolean;
+  altoPestanas: number | null;
+  coloresPlegados: boolean;
+}
+
+function leerVista(): VistaGuardada {
+  const defecto: VistaGuardada = { panelPlegado: false, altoPestanas: null, coloresPlegados: false };
+  try {
+    const v = JSON.parse(localStorage.getItem(CLAVE_VISTA) ?? 'null') as Partial<VistaGuardada> | null;
+    if (!v) return defecto;
+    return {
+      panelPlegado: v.panelPlegado === true,
+      altoPestanas: typeof v.altoPestanas === 'number' && v.altoPestanas >= 100 && v.altoPestanas <= 900 ? v.altoPestanas : null,
+      coloresPlegados: v.coloresPlegados === true,
+    };
+  } catch {
+    return defecto;
+  }
+}
+
+/** Al deshacer o rehacer, el tramo y el módulo elegidos deben existir en el diseño. */
+function seleccionValida(d: Diseno, tramo: Tramo, modulo: number): { tramoActivo: Tramo; moduloActivo: number } {
+  const valido = tramo === 'retorno' ? !!d.retorno : tramo === 'aereos' ? d.aereos.activo : true;
+  const t = valido ? tramo : 'base';
+  return { tramoActivo: t, moduloActivo: Math.max(0, Math.min(modulo, cuerposDe(d, t).length - 1)) };
+}
 
 interface Borrador {
   productoId: number | null;
@@ -115,6 +154,8 @@ export const useApp = create<Estado>((set, get) => ({
   fotoRef: true,
   pestana: 'modulos',
   moduloActivo: 0,
+  tramoActivo: 'base',
+  ...leerVista(),
   vista: 'perspectiva',
   encuadre: 0,
 
@@ -172,6 +213,7 @@ export const useApp = create<Estado>((set, get) => ({
       encuadre: get().encuadre + 1,
       vista: 'perspectiva',
       moduloActivo: 0,
+      tramoActivo: 'base',
       modal: null,
     });
     escribirBorrador(producto.id, d, get().unidad, null);
@@ -190,6 +232,7 @@ export const useApp = create<Estado>((set, get) => ({
       encuadre: get().encuadre + 1,
       vista: 'perspectiva',
       moduloActivo: 0,
+      tramoActivo: 'base',
       modal: null,
     });
     escribirBorrador(null, d, get().unidad, null);
@@ -214,20 +257,20 @@ export const useApp = create<Estado>((set, get) => ({
     const { pasado, diseno, futuro } = get();
     if (!pasado.length) return;
     const anterior = pasado[pasado.length - 1];
-    set({ diseno: anterior, pasado: pasado.slice(0, -1), futuro: [diseno, ...futuro], ultimoGrupo: null, moduloActivo: Math.min(get().moduloActivo, anterior.cuerpos.length - 1) });
+    set({ diseno: anterior, pasado: pasado.slice(0, -1), futuro: [diseno, ...futuro], ultimoGrupo: null, ...seleccionValida(anterior, get().tramoActivo, get().moduloActivo) });
   },
 
   rehacer() {
     const { pasado, diseno, futuro } = get();
     if (!futuro.length) return;
-    set({ diseno: futuro[0], futuro: futuro.slice(1), pasado: [...pasado, diseno], ultimoGrupo: null, moduloActivo: Math.min(get().moduloActivo, futuro[0].cuerpos.length - 1) });
+    set({ diseno: futuro[0], futuro: futuro.slice(1), pasado: [...pasado, diseno], ultimoGrupo: null, ...seleccionValida(futuro[0], get().tramoActivo, get().moduloActivo) });
   },
 
   restablecer() {
     const { disenoBase, diseno } = get();
     const base = disenoBase ?? disenoLibre(diseno.plantilla);
     get().cambiar(() => base);
-    set({ encuadre: get().encuadre + 1, moduloActivo: 0 });
+    set({ encuadre: get().encuadre + 1, moduloActivo: 0, tramoActivo: 'base' });
   },
 
   cargarCotizacion(c) {
@@ -246,6 +289,7 @@ export const useApp = create<Estado>((set, get) => ({
       modal: null,
       abierto: false,
       moduloActivo: 0,
+      tramoActivo: 'base',
       encuadre: get().encuadre + 1,
     });
     escribirBorrador(c.productoId, d, get().unidad, resumen);
@@ -260,6 +304,16 @@ export const useApp = create<Estado>((set, get) => ({
     if ('unidad' in parcial || 'cotizacionActual' in parcial) {
       const { producto, diseno, unidad, cotizacionActual } = get();
       escribirBorrador(producto?.id ?? null, diseno, unidad, cotizacionActual);
+    }
+  },
+
+  fijarVista(cambios) {
+    set(cambios);
+    const { panelPlegado, altoPestanas, coloresPlegados } = get();
+    try {
+      localStorage.setItem(CLAVE_VISTA, JSON.stringify({ panelPlegado, altoPestanas, coloresPlegados }));
+    } catch {
+      // sin almacenamiento local: la preferencia dura solo esta sesión
     }
   },
 

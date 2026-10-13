@@ -27,6 +27,7 @@ export default function App() {
   const sesion = useApp((s) => s.sesion);
   const errorCarga = useApp((s) => s.errorCarga);
   const cargado = useApp((s) => s.catalogo !== null && s.materiales !== null);
+  const coloresPlegados = useApp((s) => s.coloresPlegados);
 
   useEffect(() => {
     useApp.getState().cargarDatos();
@@ -63,7 +64,7 @@ export default function App() {
   return (
     <div className="app">
       <Cabecera />
-      <main className="area-trabajo">
+      <main className={`area-trabajo${coloresPlegados ? ' colores-plegados' : ''}`}>
         <section className="visor" aria-label="Vista 3D del mueble">
           {cargado ? (
             <Visor3D />
@@ -71,8 +72,17 @@ export default function App() {
             <div className="cargando-visor">{errorCarga ? `No se pudo conectar con el servidor: ${errorCarga}` : 'Preparando el taller 3D…'}</div>
           )}
           {cargado && <BarraVisor />}
+          <button
+            type="button"
+            className="plegar-colores"
+            aria-expanded={!coloresPlegados}
+            title={coloresPlegados ? 'Mostrar los colores' : 'Ocultar los colores para ver el mueble más grande'}
+            onClick={() => useApp.getState().fijarVista({ coloresPlegados: !coloresPlegados })}
+          >
+            {coloresPlegados ? '‹ Colores' : '›'}
+          </button>
         </section>
-        <PanelColores />
+        {!coloresPlegados && <PanelColores />}
       </main>
       <PanelInferior />
       {modal === 'catalogo' && <ModalCatalogo />}

@@ -2,7 +2,7 @@
 // cada cuerpo, puerta y cajón. Lo usan el visor 3D y los paneles de medidas.
 // Ejes (mm): x de izquierda a derecha centrado en 0, y desde el piso hacia
 // arriba, z desde el muro (0) hacia el frente.
-import type { Bisagra, Cuerpo, Diseno } from './tipos';
+import type { Bisagra, Cuerpo, Diseno, Retorno } from './tipos';
 
 export interface Rect {
   x0: number;
@@ -19,7 +19,8 @@ export interface FrenteBase {
 
 export interface FrentePuerta extends FrenteBase {
   tipo: 'puerta';
-  bisagra: Bisagra;
+  /** 'arriba': puerta abatible que se abre hacia arriba. */
+  bisagra: Bisagra | 'arriba';
 }
 
 export interface FrenteCajon extends FrenteBase {
@@ -72,7 +73,78 @@ export interface Layout {
 export const ALTO_HORNO = 595;
 
 export function esCocina(d: Diseno): boolean {
-  return d.plantilla === 'cocina' || d.plantilla === 'cocina-infantil';
+  return d.plantilla === 'cocina' || d.plantilla === 'cocina-infantil' || d.plantilla === 'compacto';
+}
+
+/** Cocina de adulto (con cubierta postformada y equipamiento real): cocina o compacto. */
+export function esCocinaAdulta(d: Diseno): boolean {
+  return d.plantilla === 'cocina' || d.plantilla === 'compacto';
+}
+
+/** Diseño del mueble base: en el compacto es la cocina bajo la cubierta (alto = elevación de los aéreos). */
+export function disenoBase(d: Diseno): Diseno {
+  if (d.plantilla !== 'compacto') return d;
+  return { ...d, plantilla: 'cocina', alto: Math.min(d.alto, d.aereos.elevacion) };
+}
+
+/** Largo útil (mm) de los módulos del tramo en L: lo que sobresale del tramo principal. */
+export function largoUtilRetorno(d: Diseno, r: Retorno | null = d.retorno): number {
+  return r ? Math.max(0, r.largo - d.profundidad) : 0;
+}
+
+/** Diseño del tramo en L para calcular su distribución con el mismo motor. */
+export function disenoRetorno(d: Diseno): Diseno | null {
+  const r = d.retorno;
+  if (!r || d.plantilla !== 'cocina') return null;
+  return {
+    ...d,
+    ancho: largoUtilRetorno(d),
+    profundidad: r.profundidad,
+    cuerpos: r.cuerpos,
+    separacionCuerpos: 0,
+    retorno: null,
+    aereos: { ...d.aereos, activo: false, cuerpos: [] },
+    cocina: { ...d.cocina, encimera: 'ninguna', lavaplatos: 'ninguno' },
+  };
+}
+
+/** Ubicación del tramo en L: su eje x local corre desde la esquina, y su fondo queda contra el muro lateral. */
+export function transformRetorno(d: Diseno): { x: number; z: number; rotY: number } | null {
+  const r = d.retorno;
+  if (!r) return null;
+  const z = d.profundidad + largoUtilRetorno(d) / 2;
+  return r.lado === 'der'
+    ? { x: d.ancho / 2 + r.profundidad, z, rotY: -Math.PI / 2 }
+    : { x: -d.ancho / 2 - r.profundidad, z, rotY: Math.PI / 2 };
+}
+
+/** Lleva un punto del tramo en L (coordenadas locales) al espacio del mueble. */
+export function aMundoRetorno(d: Diseno, x: number, z: number): [number, number] {
+  const tr = transformRetorno(d)!;
+  return d.retorno!.lado === 'der' ? [tr.x - z, tr.z + x] : [tr.x + z, tr.z - x];
+}
+
+/** Extremos en x del tramo principal incluyendo la esquina de la L. */
+export function extremosPrincipal(d: Diseno): [number, number] {
+  const r = d.retorno;
+  return [-d.ancho / 2 - (r?.lado === 'izq' ? r.profundidad : 0), d.ancho / 2 + (r?.lado === 'der' ? r.profundidad : 0)];
+}
+
+/** Caja que ocupa todo el conjunto (para encuadrar la cámara y la escena). */
+export function dimensionesTotales(d: Diseno): { x0: number; x1: number; alto: number; fondo: number } {
+  let [x0, x1] = extremosPrincipal(d);
+  let alto = d.alto;
+  let fondo = d.profundidad;
+  if (d.retorno) fondo = Math.max(fondo, d.retorno.largo);
+  if (d.aereos.activo && d.aereos.cuerpos.length) {
+    const la = calcularLayoutAereos(d);
+    if (la) {
+      x0 = Math.min(x0, la.x0);
+      x1 = Math.max(x1, la.x1);
+      alto = Math.max(alto, la.y1);
+    }
+  }
+  return { x0, x1, alto, fondo };
 }
 
 /** Reparte una longitud en k tramos con una holgura entre ellos. */
@@ -91,7 +163,9 @@ function altoCajonDefecto(d: Diseno): number {
   return 180;
 }
 
-export function calcularLayout(d: Diseno): Layout {
+export function calcularLayout(d0: Diseno): Layout {
+  // El compacto se distribuye como una cocina bajo la cubierta.
+  const d = disenoBase(d0);
   const t = d.espesor;
   const tf = d.espesor;
   const luz = d.luzFrentes;
@@ -180,6 +254,29 @@ export function calcularLayout(d: Diseno): Layout {
     const cols = c.columnasCajones === 2 && c.cajones > 1 ? 2 : 1;
     const filas = Math.ceil(c.cajones / cols);
     let topeCajones = fy0;
+    if (c.cajonesArriba && c.cajones > 0 && c.puertas > 0) {
+      // Cajones arriba (numerados de arriba hacia abajo) y puertas abajo.
+      const fijo = c.altoCajon > 0 ? c.altoCajon : altoCajonDefecto(d);
+      const maxFilas = Math.max(1, Math.floor((fy1 - fy0 - 200 + luz) / (fijo + luz)));
+      const k = Math.min(filas, maxFilas);
+      const xs = tramos(fx0, fx1, cols, luz);
+      let indice = 0;
+      let piso = fy1;
+      for (let r = 0; r < k; r++) {
+        const y1 = fy1 - r * (fijo + luz);
+        piso = y1 - fijo;
+        for (let q = 0; q < cols && indice < c.cajones; q++) {
+          frentes.push({ tipo: 'cajon', cuerpo: i, indice: indice++, rect: { x0: xs[q][0], x1: xs[q][1], y0: piso, y1 } });
+        }
+      }
+      lc.zonaCajones = { x0: fx0, x1: fx1, y0: piso, y1: fy1 };
+      const py1 = piso - luz;
+      lc.zonaPuertas = { x0: fx0, x1: fx1, y0: fy0, y1: py1 };
+      tramos(fx0, fx1, c.puertas, luz).forEach(([a, b], q) => {
+        frentes.push({ tipo: 'puerta', cuerpo: i, indice: q, bisagra: bisagraDe(c, q), rect: { x0: a, x1: b, y0: fy0, y1: py1 } });
+      });
+      return;
+    }
     if (c.cajones > 0) {
       const fijo = c.altoCajon > 0 ? c.altoCajon : c.puertas > 0 ? altoCajonDefecto(d) : 0;
       let filasY: [number, number][];
@@ -215,11 +312,7 @@ export function calcularLayout(d: Diseno): Layout {
         lc.zonaPuertas = { x0: fx0, x1: fx1, y0: py0, y1: fy1 };
         const xs = tramos(fx0, fx1, c.puertas, luz);
         xs.forEach(([a, b], k) => {
-          let bisagra: Bisagra;
-          if (c.puertas === 1) bisagra = c.bisagra;
-          else if (c.puertas % 2 === 0) bisagra = k < c.puertas / 2 ? 'izq' : 'der';
-          else bisagra = k === 0 ? 'izq' : k % 2 === 1 ? 'izq' : 'der';
-          frentes.push({ tipo: 'puerta', cuerpo: i, indice: k, bisagra, rect: { x0: a, x1: b, y0: py0, y1: fy1 } });
+          frentes.push({ tipo: 'puerta', cuerpo: i, indice: k, bisagra: bisagraDe(c, k), rect: { x0: a, x1: b, y0: py0, y1: fy1 } });
         });
       }
     }
@@ -265,6 +358,116 @@ export function calcularLayout(d: Diseno): Layout {
     frentes,
     divisiones,
     filaSuperior,
+  };
+}
+
+/** Bisagra de la puerta k de un cuerpo: una puerta usa la elegida; con varias se abren desde los extremos. */
+export function bisagraDe(c: Cuerpo, k: number): Bisagra | 'arriba' {
+  if (c.abatible) return 'arriba';
+  if (c.puertas === 1) return c.bisagra;
+  if (c.puertas % 2 === 0) return k < c.puertas / 2 ? 'izq' : 'der';
+  return k === 0 ? 'izq' : k % 2 === 1 ? 'izq' : 'der';
+}
+
+// ---------- Aéreos ----------
+
+export interface LayoutAereoCuerpo {
+  indice: number;
+  cuerpo: Cuerpo;
+  x0: number;
+  x1: number;
+  /** Caja del mueble (y en coordenadas del piso). En la campana es solo la parte con puertas. */
+  y0: number;
+  y1: number;
+  /** Nicho abierto bajo la puerta abatible (tipo nicho). */
+  nicho: Rect | null;
+}
+
+export interface LayoutAereos {
+  montaje: 'mural' | 'apoyado';
+  x0: number;
+  x1: number;
+  /** Borde inferior y superior de los muebles superiores. */
+  y0: number;
+  y1: number;
+  /** Apoyado: altura de la cubierta del mueble base, donde nacen los costados. */
+  yCubierta: number;
+  profundidad: number;
+  zFrente: number;
+  espesor: number;
+  cuerpos: LayoutAereoCuerpo[];
+  frentes: FrentePuerta[];
+}
+
+/** Alto de la parte con puertas de un módulo de campana o de la puerta abatible de un nicho. */
+export function altoSuperior(tipo: 'campana' | 'nicho', alto: number): number {
+  const proporcion = tipo === 'campana' ? 0.5 : 0.45;
+  return Math.round(Math.max(200, Math.min(alto - 150, alto * proporcion)));
+}
+
+export function calcularLayoutAereos(d: Diseno): LayoutAereos | null {
+  const a = d.aereos;
+  if (!a.activo || !a.cuerpos.length) return null;
+  const t = d.espesor;
+  const luz = d.luzFrentes;
+  const largo = a.cuerpos.reduce((s, c) => s + c.ancho, 0);
+  const [sx0, sx1] = extremosPrincipal(d);
+  const x0 = a.alineacion === 'izq' ? sx0 : a.alineacion === 'der' ? sx1 - largo : (sx0 + sx1) / 2 - largo / 2;
+  const apoyado = a.montaje === 'apoyado';
+  const y1 = apoyado ? d.alto : a.elevacion + a.alto;
+  const y0 = y1 - a.alto;
+  const zFrente = a.profundidad - t;
+  const cuerpos: LayoutAereoCuerpo[] = [];
+  const frentes: FrentePuerta[] = [];
+  let cursor = x0;
+  a.cuerpos.forEach((c, i) => {
+    const cx0 = cursor;
+    const cx1 = cursor + c.ancho;
+    cursor = cx1;
+    const lc: LayoutAereoCuerpo = { indice: i, cuerpo: c, x0: cx0, x1: cx1, y0, y1, nicho: null };
+    cuerpos.push(lc);
+    if (c.tipo === 'hueco') return;
+    const fx0 = cx0 + luz / 2;
+    const fx1 = cx1 - luz / 2;
+    const puerta = (k: number, n: number, ry0: number, ry1: number, abatible: boolean) => {
+      const xs = tramos(fx0, fx1, n, luz)[k];
+      frentes.push({
+        tipo: 'puerta',
+        cuerpo: i,
+        indice: k,
+        bisagra: abatible ? 'arriba' : bisagraDe({ ...c, puertas: n }, k),
+        rect: { x0: xs[0], x1: xs[1], y0: ry0, y1: ry1 },
+      });
+    };
+    if (c.tipo === 'nicho') {
+      const hA = altoSuperior('nicho', a.alto);
+      puerta(0, 1, y1 - hA + luz / 2, y1 - luz / 2, true);
+      lc.nicho = { x0: cx0 + t, x1: cx1 - t, y0: y0 + t, y1: y1 - hA - t };
+      return;
+    }
+    if (c.tipo === 'campana') {
+      const h = altoSuperior('campana', a.alto);
+      lc.y0 = y1 - h;
+      const n = Math.max(1, c.puertas);
+      for (let k = 0; k < n; k++) puerta(k, n, lc.y0 + luz / 2, y1 - luz / 2, !!c.abatible);
+      return;
+    }
+    // Módulo con puertas (las abatibles son una sola puerta a todo el ancho).
+    const n = c.abatible ? 1 : Math.max(0, c.puertas);
+    for (let k = 0; k < n; k++) puerta(k, n, y0 + luz / 2, y1 - luz / 2, !!c.abatible);
+  });
+  return {
+    montaje: a.montaje,
+    x0,
+    x1: cursor,
+    y0,
+    y1,
+    yCubierta: apoyado ? a.elevacion : y0,
+    profundidad: a.profundidad,
+    zFrente,
+    espesor: t,
+    cuerpos,
+    frentes,
   };
 }
 

@@ -59,7 +59,7 @@ function esInfantil(p: ProductoTienda): boolean {
 export function plantillaDe(p: ProductoTienda): Plantilla {
   switch (p.categoria) {
     case 'cocina':
-      return 'cocina';
+      return /compacto/i.test(p.nombre) ? 'compacto' : 'cocina';
     case 'cocinas-infantiles':
       return 'cocina-infantil';
     case 'closets':
@@ -72,6 +72,7 @@ export function plantillaDe(p: ProductoTienda): Plantilla {
     case 'escritorios':
       return 'escritorio';
     default:
+      if (/compacto/i.test(p.nombre)) return 'compacto';
       if (/cocina/i.test(p.nombre)) return 'cocina';
       if (/cl[oó]set/i.test(p.nombre)) return 'closet';
       if (/c[oó]moda/i.test(p.nombre)) return 'comoda';
@@ -81,7 +82,7 @@ export function plantillaDe(p: ProductoTienda): Plantilla {
 }
 
 export function escenarioDe(p: ProductoTienda, plantilla: Plantilla): Escenario {
-  if (plantilla === 'cocina') return 'cocina';
+  if (plantilla === 'cocina' || plantilla === 'compacto') return 'cocina';
   if (plantilla === 'cocina-infantil' || plantilla === 'escritorio') return 'infantil';
   if (p.categoria === 'tocadores-infantiles') return 'infantil';
   if (plantilla === 'tocador') return 'dormitorio';
@@ -96,6 +97,9 @@ function medidasEstimadas(p: ProductoTienda, plantilla: Plantilla) {
       if (/encimera,? 2 puertas y 3 cajones/.test(n)) return { ancho: 1000, alto: 900, profundidad: 550 };
       if (/encimera y 2 puertas/.test(n)) return { ancho: 800, alto: 900, profundidad: 550 };
       return { ancho: 1500, alto: 900, profundidad: 600 };
+    case 'compacto':
+      if (/5\s*c\b/.test(n)) return { ancho: 1800, alto: 1900, profundidad: 400 };
+      return { ancho: 1100, alto: 1920, profundidad: 400 };
     case 'cocina-infantil':
       return { ancho: 900, alto: 1000, profundidad: 300 };
     case 'closet':
@@ -139,16 +143,22 @@ export function coloresDeVariante(variante: string | null): { cubierta?: string;
   const v = variante.toLowerCase();
   const out: { cubierta?: string; frente?: string } = {};
   if (v.includes('clasic')) out.cubierta = 'clasic';
+  else if (v.includes('calacatta')) out.cubierta = 'calacatta';
   else if (v.includes('florentino')) out.cubierta = 'florentino';
+  else if (v.includes('granito beige')) out.cubierta = 'granito-beige';
+  else if (v.includes('granito negro')) out.cubierta = 'granito-negro';
   else if (v.includes('granito')) out.cubierta = 'granito';
   if (v.includes('gris blanqueado')) out.frente = 'gris-blanqueado';
   else if (v.includes('pino casina')) out.frente = 'pino-casina';
   else if (v.includes('pino nebraska')) out.frente = 'pino-nebraska';
+  else if (v.includes('verde salvia')) out.frente = 'verde-salvia';
+  else if (/\brojo\b/.test(v)) out.frente = 'rojo';
   return out;
 }
 
 function base(plantilla: Plantilla, medidas: { ancho: number; alto: number; profundidad: number }): Diseno {
-  const cocina = plantilla === 'cocina' || plantilla === 'cocina-infantil';
+  const cocina = plantilla === 'cocina' || plantilla === 'cocina-infantil' || plantilla === 'compacto';
+  const adulta = plantilla === 'cocina' || plantilla === 'compacto';
   return {
     version: 1,
     plantilla,
@@ -160,15 +170,15 @@ function base(plantilla: Plantilla, medidas: { ancho: number; alto: number; prof
     cuerpos: [],
     luzFrentes: 3,
     separacionCuerpos: 0,
-    zocalo: cocina ? 100 : plantilla === 'tocador' ? 0 : 60,
+    zocalo: plantilla === 'compacto' ? 60 : cocina ? 100 : plantilla === 'tocador' ? 0 : 60,
     espesor: 15,
     estructura: plantilla === 'cocina' ? 'modular' : 'unica',
-    tirador: plantilla === 'cocina' ? 'barra' : 'boton',
+    tirador: adulta ? 'barra' : 'boton',
     materiales: {
-      frente: plantilla === 'cocina' ? 'gris-blanqueado' : 'blanco',
+      frente: adulta ? 'gris-blanqueado' : 'blanco',
       casco: 'blanco',
-      cubierta: plantilla === 'cocina' ? 'clasic' : 'blanco-liso',
-      tirador: plantilla === 'cocina' ? 'acero' : 'blanco',
+      cubierta: adulta ? 'clasic' : 'blanco-liso',
+      tirador: adulta ? 'acero' : 'blanco',
     },
     cocina: {
       encimera: 'ninguna',
@@ -192,7 +202,16 @@ function base(plantilla: Plantilla, medidas: { ancho: number; alto: number; prof
     filaSuperior: 0,
     mudador: false,
     imagenFrontal: null,
+    aereos: aereosVacios(plantilla),
+    retorno: null,
   };
+}
+
+/** Mismos valores que reglas.aereosVacios (se repiten aquí para no crear una dependencia circular). */
+function aereosVacios(plantilla: Plantilla): Diseno['aereos'] {
+  return plantilla === 'compacto'
+    ? { activo: true, montaje: 'apoyado', alto: 580, profundidad: 300, elevacion: 880, alineacion: 'centro', cuerpos: [] }
+    : { activo: false, montaje: 'mural', alto: 600, profundidad: 330, elevacion: 1450, alineacion: 'centro', cuerpos: [] };
 }
 
 /** Reparte un ancho total en partes proporcionales (enteros que suman exactamente el total). */
@@ -246,6 +265,41 @@ export function disenoInicial(p: ProductoCatalogo): Diseno {
         d.cuerpos = [cuerpo({ ancho: util, puertas: 2, repisas: 1 })];
         d.cocina.encimera = '3';
         d.cocina.encimeraCuerpo = 0;
+      }
+      const colores = coloresDeVariante(p.variante);
+      if (colores.cubierta) d.materiales.cubierta = colores.cubierta;
+      if (colores.frente) d.materiales.frente = colores.frente;
+      break;
+    }
+    case 'compacto': {
+      // Mueble de cocina compacto: base con cubierta postformada y mueble superior apoyado sobre ella.
+      if (/5\s*c\b/.test(n)) {
+        const [a, b, c] = repartir(util, [740, 370, 690]);
+        d.cuerpos = [
+          cuerpo({ ancho: a, puertas: 2, repisas: 1 }),
+          cuerpo({ ancho: b, cajones: 3 }),
+          cuerpo({ ancho: c, puertas: 2, repisas: 1 }),
+        ];
+        const [s1, s2, s3] = repartir(util, [830, 410, 560]);
+        d.aereos.cuerpos = [
+          cuerpo({ ancho: s1, puertas: 2, repisas: 1 }),
+          cuerpo({ ancho: s2, puertas: 1, bisagra: 'der', repisas: 1 }),
+          cuerpo({ tipo: 'nicho', ancho: s3, puertas: 1, abatible: true, repisas: 0 }),
+        ];
+        d.aereos.alto = 560;
+        d.materiales.frente = 'pino-nebraska';
+      } else {
+        const [a, b] = repartir(util, [600, 500]);
+        d.cuerpos = [
+          cuerpo({ ancho: a, puertas: 2, repisas: 1 }),
+          cuerpo({ ancho: b, cajones: 1, puertas: 1, cajonesArriba: true, bisagra: 'der', repisas: 1 }),
+        ];
+        d.aereos.cuerpos = [
+          cuerpo({ ancho: a, puertas: 2, repisas: 1 }),
+          cuerpo({ tipo: 'nicho', ancho: b, puertas: 1, abatible: true, repisas: 0 }),
+        ];
+        d.materiales.frente = 'verde-salvia';
+        d.materiales.cubierta = 'calacatta';
       }
       const colores = coloresDeVariante(p.variante);
       if (colores.cubierta) d.materiales.cubierta = colores.cubierta;
@@ -364,7 +418,9 @@ export function disenoLibre(plantilla: Plantilla): Diseno {
     nombre:
       plantilla === 'cocina'
         ? 'Cocina full equipo'
-        : plantilla === 'closet'
+        : plantilla === 'compacto'
+          ? 'Mueble de cocina compacto 3C'
+          : plantilla === 'closet'
           ? 'Clóset 4 puertas 4 cajones'
           : plantilla === 'comoda'
             ? 'Cómoda 4 cajones'
@@ -374,7 +430,7 @@ export function disenoLibre(plantilla: Plantilla): Diseno {
                 ? 'Clóset escritorio'
                 : 'Cocina infantil',
     categoria:
-      plantilla === 'cocina'
+      plantilla === 'cocina' || plantilla === 'compacto'
         ? 'cocina'
         : plantilla === 'closet'
           ? 'closets'
@@ -401,6 +457,7 @@ export function disenoLibre(plantilla: Plantilla): Diseno {
 
 export const NOMBRE_PLANTILLA: Record<Plantilla, string> = {
   cocina: 'Mueble de cocina',
+  compacto: 'Cocina compacta',
   closet: 'Clóset',
   comoda: 'Cómoda',
   tocador: 'Tocador',

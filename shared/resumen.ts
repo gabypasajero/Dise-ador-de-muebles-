@@ -1,6 +1,6 @@
 // Detalle de la cotización en forma de lista y su versión en texto
 // (para copiar o enviar al cliente por WhatsApp).
-import { calcularLayout } from './layout';
+import { calcularLayout, calcularLayoutAereos, disenoRetorno, type Frente } from './layout';
 import { formatear, formatoPrecio } from './reglas';
 import type { CatalogoMateriales, Cotizacion, Diseno, LineaDetalle, ProductoCatalogo, Unidad } from './tipos';
 
@@ -25,23 +25,36 @@ export function describirCuerpos(d: Diseno, unidad: Unidad): string[] {
       `Espejo ${t.espejo === 'ovalado' ? 'ovalado LED' : t.espejo === 'hollywood' ? 'Hollywood' : 'rectangular LED'}, luz ${t.luz}`,
     ];
   }
-  const l = calcularLayout(d);
-  return d.cuerpos.map((c, i) => {
+  return describirTramo(d, d.cuerpos, calcularLayout(d).frentes, 'Módulo', unidad);
+}
+
+/** Una línea por módulo de un tramo, con sus puertas y cajones. */
+function describirTramo(d: Diseno, cuerpos: Diseno['cuerpos'], frentes: Frente[], prefijo: string, unidad: Unidad): string[] {
+  return cuerpos.map((c, i) => {
     const ancho = formatear(c.ancho, unidad);
-    if (c.tipo === 'horno') return `Módulo ${i + 1} (${ancho}): ${d.plantilla === 'cocina-infantil' ? 'horno de juguete' : 'horno empotrado'}`;
-    if (c.tipo === 'hueco') return `Módulo ${i + 1} (${ancho}): espacio libre`;
-    if (c.tipo === 'escritorio') return `Módulo ${i + 1} (${ancho}): escritorio de ${formatear(c.alto || 750, unidad)} de alto`;
+    const nombre = `${prefijo} ${i + 1} (${ancho})`;
+    if (c.tipo === 'horno') return `${nombre}: ${d.plantilla === 'cocina-infantil' ? 'horno de juguete' : 'horno empotrado'}`;
+    if (c.tipo === 'hueco') return `${nombre}: espacio libre`;
+    if (c.tipo === 'escritorio') return `${nombre}: escritorio de ${formatear(c.alto || 750, unidad)} de alto`;
     const partes: string[] = [];
-    const puertas = l.frentes.filter((f) => f.tipo === 'puerta' && f.cuerpo === i);
-    const cajones = l.frentes.filter((f) => f.tipo === 'cajon' && f.cuerpo === i);
-    if (puertas.length) {
-      const p = puertas[0].rect;
-      partes.push(`${puertas.length} ${puertas.length === 1 ? 'puerta' : 'puertas'} de ${formatear(p.x1 - p.x0, unidad, false)} × ${formatear(p.y1 - p.y0, unidad)}`);
+    const puertas = frentes.filter((f) => f.tipo === 'puerta' && f.cuerpo === i);
+    const cajones = frentes.filter((f) => f.tipo === 'cajon' && f.cuerpo === i);
+    const abatibles = puertas.filter((f) => f.tipo === 'puerta' && f.bisagra === 'arriba');
+    const normales = puertas.filter((f) => !(f.tipo === 'puerta' && f.bisagra === 'arriba'));
+    if (c.tipo === 'campana') partes.push('mueble de campana');
+    if (c.tipo === 'nicho') partes.push('nicho para microondas con repisa');
+    if (normales.length) {
+      const p = normales[0].rect;
+      partes.push(`${normales.length} ${normales.length === 1 ? 'puerta' : 'puertas'} de ${formatear(p.x1 - p.x0, unidad, false)} × ${formatear(p.y1 - p.y0, unidad)}`);
     }
-    if (cajones.length) partes.push(`${cajones.length} ${cajones.length === 1 ? 'cajón' : 'cajones'}`);
+    if (abatibles.length) {
+      const p = abatibles[0].rect;
+      partes.push(`puerta abatible de ${formatear(p.x1 - p.x0, unidad, false)} × ${formatear(p.y1 - p.y0, unidad)}`);
+    }
+    if (cajones.length) partes.push(`${cajones.length} ${cajones.length === 1 ? 'cajón' : 'cajones'}${c.cajonesArriba && normales.length ? ' arriba' : ''}`);
     if (c.colgador) partes.push('barra para colgar');
     if (!puertas.length && !cajones.length) partes.push(`abierto con ${c.repisas} repisas`);
-    return `Módulo ${i + 1} (${ancho}): ${partes.join(', ')}`;
+    return `${nombre}: ${partes.join(', ')}`;
   });
 }
 
@@ -54,7 +67,7 @@ export function detalleCotizacion(
 ): LineaDetalle[] {
   const lineas: LineaDetalle[] = [];
   const m = d.materiales;
-  const cocina = d.plantilla === 'cocina' || d.plantilla === 'cocina-infantil';
+  const cocina = d.plantilla === 'cocina' || d.plantilla === 'cocina-infantil' || d.plantilla === 'compacto';
   lineas.push({
     etiqueta: 'Modelo base',
     valor: producto ? `${producto.nombre} (código ${producto.id})` : d.nombreModelo || 'Diseño a medida',
@@ -63,7 +76,38 @@ export function detalleCotizacion(
     etiqueta: 'Medidas',
     valor: `${formatear(d.ancho, unidad, false)} × ${formatear(d.alto, unidad, false)} × ${formatear(d.profundidad, unidad)} (ancho × alto × profundidad)`,
   });
-  lineas.push({ etiqueta: 'Distribución', valor: d.plantilla === 'tocador' ? 'Tocador' : `${d.cuerpos.length} ${d.cuerpos.length === 1 ? 'módulo' : 'módulos'}`, sub: describirCuerpos(d, unidad) });
+  const r = d.retorno;
+  if (r) {
+    lineas.push({
+      etiqueta: 'Forma',
+      valor: `en L ${r.lado === 'der' ? 'a la derecha' : 'a la izquierda'}: ${formatear(d.ancho + r.profundidad, unidad, false)} × ${formatear(r.largo, unidad)} (tramo principal con esquina × largo de la L)`,
+    });
+  }
+  lineas.push({
+    etiqueta: d.plantilla === 'compacto' ? 'Mueble base' : r ? 'Tramo principal' : 'Distribución',
+    valor: d.plantilla === 'tocador' ? 'Tocador' : `${d.cuerpos.length} ${d.cuerpos.length === 1 ? 'módulo' : 'módulos'}`,
+    sub: describirCuerpos(d, unidad),
+  });
+  const dr = disenoRetorno(d);
+  if (r && dr) {
+    lineas.push({
+      etiqueta: 'Tramo en L',
+      valor: `${r.cuerpos.length} ${r.cuerpos.length === 1 ? 'módulo' : 'módulos'}, fondo ${formatear(r.profundidad, unidad)}`,
+      sub: describirTramo(dr, r.cuerpos, calcularLayout(dr).frentes, 'L', unidad),
+    });
+  }
+  const la = calcularLayoutAereos(d);
+  if (la) {
+    const a = d.aereos;
+    const compacto = d.plantilla === 'compacto';
+    lineas.push({
+      etiqueta: compacto ? 'Mueble superior' : 'Muebles aéreos',
+      valor: compacto
+        ? `${formatear(la.x1 - la.x0, unidad, false)} × ${formatear(a.alto, unidad, false)} × ${formatear(a.profundidad, unidad)} sobre la cubierta, mueble base de ${formatear(a.elevacion, unidad)} de alto`
+        : `${formatear(la.x1 - la.x0, unidad, false)} × ${formatear(a.alto, unidad, false)} × ${formatear(a.profundidad, unidad)}, a ${formatear(a.elevacion, unidad)} del piso`,
+      sub: describirTramo(d, a.cuerpos, la.frentes, compacto ? 'Superior' : 'Aéreo', unidad),
+    });
+  }
   lineas.push({ etiqueta: 'Melamina frentes', valor: nombreMaterial(materiales?.melaminas, m.frente) });
   lineas.push({ etiqueta: 'Melamina cuerpo', valor: nombreMaterial(materiales?.melaminas, m.casco) });
   if (cocina) lineas.push({ etiqueta: 'Cubierta postformada', valor: nombreMaterial(materiales?.cubiertas, m.cubierta) });
@@ -78,7 +122,7 @@ export function detalleCotizacion(
     if (k.lavaplatos !== 'ninguno') {
       eq.push(`lavaplatos ${k.lavaplatos === 'doble' ? '2 cubetas' : '1 cubeta'} (módulo ${k.lavaplatosCuerpo + 1}), grifería ${k.grifo === 'negro' ? 'negro mate' : 'cromada'}`);
     }
-    if (d.plantilla === 'cocina') eq.push(`cubierta ${k.espesorCubierta} mm${k.copete ? ' con copete' : ''}`);
+    if (d.plantilla === 'cocina' || d.plantilla === 'compacto') eq.push(`cubierta ${k.espesorCubierta} mm${k.copete ? ' con copete' : ''}`);
     if (eq.length) lineas.push({ etiqueta: 'Equipamiento', valor: eq.join('; ') });
   }
   lineas.push({

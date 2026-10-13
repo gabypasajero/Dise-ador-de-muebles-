@@ -2408,3 +2408,184 @@ h3 {
     justify-content: flex-start;
   }
 }
+
+/* ---------- Tramos: forma L, aéreos y compacto ---------- */
+.modulos-forma {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 18px;
+}
+
+.selector-tramo {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--borde);
+  margin-left: auto;
+}
+
+.selector-tramo button {
+  border: none;
+  background: transparent;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--texto-2);
+  cursor: pointer;
+}
+
+.selector-tramo button.activo {
+  background: var(--acento);
+  color: #fff;
+}
+
+.numero-cuerpo.retorno {
+  background: #2f6f6a;
+}
+
+.numero-cuerpo.aereos {
+  background: #5b4a8b;
+}
+
+.separador-tramo {
+  flex: 0 0 auto;
+  align-self: stretch;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  display: grid;
+  place-items: center;
+  padding: 8px 4px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border: 1px dashed var(--borde-fuerte);
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--texto-2);
+  letter-spacing: 0.02em;
+}
+
+/* ---------- Panel de medidas plegable y redimensionable ---------- */
+.panel-asa {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  z-index: 6;
+}
+
+.panel-asa .agarre {
+  width: 64px;
+  height: 16px;
+  border-radius: 10px 10px 0 0;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-bottom: none;
+  cursor: ns-resize;
+  display: grid;
+  place-items: center;
+  touch-action: none;
+}
+
+.panel-asa .agarre::before {
+  content: '';
+  width: 30px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--borde-fuerte);
+}
+
+.plegar-panel {
+  border: 1px solid var(--borde);
+  border-bottom: none;
+  border-radius: 10px 10px 0 0;
+  background: var(--panel);
+  color: var(--acento);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 4px 12px 3px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.panel-inferior.alto-fijo .pestana-panel,
+.panel-inferior.alto-fijo .pestana-panel.modulos {
+  height: var(--alto-pestanas);
+  max-height: none;
+}
+
+.panel-inferior.plegado {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'precio';
+}
+
+.panel-inferior.plegado .bloque-medidas,
+.panel-inferior.plegado .categorias,
+.panel-inferior.plegado .bloque-precio > .tenue {
+  display: none;
+}
+
+.panel-inferior.plegado .agarre {
+  visibility: hidden;
+}
+
+.panel-inferior.plegado .bloque-precio {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 8px 16px;
+  border-left: none;
+}
+
+.panel-inferior.plegado .precio {
+  font-size: 20px;
+}
+
+.panel-inferior.plegado .acciones-precio {
+  margin-left: auto;
+  flex-direction: row;
+}
+
+/* Botón para ocultar o mostrar el panel de colores. */
+.plegar-colores {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 4;
+  border: 1px solid var(--borde);
+  border-right: none;
+  border-radius: 10px 0 0 10px;
+  background: var(--panel);
+  color: var(--acento);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 10px 7px;
+  cursor: pointer;
+  box-shadow: var(--sombra);
+}
+
+.area-trabajo.colores-plegados {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 900px) {
+  .panel-asa .agarre,
+  .plegar-colores {
+    display: none;
+  }
+  .panel-inferior.alto-fijo .pestana-panel,
+  .panel-inferior.alto-fijo .pestana-panel.modulos {
+    height: auto;
+  }
+}

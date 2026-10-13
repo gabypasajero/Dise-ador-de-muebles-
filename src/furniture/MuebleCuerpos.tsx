@@ -14,9 +14,11 @@ interface Props {
   abierto: boolean;
   etiquetas: boolean;
   unidad: Unidad;
+  /** Cocina en L: la cubierta del tramo principal se alarga sobre la esquina (mm a la izquierda y a la derecha). */
+  extensionCubierta?: [number, number];
 }
 
-export function MuebleCuerpos({ diseno: d, abierto, etiquetas, unidad }: Props) {
+export function MuebleCuerpos({ diseno: d, abierto, etiquetas, unidad, extensionCubierta = [0, 0] }: Props) {
   const l = useMemo(() => calcularLayout(d), [d]);
   const m = useMats();
   const matFrente = materialFrente(m);
@@ -87,7 +89,7 @@ export function MuebleCuerpos({ diseno: d, abierto, etiquetas, unidad }: Props) 
           />
         );
       })}
-      {d.plantilla === 'cocina' && <EquipoCocina d={d} l={l} />}
+      {d.plantilla === 'cocina' && <EquipoCocina d={d} l={l} extension={extensionCubierta} />}
       {d.plantilla === 'cocina-infantil' && <CocinaInfantil d={d} l={l} />}
       {d.plantilla === 'comoda' && d.mudador && <Mudador d={d} />}
     </group>
@@ -136,7 +138,16 @@ function Casco({ d, l, lc, unidad }: { d: Diseno; l: Layout; lc: LayoutCuerpo; u
     );
   }
 
-  if (c.tipo === 'frentes') {
+  if (c.tipo === 'frentes' && c.cajonesArriba && lc.zonaCajones && lc.zonaPuertas) {
+    // Cajones arriba: separación bajo los cajones y repisas en la zona de puertas.
+    const y = lc.zonaCajones.y0 - d.luzFrentes / 2 - t;
+    piezas.push(<Panel key="sep" x0={interior.x0} x1={interior.x1} y0={y} y1={y + t} z0={4} z1={Dc} mat={m.casco} />);
+    const z0 = yBase + t;
+    for (let k = 1; k <= c.repisas; k++) {
+      const yr = z0 + ((y - z0) * k) / (c.repisas + 1) - t / 2;
+      piezas.push(<Panel key={`rep${k}`} x0={interior.x0} x1={interior.x1} y0={yr} y1={yr + t} z0={4} z1={Dc - 20} mat={m.casco} />);
+    }
+  } else if (c.tipo === 'frentes') {
     // Separación entre cajones y la zona superior.
     if (lc.zonaCajones && (lc.zonaPuertas || lc.zonaCajones.y1 < techoInterior - 120)) {
       const y = lc.zonaCajones.y1 + d.luzFrentes / 2;
@@ -223,7 +234,7 @@ function FilaSuperior({ d, l }: { d: Diseno; l: Layout }) {
 
 // ---------- Equipamiento de cocina ----------
 
-function EquipoCocina({ d, l }: { d: Diseno; l: Layout }) {
+function EquipoCocina({ d, l, extension }: { d: Diseno; l: Layout; extension: [number, number] }) {
   const ct = d.cocina.espesorCubierta;
   const D = d.profundidad;
   const r = ct / 2;
@@ -259,7 +270,7 @@ function EquipoCocina({ d, l }: { d: Diseno; l: Layout }) {
 
   return (
     <group>
-      <Cubierta x0={-W / 2} x1={W / 2} yTop={d.alto} espesor={ct} profundidad={D} huecos={huecos} copete={d.cocina.copete} />
+      <Cubierta x0={-W / 2 - extension[0]} x1={W / 2 + extension[1]} yTop={d.alto} espesor={ct} profundidad={D} huecos={huecos} copete={d.cocina.copete} />
       {lavaplatos}
       {encimera}
       {l.cuerpos

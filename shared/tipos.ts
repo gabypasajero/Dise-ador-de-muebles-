@@ -3,7 +3,7 @@
 
 export type Unidad = 'cm' | 'mm';
 
-export type Plantilla = 'cocina' | 'closet' | 'comoda' | 'tocador' | 'escritorio' | 'cocina-infantil';
+export type Plantilla = 'cocina' | 'compacto' | 'closet' | 'comoda' | 'tocador' | 'escritorio' | 'cocina-infantil';
 
 export type Escenario = 'cocina' | 'dormitorio' | 'infantil' | 'estudio';
 
@@ -54,8 +54,10 @@ export interface Cuerpo {
    * horno: módulo para horno empotrado (cocina).
    * hueco: espacio libre sin estructura (lavadora, refrigerador…), la cubierta pasa por encima.
    * escritorio: superficie de trabajo con pata lateral (clóset escritorio).
+   * campana (aéreos): mueble más bajo con puertas arriba y espacio libre abajo para la campana.
+   * nicho (aéreos): puerta abatible arriba y nicho abierto con repisa (microondas).
    */
-  tipo: 'frentes' | 'horno' | 'hueco' | 'escritorio';
+  tipo: 'frentes' | 'horno' | 'hueco' | 'escritorio' | 'campana' | 'nicho';
   ancho: number;
   puertas: number;
   bisagra: Bisagra;
@@ -67,6 +69,34 @@ export interface Cuerpo {
   colgador: boolean;
   /** Para cuerpos más bajos que el mueble (p. ej. escritorio). 0 = alto completo. */
   alto: number;
+  /** Puertas que se abren hacia arriba (aéreos). */
+  abatible?: boolean;
+  /** Cajones arriba y puertas abajo (por defecto los cajones van abajo). */
+  cajonesArriba?: boolean;
+}
+
+/** Muebles aéreos (cocina) o mueble superior del compacto. */
+export interface Aereos {
+  activo: boolean;
+  /** mural: colgados del muro; apoyado: sobre la cubierta con costados hasta arriba (compacto). */
+  montaje: 'mural' | 'apoyado';
+  /** Alto de los muebles superiores (mm). */
+  alto: number;
+  profundidad: number;
+  /** Mural: altura del borde inferior desde el piso. Apoyado: alto del mueble base (hasta la cubierta). */
+  elevacion: number;
+  /** Alineación con el tramo principal cuando tienen distinto largo. */
+  alineacion: 'izq' | 'centro' | 'der';
+  cuerpos: Cuerpo[];
+}
+
+/** Segundo tramo de una cocina en L. */
+export interface Retorno {
+  lado: 'izq' | 'der';
+  /** Largo exterior medido desde el muro del tramo principal (mm). */
+  largo: number;
+  profundidad: number;
+  cuerpos: Cuerpo[];
 }
 
 export interface Materiales {
@@ -123,6 +153,10 @@ export interface Diseno {
   mudador: boolean;
   /** Imagen impresa en los frentes (data URL), para muebles personalizables. */
   imagenFrontal: string | null;
+  /** Muebles aéreos (cocina) o mueble superior (compacto). */
+  aereos: Aereos;
+  /** Tramo en L (solo cocina). */
+  retorno: Retorno | null;
 }
 
 export type TipoMaterial = 'liso' | 'madera' | 'marmol' | 'granito' | 'concreto' | 'imagen';
@@ -142,6 +176,10 @@ export interface Material {
   metal?: number;
   /** Ruta de una textura oficial (cuando esté disponible). */
   textura?: string;
+  /** Tamaño real (mm) que cubre una repetición de la textura fotográfica. */
+  tamanoMm?: number;
+  /** Color exclusivo de los muebles de cocina (melaminas del catálogo de cocina). */
+  cocina?: boolean;
   /** "catalogo-dto" si el color aparece en la tienda, "generico" si es de muestra. */
   origen: 'catalogo-dto' | 'generico';
 }

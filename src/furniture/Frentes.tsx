@@ -25,6 +25,8 @@ export interface ContextoFrente {
   tirador: TipoTirador;
   /** Cocina baja: tiradores de puertas arriba. */
   manillaArriba: boolean;
+  /** Muebles aéreos: tiradores de puertas abajo. */
+  manillaAbajo?: boolean;
   abiertoGlobal: boolean;
   /** Rectángulo de todos los frentes, para imprimir la imagen del cliente. */
   totalFrentes: Rect | null;
@@ -134,22 +136,50 @@ export function Puerta({
   const [local, alClic, sobre, fuera] = usarClic();
   const abierto = local ?? ctx.abiertoGlobal;
   const { rect } = frente;
+  const arriba = frente.bisagra === 'arriba';
   const izq = frente.bisagra === 'izq';
-  const pivX = izq ? rect.x0 : rect.x1;
+  const pivX = arriba ? 0 : izq ? rect.x0 : rect.x1;
+  const pivY = arriba ? rect.y1 : 0;
   const zCara = ctx.zFrente + ctx.espesor;
   useFrame((_, dt) => {
     if (!ref.current) return;
+    if (arriba) {
+      // Abatible: gira sobre el borde superior hacia arriba.
+      ref.current.rotation.x = amortiguar(ref.current.rotation.x, abierto ? -THREE.MathUtils.degToRad(80) : 0, 5, dt);
+      return;
+    }
     const objetivo = abierto ? (izq ? -1 : 1) * THREE.MathUtils.degToRad(100) : 0;
     ref.current.rotation.y = amortiguar(ref.current.rotation.y, objetivo, 5, dt);
   });
   const ancho = rect.x1 - rect.x0;
   const alto = rect.y1 - rect.y0;
+  if (arriba) {
+    return (
+      <group ref={ref} position={[0, pivY, zCara]}>
+        <group position={[0, -pivY, -zCara]} onClick={alClic} onPointerOver={sobre} onPointerOut={fuera}>
+          <Panel x0={rect.x0} x1={rect.x1} y0={rect.y0} y1={rect.y1} z0={ctx.zFrente} z1={zCara} mat={material} eje="x" />
+          {ctx.tirador === 'unero' ? (
+            <Tirador tipo="unero" x={(rect.x0 + rect.x1) / 2} y={rect.y0 + 9} z={zCara} vertical={false} espacio={ancho} />
+          ) : (
+            <Tirador tipo={ctx.tirador} x={(rect.x0 + rect.x1) / 2} y={rect.y0 + Math.min(45, alto / 4)} z={zCara} vertical={false} espacio={Math.min(ancho, 700)} />
+          )}
+          {children}
+        </group>
+        {ctx.etiquetas && (
+          <group position={[0, -pivY, -zCara]}>
+            <EtiquetaFrente rect={rect} z={zCara} unidad={ctx.unidad} />
+          </group>
+        )}
+      </group>
+    );
+  }
   const xT = izq ? rect.x1 - 38 : rect.x0 + 38;
   let yT: number;
   const largo = largoBarra(Math.min(alto, 700));
   if (ctx.manillaArriba) yT = rect.y1 - 45 - (ctx.tirador === 'barra' ? largo / 2 : 0);
+  else if (ctx.manillaAbajo) yT = rect.y0 + 45 + (ctx.tirador === 'barra' ? largo / 2 : 0);
   else yT = Math.min(rect.y1 - largo / 2 - 60, Math.max(rect.y0 + largo / 2 + 60, 1000));
-  if (alto < 500 && !ctx.manillaArriba) yT = (rect.y0 + rect.y1) / 2;
+  if (alto < 500 && !ctx.manillaArriba && !ctx.manillaAbajo) yT = (rect.y0 + rect.y1) / 2;
   return (
     <group ref={ref} position={[pivX, 0, zCara]}>
       <group position={[-pivX, 0, -zCara]} onClick={alClic} onPointerOver={sobre} onPointerOut={fuera}>

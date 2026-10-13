@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState, type PointerEvent as EventoPuntero } from 'react';
 import { LIMITES, advertencias, aUnidad, fijarAlto, fijarAncho, fijarProfundidad, formatear, formatoPrecio, precioReferencial } from '../../shared/reglas';
 import type { Unidad } from '../../shared/tipos';
 import { useApp } from '../store/useApp';
@@ -57,6 +57,28 @@ export function PanelInferior() {
   const cambiar = useApp((s) => s.cambiar);
   const set = useApp((s) => s.set);
   const [verAvisos, setVerAvisos] = useState(false);
+  const plegado = useApp((s) => s.panelPlegado);
+  const altoPestanas = useApp((s) => s.altoPestanas);
+  const fijarVista = useApp((s) => s.fijarVista);
+  const panelPestanas = useRef<HTMLDivElement>(null);
+  const arrastre = useRef<{ y: number; alto: number } | null>(null);
+  // Arrastrar el borde superior agranda o achica el panel; doble clic vuelve al tamaño automático.
+  const empezarArrastre = (e: EventoPuntero<HTMLDivElement>) => {
+    if (plegado || !panelPestanas.current) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    arrastre.current = { y: e.clientY, alto: panelPestanas.current.getBoundingClientRect().height };
+  };
+  const moverArrastre = (e: EventoPuntero<HTMLDivElement>) => {
+    const a = arrastre.current;
+    if (!a) return;
+    const alto = Math.round(Math.min(window.innerHeight * 0.6, Math.max(110, a.alto + a.y - e.clientY)));
+    useApp.getState().set({ altoPestanas: alto });
+  };
+  const terminarArrastre = () => {
+    if (!arrastre.current) return;
+    arrastre.current = null;
+    fijarVista({ altoPestanas: useApp.getState().altoPestanas });
+  };
   const lim = LIMITES[d.plantilla];
   const pestanas = pestanasDe(d.plantilla);
   const actual = pestanas.find((p) => p.id === pestana)?.id ?? pestanas[0].id;
@@ -76,7 +98,28 @@ export function PanelInferior() {
   };
 
   return (
-    <section className="panel-inferior" aria-label="Medidas del mueble">
+    <section
+      className={`panel-inferior${plegado ? ' plegado' : ''}${altoPestanas ? ' alto-fijo' : ''}`}
+      aria-label="Medidas del mueble"
+      style={altoPestanas ? ({ '--alto-pestanas': `${altoPestanas}px` } as React.CSSProperties) : undefined}
+    >
+      <div className="panel-asa">
+        <div
+          className="agarre"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Arrastra para agrandar o achicar el panel de medidas"
+          title="Arrastra para agrandar o achicar · doble clic: tamaño normal"
+          onPointerDown={empezarArrastre}
+          onPointerMove={moverArrastre}
+          onPointerUp={terminarArrastre}
+          onPointerCancel={terminarArrastre}
+          onDoubleClick={() => fijarVista({ altoPestanas: null })}
+        />
+        <button type="button" className="plegar-panel" aria-expanded={!plegado} onClick={() => fijarVista({ panelPlegado: !plegado })}>
+          {plegado ? '▴ Mostrar medidas' : '▾ Ocultar medidas'}
+        </button>
+      </div>
       <div className="bloque-medidas">
         <div className="bloque-medidas-cabeza">
           <h2>Medidas</h2>
@@ -139,7 +182,7 @@ export function PanelInferior() {
             </div>
           )}
         </div>
-        <div role="tabpanel" className={`pestana-panel${actual === 'modulos' && d.plantilla !== 'tocador' ? ' modulos' : ''}`}>
+        <div role="tabpanel" ref={panelPestanas} className={`pestana-panel${actual === 'modulos' && d.plantilla !== 'tocador' ? ' modulos' : ''}`}>
           {actual === 'puertas' && <PestanaPuertas {...props} />}
           {actual === 'cajones' && <PestanaCajones {...props} />}
           {actual === 'modulos' && <PestanaModulos {...props} />}
