@@ -4,7 +4,7 @@ import { clasificarProducto, coloresDeVariante, disenoInicial, disenoLibre, leer
 import { calcularLayout, calcularLayoutTocador } from '../shared/layout';
 import type { Plantilla, ProductoTienda } from '../shared/tipos';
 
-const productos = JSON.parse(fs.readFileSync('server/data/productos-respaldo.json', 'utf8')) as ProductoTienda[];
+const productos = JSON.parse(fs.readFileSync('public/datos/productos-respaldo.json', 'utf8')) as ProductoTienda[];
 
 describe('leerMedidas', () => {
   it('interpreta profundidad × ancho × alto en cm', () => {

@@ -1,114 +1,110 @@
 # Diseñador 3D de muebles a medida · De Todito Outlet
 
-Herramienta web fullstack **para los vendedores** de De Todito Outlet. El vendedor parte de un mueble del catálogo de [detoditooutlet.cl](https://detoditooutlet.cl), lo ajusta a medida junto al cliente con una vista 3D inmediata y **registra la cotización y luego la venta**. No está pensada para que el cliente la use directamente.
+Herramienta web **para los vendedores** de De Todito Outlet. El vendedor parte de un mueble del catálogo de [detoditooutlet.cl](https://detoditooutlet.cl), lo ajusta a medida junto al cliente con una vista 3D inmediata, **registra la cotización** y luego **la venta**. Las cuentas de vendedores y las cotizaciones se guardan en **Supabase**, en el mismo proyecto de la tienda.
 
 ## Qué hace
 
-- **Acceso solo para vendedores.** Sin sesión se muestra la pantalla de ingreso. Cada vendedor crea su cuenta en «Registrarme como vendedor» (nombre, correo, teléfono opcional y contraseña). Si se define `CODIGO_VENDEDORES`, el registro pide ese código, que entrega la administración de la tienda.
-- **Catálogo de la tienda en vivo.** El servidor lee la configuración pública de detoditooutlet.cl y descarga los productos activos (muebles de cocina, clósets, cómodas, tocadores, escritorios y cocinas infantiles). Cada producto se asocia a un modelo 3D paramétrico y su foto queda como referencia en el visor.
-- **Modelo 3D bien definido.** Casco, frentes, cubierta postformada con borde redondeado y copete, encimera a gas, lavaplatos con grifería, horno empotrado, tiradores, repisas, barra para colgar y cajas de cajón. Puertas y cajones se abren con un clic (o todos con «Abrir puertas»).
-- **Escenario según el mueble.** Cocina (porcelanato, azulejo, campana, refrigerador), dormitorio (cama, velador, ventana) o dormitorio infantil; se puede cambiar a mano o usar un estudio neutro.
-- **Medidas abajo.** Tres líneas para **alto, ancho y profundidad** con cambio de unidad **cm / mm**, y categorías según el tipo de mueble:
-  - *Puertas*: cantidad por cuerpo, bisagra, tipo de tirador y la medida de cada puerta (también se muestran sobre el 3D).
-  - *Cajones*: cantidad, columnas, alto a medida y medida de cada frente.
-  - *Módulos y espacios*: ancho de cada cuerpo, separación entre cuerpos, luz entre frentes, zócalo, espesor de melamina, espacio libre (lavadora, refrigerador) y horno.
-  - *Equipamiento / Interior / Espejo y luz*: encimera y lavaplatos (sobre qué cuerpo), grifería, cubierta; repisas y barra en clósets; tipo de espejo y luz en tocadores.
-- **Colores a la derecha.** Melamina de frentes, melamina del cuerpo, cubierta postformada y tiradores. Hay colores genéricos mientras llega el catálogo oficial; los de la tienda (Gris Blanqueado, Pino Casina, Pino Nebraska, Clasic, Florentino, Granito) vienen marcados «DTO». También se puede subir una imagen para imprimir en los frentes.
-- **Registro de cotización.** Con «Registrar cotización» el vendedor ingresa los datos del cliente (nombre, teléfono, correo, dirección o comuna, observaciones), el valor del mueble (sugerido desde el precio de la tienda y editable) y la fecha. La cotización queda numerada (`COT-0001`) con el título «Cotización *cliente*», la imagen 3D y los datos en lista, y cierra con **vendedor, fecha de cotización y valor del mueble**. Se puede imprimir o guardar en PDF, copiar o enviar al cliente por WhatsApp.
-- **Registro de cotizaciones y ventas.** Cada vendedor ve su historial con totales (monto cotizado, ventas, monto vendido y porcentaje de cierre), filtra por estado, busca por cliente, reabre el diseño en el 3D, actualiza una cotización vigente, registra la venta (fecha, valor final, medio de pago y nota) o la anula.
-- Recomendaciones de fabricación (puertas muy anchas, cajones muy bajos, horno en cuerpos angostos…), deshacer/rehacer y borrador automático.
+- **Acceso solo para vendedores** con Supabase Auth: «Registrarme como vendedor» (nombre, correo, teléfono opcional y contraseña) e «Ingresar». Se puede exigir un código de vendedor.
+- **Catálogo de la tienda en vivo**: lee la tabla `productos` del proyecto de Supabase de la tienda (con una copia local de respaldo). Cada producto se asocia a un modelo 3D paramétrico y su foto queda como referencia en el visor.
+- **Modelo 3D bien definido**: casco, frentes, cubierta postformada con copete, encimera, lavaplatos con grifería, horno, tiradores, repisas, barra para colgar y cajones. Puertas y cajones se abren con un clic.
+- **Escenario según el mueble**: cocina, dormitorio o dormitorio infantil (o estudio neutro).
+- **Medidas abajo**: alto, ancho y profundidad en **cm o mm**, y categorías de *puertas*, *cajones*, *módulos y espacios* (separación entre cuerpos, luz, zócalo, espacio libre, horno) y *equipamiento/interior*.
+- **Colores a la derecha**: melamina de frentes y del cuerpo, cubierta postformada y tiradores (genéricos hasta tener el catálogo oficial; los de la tienda llevan el sello «DTO»). También se puede imprimir una imagen en los frentes.
+- **Cotización**: datos del cliente, valor del mueble (sugerido desde el precio de la tienda) y fecha. Queda numerada (`COT-0001`) como «Cotización *cliente*», con la imagen 3D y los datos en lista, y cierra con **vendedor, fecha de cotización y valor del mueble**.
+- **Al final de cada cotización**: **Descargar PDF**, **Imprimir**, **Enviar por correo** (Gmail, Outlook o la app de correo del equipo; el PDF se descarga para adjuntarlo) y **WhatsApp** al teléfono del cliente. En teléfonos y tablets aparece **Compartir PDF**, que envía el archivo adjunto directo por WhatsApp o correo.
+- **Registro de cotizaciones y ventas** de cada vendedor: totales, filtros, búsqueda, reabrir el diseño, actualizar, registrar la venta (fecha, valor, medio de pago) o anular. Las cuentas de administración de la tienda (tabla `admins`) ven las cotizaciones de **todos** los vendedores.
 
-## Cómo ejecutarlo
+## Puesta en marcha
 
-Requiere Node.js 22.13 o superior (usa el SQLite incluido en Node).
+### 1. Crear las tablas en Supabase (una sola vez)
+
+En el panel de Supabase del proyecto **DTO detoditooutlet** abre **SQL Editor**, pega el contenido de
+[`supabase/migrations/20261013120000_vendedores_cotizaciones.sql`](supabase/migrations/20261013120000_vendedores_cotizaciones.sql) y ejecútalo.
+
+Crea, sin modificar lo que ya existe en la tienda:
+
+| Objeto | Para qué |
+| --- | --- |
+| `vendedores` | Perfil de cada vendedor (se crea solo al registrarse con rol vendedor) |
+| `cotizaciones` | Cotizaciones y ventas; cada vendedor ve y edita solo las suyas, los admins ven todas |
+| `ajustes_privados` | Código de vendedor (no accesible desde la app) |
+| Triggers en `auth.users` | Validan el código y crean el perfil **solo** cuando el registro es de vendedor; las cuentas de administración no se ven afectadas |
+
+Las reglas se aplican en la base de datos (RLS y triggers): una cotización vendida no se edita, los datos de venta solo existen en cotizaciones vendidas y las cotizaciones no se borran (se anulan).
+
+### 2. Ajustes de autenticación en Supabase
+
+En **Authentication → URL Configuration**:
+- **Site URL**: la dirección donde publiques la app (por ejemplo `https://disenador.detoditooutlet.cl`).
+- **Redirect URLs**: agrega esa misma dirección (y `http://localhost:5173` para desarrollo).
+
+Por defecto Supabase pide **confirmar el correo**: el vendedor recibe un enlace y luego ingresa. El correo integrado de Supabase permite pocos envíos por hora; si van a registrarse varios vendedores, configura un SMTP propio (**Authentication → SMTP Settings**) o desactiva la confirmación (**Authentication → Sign In / Providers → Email → Confirm email**) si usas código de vendedor.
+
+### 3. Código de vendedor (recomendado)
+
+Para que solo tu equipo pueda registrarse, en el SQL Editor:
+
+```sql
+insert into public.ajustes_privados (clave, valor) values ('codigo_vendedores', 'TU-CODIGO')
+on conflict (clave) do update set valor = excluded.valor;
+```
+
+Para desactivar a un vendedor: `update public.vendedores set activo = false where email = 'correo@dto.cl';`
+
+### 4. Ejecutar
+
+Requiere Node.js 20 o superior.
 
 ```bash
 npm install
-npm run dev
+npm run dev          # con Supabase: http://localhost:5173
+npm run dev:local    # modo demostración sin Supabase (guarda todo en el navegador)
 ```
 
-Abre http://localhost:5173. La API corre en http://localhost:3001 y Vite la expone en `/api`.
-
-### Producción
+### 5. Publicar (Vercel u otro hosting estático)
 
 ```bash
-npm run build
-JWT_SECRET="una-clave-larga-y-secreta" npm start
+npm run build        # genera dist/
 ```
 
-El servidor sirve la app compilada y la API en el mismo puerto (`PORT`, por defecto 3001).
+En Vercel: importa el repositorio, framework **Vite**, comando `npm run build`, carpeta `dist`. Las variables `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` ya vienen por defecto con los valores públicos de la tienda (ver `.env.example`).
 
-### Variables de entorno
+## Colores oficiales
 
-| Variable | Uso | Por defecto |
-| --- | --- | --- |
-| `PORT` | Puerto del servidor | `3001` |
-| `JWT_SECRET` | Firma de las sesiones (obligatoria en producción) | solo para desarrollo |
-| `DB_PATH` | Archivo SQLite | `server/data/disenador.db` |
-| `TIENDA_URL` | Sitio del que se leen los productos | `https://detoditooutlet.cl` |
-| `TIENDA_SUPABASE_URL`, `TIENDA_SUPABASE_KEY` | Respaldo si no se puede leer `config.js` de la tienda | valores públicos actuales |
-| `CODIGO_VENDEDORES` | Código que se pide para registrar vendedores (recomendado en producción) | sin código: registro abierto |
-| `CACHE_PRODUCTOS_MS` | Duración de la caché del catálogo | 15 minutos |
+Los colores están en `public/datos/materiales.json`. Para cargar el catálogo oficial reemplaza o agrega entradas en `melaminas`, `cubiertas` o `tiradores`; para usar una foto real del material copia la imagen a `public/texturas/` y agrega `"textura": "/texturas/archivo.jpg"`. Marca `"origen": "catalogo-dto"` para el sello «DTO».
 
-## Productos de la tienda
+## Copia de respaldo del catálogo
 
-`server/productos.ts` descarga `https://detoditooutlet.cl/config.js`, obtiene la URL y la clave publicable (solo lectura de productos activos) y consulta la tabla `productos`. El resultado se guarda 15 minutos en caché. Si la tienda no responde se usa la copia `server/data/productos-respaldo.json`, que se actualiza con:
+`public/datos/productos-respaldo.json` se usa si no hay conexión con Supabase. Para actualizarla:
 
 ```bash
 npm run sync:productos
 ```
 
-`shared/catalogo.ts` clasifica cada producto: plantilla 3D, escenario, modelo y variante (por ejemplo «Clasic Pino Casina» → cubierta Clasic, melamina Pino Casina), y lee las medidas de la ficha (`profundidad × ancho × alto`). Si la ficha no trae medidas se usan medidas aproximadas, que se indican como «aprox.».
-
-## Colores oficiales
-
-Los colores están en `server/data/materiales.json`. Para cargar el catálogo oficial:
-
-1. Reemplaza o agrega entradas en `melaminas`, `cubiertas` o `tiradores`.
-2. Para usar una foto real del material, copia la imagen a `public/texturas/` y agrega `"textura": "/texturas/archivo.jpg"` a la entrada. Sin textura, el color se dibuja con una veta procedural según `tipo` (`liso`, `madera`, `marmol`, `granito`, `concreto`).
-3. Marca `"origen": "catalogo-dto"` para que aparezca con el sello «DTO».
-
-No hace falta recompilar: el servidor entrega el archivo en `/api/materiales`.
-
 ## Estructura
 
 ```
-shared/      Tipos, clasificación del catálogo, motor de distribución (layout),
-             reglas de medidas, precio referencial y detalle de la cotización
-server/      API Express + SQLite: catálogo, materiales, cuentas de vendedores
-             (JWT + bcrypt), cotizaciones y ventas
+shared/        Tipos, clasificación del catálogo, motor de distribución (layout),
+               reglas de medidas, precio referencial y detalle de la cotización
 src/
-  furniture/ Modelos 3D paramétricos (cocina, cuerpos, tocador), texturas procedurales
-  scenes/    Escenarios (cocina, dormitorio, infantil, estudio)
-  components/Interfaz: visor, panel de medidas, colores, modales
-  store/     Estado de la app (zustand) con historial y borrador
-tests/       Pruebas de la lógica y de la API (vitest + supertest)
+  datos/       Supabase (auth, productos, cotizaciones) y modo local de demostración
+  cotizacion/  PDF de la cotización y envío por correo / WhatsApp / compartir
+  furniture/   Modelos 3D paramétricos y texturas procedurales
+  scenes/      Escenarios (cocina, dormitorio, infantil, estudio)
+  components/  Interfaz: acceso, visor, medidas, colores, cotizaciones
+  store/       Estado de la app (zustand) con historial y borrador
+supabase/      Migración SQL (tablas, RLS y triggers)
+public/datos/  Colores y copia de respaldo del catálogo
+tests/         Lógica de medidas, catálogo, PDF, modo local y la migración SQL
 ```
 
 Todas las medidas internas están en milímetros; el visor convierte a metros.
 
-## API
-
-| Método y ruta | Uso |
-| --- | --- |
-| `GET /api/productos`, `GET /api/materiales` | Catálogo de la tienda y colores |
-| `GET /api/auth/registro` | Indica si el registro pide código de vendedor |
-| `POST /api/auth/registro`, `POST /api/auth/login`, `GET /api/auth/yo` | Cuentas de vendedores |
-| `GET /api/cotizaciones` | Registro del vendedor con totales |
-| `GET /api/cotizaciones/:id` | Cotización con el diseño completo |
-| `POST /api/cotizaciones`, `PUT /api/cotizaciones/:id` | Registrar o actualizar una cotización vigente |
-| `POST /api/cotizaciones/:id/venta` | Registrar la venta |
-| `POST /api/cotizaciones/:id/estado` | Anular o reactivar (`cotizada` / `anulada`) |
-
-Cada vendedor solo ve y modifica sus propias cotizaciones.
-
 ## Pruebas
 
 ```bash
-npm test          # lógica de medidas, catálogo y API
+npm test
 npm run typecheck
 ```
 
-## Notas de despliegue
-
-La base de datos es un archivo SQLite, ideal para un servidor con disco persistente (VPS, Railway, Render, Fly.io). En plataformas sin disco persistente (por ejemplo funciones serverless de Vercel) conviene mover vendedores y cotizaciones a una base gestionada como Postgres o Supabase; el acceso a datos está concentrado en `server/app.ts` y `server/db.ts`.
+`tests/migracion.test.ts` ejecuta la migración de Supabase en un Postgres embebido (PGlite) que imita el proyecto de la tienda y verifica el registro de vendedores, el código, las políticas RLS, la vista de administración y las reglas de venta y anulación.

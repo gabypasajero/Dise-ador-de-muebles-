@@ -3,7 +3,7 @@ import { LIMITES, advertencias, aUnidad, fijarAlto, fijarAncho, fijarProfundidad
 import type { Unidad } from '../../shared/tipos';
 import { useApp } from '../store/useApp';
 import { CampoMedida, Segmentado } from './Controles';
-import { api } from '../api/cliente';
+import { backend } from '../datos';
 import { IcoAviso, IcoGuardar } from './Iconos';
 import { PestanaCajones, PestanaEquipamiento, PestanaModulos, PestanaPuertas, pestanasDe } from './Pestanas';
 
@@ -66,11 +66,10 @@ export function PanelInferior() {
   const cotizacion = useApp((s) => s.cotizacionActual);
   const editable = cotizacion?.estado === 'cotizada';
   const verActual = async () => {
-    const { token, avisar, verCotizacion } = useApp.getState();
-    if (!token || !cotizacion) return;
+    const { avisar, verCotizacion } = useApp.getState();
+    if (!cotizacion) return;
     try {
-      const r = await api.cotizacion(token, cotizacion.id);
-      verCotizacion(r.cotizacion);
+      verCotizacion(await backend.cotizacion(cotizacion.id));
     } catch (e) {
       avisar((e as Error).message, 'error');
     }

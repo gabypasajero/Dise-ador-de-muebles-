@@ -67,10 +67,10 @@ export function Cabecera() {
         </button>
         {usuario && (
           <div className="menu-usuario">
-            <button type="button" className="vendedor" aria-label={`Vendedor ${usuario.nombre}`} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)} title={usuario.email}>
+            <button type="button" className="vendedor" aria-label={`${usuario.esVendedor ? 'Vendedor' : 'Administración'} ${usuario.nombre}`} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)} title={usuario.email}>
               <span className="avatar">{usuario.nombre.trim().charAt(0).toUpperCase()}</span>
               <span className="vendedor-texto ocultar-movil">
-                <small>Vendedor</small>
+                <small>{usuario.esVendedor ? 'Vendedor' : 'Administración'}</small>
                 <strong>{usuario.nombre.split(' ').slice(0, 2).join(' ')}</strong>
               </span>
             </button>

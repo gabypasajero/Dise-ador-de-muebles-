@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { api } from '../api/cliente';
+import { backend } from '../datos';
 import { useApp } from '../store/useApp';
 
 /** Pantalla de ingreso: la herramienta es de uso exclusivo de los vendedores. */
@@ -12,13 +12,15 @@ export function Acceso() {
   const [codigo, setCodigo] = useState('');
   const [requiereCodigo, setRequiereCodigo] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [revisarCorreo, setRevisarCorreo] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
-  const { iniciarSesion, avisar } = useApp.getState();
+  const errorSesion = useApp((s) => s.errorSesion);
+  const { revisarSesion, avisar } = useApp.getState();
 
   useEffect(() => {
-    api
-      .opcionesRegistro()
-      .then((r) => setRequiereCodigo(r.requiereCodigo))
+    backend
+      .requiereCodigo()
+      .then(setRequiereCodigo)
       .catch(() => undefined);
   }, []);
 
@@ -27,12 +29,20 @@ export function Acceso() {
     setError(null);
     setEnviando(true);
     try {
-      const r =
-        modo === 'login'
-          ? await api.login(email, password)
-          : await api.registro({ nombre, email, telefono, password, codigo: codigo || undefined });
-      iniciarSesion(r.token, r.usuario);
-      avisar(modo === 'login' ? `Hola, ${r.usuario.nombre.split(' ')[0]}` : 'Cuenta de vendedor creada');
+      if (modo === 'registro') {
+        const r = await backend.registrar({ nombre, email, telefono, password, codigo: codigo || undefined });
+        if (r.confirmarCorreo) {
+          setRevisarCorreo(email.trim().toLowerCase());
+          setModo('login');
+          setPassword('');
+          return;
+        }
+      } else {
+        await backend.ingresar(email, password);
+      }
+      await revisarSesion();
+      const u = useApp.getState().usuario;
+      if (u) avisar(modo === 'login' ? `Hola, ${u.nombre.split(' ')[0]}` : 'Cuenta de vendedor creada');
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -54,8 +64,9 @@ export function Acceso() {
         <ul>
           <li>Parte de los muebles del catálogo de la tienda y ajústalos a medida en 3D.</li>
           <li>Registra la cotización a nombre del cliente con todo el detalle técnico.</li>
-          <li>Lleva tu registro de cotizaciones y ventas, y envíaselas al cliente por WhatsApp.</li>
+          <li>Descárgala en PDF, imprímela o envíasela al cliente por correo o WhatsApp.</li>
         </ul>
+        {backend.tipo === 'local' && <p className="aviso-demo">Modo demostración: los datos se guardan solo en este navegador.</p>}
       </section>
 
       <section className="acceso-tarjeta" aria-label={modo === 'login' ? 'Ingreso de vendedores' : 'Registro de vendedor'}>
@@ -64,10 +75,29 @@ export function Acceso() {
           <button type="button" role="tab" aria-selected={modo === 'login'} className={modo === 'login' ? 'activo' : ''} onClick={() => setModo('login')}>
             Ingresar
           </button>
-          <button type="button" role="tab" aria-selected={modo === 'registro'} className={modo === 'registro' ? 'activo' : ''} onClick={() => setModo('registro')}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={modo === 'registro'}
+            className={modo === 'registro' ? 'activo' : ''}
+            onClick={() => {
+              setModo('registro');
+              setRevisarCorreo(null);
+            }}
+          >
             Registrarme como vendedor
           </button>
         </div>
+        {revisarCorreo && (
+          <p className="exito" role="status">
+            Te enviamos un correo a <strong>{revisarCorreo}</strong>. Confirma tu cuenta con el enlace y luego ingresa aquí.
+          </p>
+        )}
+        {errorSesion && !error && (
+          <p className="error" role="alert">
+            {errorSesion}
+          </p>
+        )}
         <form className="formulario" onSubmit={enviar}>
           {modo === 'registro' && (
             <>

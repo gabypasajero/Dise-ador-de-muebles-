@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { clasificarProducto, disenoInicial, disenoLibre } from '../../shared/catalogo';
 import { normalizar } from '../../shared/reglas';
 import type { CatalogoMateriales, Cotizacion, Diseno, Escenario, Plantilla, ProductoCatalogo, Unidad, Usuario } from '../../shared/tipos';
-import { api, guardarToken, tokenGuardado, type RespuestaCatalogo } from '../api/cliente';
+import { obtenerCatalogo, obtenerMateriales, type RespuestaCatalogo } from '../datos/catalogo';
+import { backend } from '../datos';
 
 export type Pestana = 'puertas' | 'cajones' | 'modulos' | 'equipamiento';
 export type Modal = null | 'catalogo' | 'registrarCotizacion' | 'cotizaciones' | 'documento' | 'venta';
@@ -39,8 +40,9 @@ interface Estado {
   encuadre: number;
 
   usuario: Usuario | null;
-  token: string | null;
   sesion: 'verificando' | 'invitado' | 'activa';
+  /** Motivo por el que no se pudo abrir la sesión (cuenta sin acceso, falta configurar Supabase…). */
+  errorSesion: string | null;
   cotizacionActual: CotizacionEnEdicion | null;
   /** Cotización abierta en el documento o en el registro de venta. */
   cotizacionVista: Cotizacion | null;
@@ -59,8 +61,8 @@ interface Estado {
   verCotizacion: (c: Cotizacion) => void;
   set: (parcial: Partial<Estado>) => void;
   avisar: (texto: string, tipo?: Aviso['tipo']) => void;
-  iniciarSesion: (token: string, usuario: Usuario) => void;
-  cerrarSesion: () => void;
+  revisarSesion: () => Promise<void>;
+  cerrarSesion: () => Promise<void>;
 }
 
 const CLAVE_BORRADOR = 'dto-borrador-v1';
@@ -114,8 +116,8 @@ export const useApp = create<Estado>((set, get) => ({
   encuadre: 0,
 
   usuario: null,
-  token: tokenGuardado(),
-  sesion: tokenGuardado() ? 'verificando' : 'invitado',
+  sesion: 'verificando',
+  errorSesion: null,
   cotizacionActual: null,
   cotizacionVista: null,
   modal: null,
@@ -123,18 +125,13 @@ export const useApp = create<Estado>((set, get) => ({
   capturar: null,
 
   async cargarDatos() {
-    const token = get().token;
-    if (token) {
-      api
-        .yo(token)
-        .then(({ usuario }) => set({ usuario, sesion: 'activa' }))
-        .catch(() => {
-          guardarToken(null);
-          set({ token: null, usuario: null, sesion: 'invitado' });
-        });
-    }
+    get().revisarSesion();
+    // Si la sesión se cierra o vence (en esta u otra pestaña) se vuelve al ingreso.
+    backend.alCambiarSesion((haySesion) => {
+      if (!haySesion && get().sesion === 'activa') set({ usuario: null, sesion: 'invitado', modal: null });
+    });
     try {
-      const [catalogo, materiales] = await Promise.all([api.productos(), api.materiales()]);
+      const [catalogo, materiales] = await Promise.all([obtenerCatalogo(), obtenerMateriales()]);
       set({ catalogo, materiales, errorCarga: null });
       const borrador = leerBorrador();
       const producto = borrador?.productoId != null ? catalogo.productos.find((p) => p.id === borrador.productoId) : null;
@@ -266,20 +263,24 @@ export const useApp = create<Estado>((set, get) => ({
     setTimeout(() => set({ avisos: get().avisos.filter((a) => a.id !== id) }), 3800);
   },
 
-  iniciarSesion(token, usuario) {
-    guardarToken(token);
-    set({ token, usuario, sesion: 'activa' });
+  async revisarSesion() {
+    try {
+      const usuario = await backend.perfilActual();
+      set({ usuario, sesion: usuario ? 'activa' : 'invitado', errorSesion: null });
+    } catch (e) {
+      set({ usuario: null, sesion: 'invitado', errorSesion: (e as Error).message });
+    }
   },
 
-  cerrarSesion() {
-    guardarToken(null);
+  async cerrarSesion() {
+    await backend.salir().catch(() => undefined);
     try {
       // En un equipo compartido el siguiente vendedor parte de cero.
       localStorage.removeItem(CLAVE_BORRADOR);
     } catch {
       // sin almacenamiento local
     }
-    set({ token: null, usuario: null, sesion: 'invitado', cotizacionActual: null, cotizacionVista: null, modal: null });
+    set({ usuario: null, sesion: 'invitado', errorSesion: null, cotizacionActual: null, cotizacionVista: null, modal: null });
   },
 }));
 

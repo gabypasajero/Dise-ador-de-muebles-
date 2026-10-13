@@ -3,12 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  server: {
-    port: 5173,
-    proxy: {
-      '/api': 'http://localhost:3001',
-    },
-  },
+  server: { port: 5173 },
   build: {
     chunkSizeWarningLimit: 1600,
     rollupOptions: {
@@ -16,6 +11,8 @@ export default defineConfig({
         manualChunks: {
           three: ['three'],
           r3f: ['@react-three/fiber', '@react-three/drei'],
+          supabase: ['@supabase/supabase-js'],
+          pdf: ['jspdf'],
         },
       },
     },
@@ -23,5 +20,6 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    testTimeout: 30000,
   },
 } as never);

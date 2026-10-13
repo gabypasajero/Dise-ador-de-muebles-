@@ -1,8 +1,7 @@
 node_modules/
 dist/
 *.tsbuildinfo
-server/data/*.db
-server/data/*.db-*
 .env
 .DS_Store
 test-results/
+.env.local

@@ -1,10 +1,12 @@
 // Registro de cotizaciones y ventas del vendedor.
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { NOMBRE_PLANTILLA } from '../../shared/catalogo';
 import { formatoPrecio, precioReferencial } from '../../shared/reglas';
-import { detalleCotizacion, formatoFecha, hoy, telefonoWhatsapp, textoCotizacion } from '../../shared/resumen';
-import type { Cliente, Cotizacion, EstadoCotizacion, LineaDetalle, TotalesCotizaciones, Venta } from '../../shared/tipos';
-import { api, type DatosCotizacion } from '../api/cliente';
+import { detalleCotizacion, formatoFecha, hoy, textoCotizacion } from '../../shared/resumen';
+import type { Cliente, Cotizacion, DatosCotizacion, EstadoCotizacion } from '../../shared/tipos';
+import { compartirPdf, enlaceCorreo, enlaceWhatsapp, puedeCompartirArchivos, type ServicioCorreo } from '../cotizacion/enviar';
+import { descargarPdf, type DatosDocumento } from '../cotizacion/pdf';
+import { backend, calcularTotales } from '../datos';
 import { useApp } from '../store/useApp';
 import { IcoWsp } from './Iconos';
 import { Modal } from './Modales';
@@ -43,20 +45,23 @@ function CampoPesos({ valor, onCambio, etiqueta, ayuda }: { valor: number; onCam
 
 // ---------- Documento (vista en lista) ----------
 
-interface DatosDocumento {
-  numero: string | null;
-  cliente: Cliente;
-  detalle: LineaDetalle[];
-  observaciones: string | null;
-  vendedor: string;
-  fecha: string;
-  valor: number;
-  estado?: EstadoCotizacion;
-  venta?: Venta | null;
-  miniatura?: string | null;
+export function datosDocumento(c: Cotizacion): DatosDocumento {
+  return {
+    numero: c.numero,
+    cliente: c.cliente,
+    detalle: c.detalle,
+    observaciones: c.observaciones,
+    vendedor: c.vendedor.nombre,
+    vendedorTelefono: c.vendedor.telefono,
+    fecha: c.fecha,
+    valor: c.valor,
+    estado: c.estado,
+    venta: c.venta,
+    miniatura: c.miniatura,
+  };
 }
 
-export function DocumentoCotizacion({ datos }: { datos: DatosDocumento }) {
+export function DocumentoCotizacion({ datos, acciones }: { datos: DatosDocumento; acciones?: ReactNode }) {
   const c = datos.cliente;
   return (
     <article className="documento-cotizacion">
@@ -115,7 +120,10 @@ export function DocumentoCotizacion({ datos }: { datos: DatosDocumento }) {
       <dl className="documento-cierre">
         <div>
           <dt>Vendedor</dt>
-          <dd>{datos.vendedor}</dd>
+          <dd>
+            {datos.vendedor}
+            {datos.vendedorTelefono ? ` · ${datos.vendedorTelefono}` : ''}
+          </dd>
         </div>
         <div>
           <dt>Fecha cotización</dt>
@@ -133,7 +141,103 @@ export function DocumentoCotizacion({ datos }: { datos: DatosDocumento }) {
           {datos.venta.nota ? ` · ${datos.venta.nota}` : ''}
         </p>
       )}
+      {acciones}
     </article>
+  );
+}
+
+// ---------- Descargar, imprimir y enviar (al final de la cotización) ----------
+
+function AccionesEnvio({ c }: { c: Cotizacion }) {
+  const avisar = useApp((s) => s.avisar);
+  const [menuCorreo, setMenuCorreo] = useState(false);
+  const menu = useRef<HTMLDivElement>(null);
+  const compartible = useMemo(() => puedeCompartirArchivos(), []);
+  const datos = datosDocumento(c);
+
+  useEffect(() => {
+    if (!menuCorreo) return;
+    const fuera = (e: MouseEvent) => {
+      if (menu.current && !menu.current.contains(e.target as Node)) setMenuCorreo(false);
+    };
+    document.addEventListener('mousedown', fuera);
+    return () => document.removeEventListener('mousedown', fuera);
+  }, [menuCorreo]);
+
+  const descargar = () => {
+    try {
+      descargarPdf(datos);
+    } catch (e) {
+      avisar(`No se pudo generar el PDF: ${(e as Error).message}`, 'error');
+    }
+  };
+  const imprimir = () => {
+    document.body.classList.add('imprimiendo');
+    window.print();
+    document.body.classList.remove('imprimiendo');
+  };
+  const correo = (servicio: ServicioCorreo) => {
+    setMenuCorreo(false);
+    // Los enlaces de correo no pueden adjuntar archivos: se descarga el PDF para adjuntarlo.
+    descargar();
+    if (servicio === 'app') window.location.href = enlaceCorreo(c, servicio);
+    else window.open(enlaceCorreo(c, servicio), '_blank', 'noopener');
+    avisar('Se descargó el PDF: adjúntalo al correo antes de enviarlo', 'info');
+  };
+  const whatsapp = () => {
+    window.open(enlaceWhatsapp(c), '_blank', 'noopener');
+    if (!c.cliente.telefono) avisar('La cotización no tiene teléfono: elige el contacto en WhatsApp', 'info');
+  };
+  const compartir = async () => {
+    try {
+      await compartirPdf(c, datos);
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') avisar('No se pudo compartir el PDF', 'error');
+    }
+  };
+
+  return (
+    <section className="documento-acciones no-imprimir" aria-label="Descargar, imprimir o enviar la cotización">
+      <span className="campo-etiqueta">Descargar, imprimir o enviar</span>
+      <div className="fila-botones">
+        <button type="button" className="boton primario" onClick={descargar}>
+          Descargar PDF
+        </button>
+        <button type="button" className="boton secundario" onClick={imprimir}>
+          Imprimir
+        </button>
+        <div className="menu-correo" ref={menu}>
+          <button type="button" className="boton secundario" aria-haspopup="menu" aria-expanded={menuCorreo} onClick={() => setMenuCorreo((v) => !v)}>
+            Enviar por correo ▾
+          </button>
+          {menuCorreo && (
+            <div className="menu-desplegable" role="menu">
+              <div className="menu-cabeza">
+                <strong>{c.cliente.email || 'Sin correo del cliente'}</strong>
+                <small>Se descarga el PDF para adjuntarlo</small>
+              </div>
+              <button type="button" role="menuitem" onClick={() => correo('gmail')}>
+                Gmail
+              </button>
+              <button type="button" role="menuitem" onClick={() => correo('outlook')}>
+                Outlook
+              </button>
+              <button type="button" role="menuitem" onClick={() => correo('app')}>
+                App de correo del equipo
+              </button>
+            </div>
+          )}
+        </div>
+        <button type="button" className="boton wsp" onClick={whatsapp}>
+          <IcoWsp /> WhatsApp
+        </button>
+        {compartible && (
+          <button type="button" className="boton secundario" onClick={compartir}>
+            Compartir PDF
+          </button>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -154,7 +258,10 @@ export function ModalRegistrarCotizacion() {
   const set = (k: keyof Cliente, v: string) => setCliente((c) => ({ ...c, [k]: v }));
 
   const registrar = async (comoNueva: boolean) => {
-    if (!s.token) return;
+    if (!s.usuario?.esVendedor) {
+      setError('Tu cuenta es de administración: para cotizar ingresa con una cuenta de vendedor.');
+      return;
+    }
     setEnviando(true);
     setError(null);
     try {
@@ -169,10 +276,10 @@ export function ModalRegistrarCotizacion() {
         valor,
         fecha,
       };
-      const r = actual && !comoNueva ? await api.actualizarCotizacion(s.token, actual.id, datos) : await api.crearCotizacion(s.token, datos);
-      const { config: _c, miniatura: _m, ...resumen } = r.cotizacion;
-      s.set({ cotizacionActual: resumen, cotizacionVista: r.cotizacion, modal: 'documento' });
-      s.avisar(actual && !comoNueva ? `Cotización ${r.cotizacion.numero} actualizada` : `Cotización ${r.cotizacion.numero} registrada`);
+      const r = actual && !comoNueva ? await backend.actualizarCotizacion(actual.id, datos) : await backend.crearCotizacion(datos);
+      const { config: _c, miniatura: _m, ...resumen } = r;
+      s.set({ cotizacionActual: resumen, cotizacionVista: r, modal: 'documento' });
+      s.avisar(actual && !comoNueva ? `Cotización ${r.numero} actualizada` : `Cotización ${r.numero} registrada`);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -252,6 +359,7 @@ export function ModalRegistrarCotizacion() {
               detalle,
               observaciones: observaciones.trim() || null,
               vendedor: s.usuario?.nombre ?? '',
+              vendedorTelefono: s.usuario?.telefono,
               fecha,
               valor,
             }}
@@ -269,24 +377,13 @@ export function ModalDocumento() {
   const c = s.cotizacionVista;
   const [trabajando, setTrabajando] = useState(false);
   if (!c) return null;
+  // La administración ve las cotizaciones de todos, pero solo el vendedor las gestiona.
+  const propia = s.usuario?.esVendedor && c.vendedor.id === s.usuario.id;
 
-  const texto = textoCotizacion({ ...c, vendedor: { ...c.vendedor } });
-  const imprimir = () => {
-    document.body.classList.add('imprimiendo');
-    window.print();
-    document.body.classList.remove('imprimiendo');
-  };
-  const whatsapp = () => {
-    const numero = telefonoWhatsapp(c.cliente.telefono);
-    const mensaje = `Hola ${c.cliente.nombre.split(' ')[0]}, te envío tu cotización de De Todito Outlet:\n\n${texto}`;
-    window.open(`https://wa.me/${numero ?? ''}?text=${encodeURIComponent(mensaje)}`, '_blank', 'noopener');
-  };
   const abrir = async () => {
-    if (!s.token) return;
     setTrabajando(true);
     try {
-      const r = await api.cotizacion(s.token, c.id);
-      s.cargarCotizacion(r.cotizacion);
+      s.cargarCotizacion(await backend.cotizacion(c.id));
       s.avisar(`Diseño de ${c.numero} cargado`, 'info');
     } catch (e) {
       s.avisar((e as Error).message, 'error');
@@ -295,13 +392,12 @@ export function ModalDocumento() {
     }
   };
   const cambiarEstado = async (estado: 'cotizada' | 'anulada') => {
-    if (!s.token) return;
     if (estado === 'anulada' && !confirm(`¿Anular la cotización ${c.numero}?`)) return;
     setTrabajando(true);
     try {
-      const r = await api.cambiarEstado(s.token, c.id, estado);
-      s.set({ cotizacionVista: { ...r.cotizacion, miniatura: c.miniatura } });
-      if (s.cotizacionActual?.id === c.id) s.set({ cotizacionActual: { ...s.cotizacionActual, estado: r.cotizacion.estado, venta: null } });
+      const r = await backend.cambiarEstado(c.id, estado);
+      s.set({ cotizacionVista: { ...r, miniatura: c.miniatura } });
+      if (s.cotizacionActual?.id === c.id) s.set({ cotizacionActual: { ...s.cotizacionActual, estado: r.estado, venta: null } });
       s.avisar(estado === 'anulada' ? 'Cotización anulada' : 'Cotización reactivada', 'info');
     } catch (e) {
       s.avisar((e as Error).message, 'error');
@@ -309,6 +405,11 @@ export function ModalDocumento() {
       setTrabajando(false);
     }
   };
+  const copiar = () =>
+    navigator.clipboard?.writeText(textoCotizacion(c)).then(
+      () => s.avisar('Cotización copiada'),
+      () => s.avisar('No se pudo copiar', 'error'),
+    );
 
   return (
     <Modal
@@ -317,57 +418,34 @@ export function ModalDocumento() {
       ancho="medio"
       pie={
         <div className="acciones-documento">
-          {c.estado === 'cotizada' && (
+          {propia && c.estado === 'cotizada' && (
             <button type="button" className="boton primario" disabled={trabajando} onClick={() => s.set({ modal: 'venta' })}>
               Registrar venta
             </button>
           )}
-          <button type="button" className="boton wsp" onClick={whatsapp}>
-            <IcoWsp /> Enviar al cliente
-          </button>
-          <button type="button" className="boton secundario" onClick={imprimir}>
-            Imprimir / PDF
-          </button>
-          <button
-            type="button"
-            className="boton secundario"
-            onClick={() => navigator.clipboard?.writeText(texto).then(() => s.avisar('Cotización copiada'), () => s.avisar('No se pudo copiar', 'error'))}
-          >
-            Copiar
-          </button>
           <button type="button" className="boton secundario" disabled={trabajando} onClick={abrir}>
             Abrir en el diseñador
           </button>
-          {c.estado === 'cotizada' && (
+          <button type="button" className="boton fantasma" onClick={copiar}>
+            Copiar texto
+          </button>
+          {propia && c.estado === 'cotizada' && (
             <button type="button" className="boton fantasma peligro" disabled={trabajando} onClick={() => cambiarEstado('anulada')}>
               Anular
             </button>
           )}
-          {c.estado !== 'cotizada' && (
+          {propia && c.estado !== 'cotizada' && (
             <button type="button" className="boton fantasma" disabled={trabajando} onClick={() => cambiarEstado('cotizada')}>
               {c.estado === 'vendida' ? 'Deshacer venta' : 'Reactivar'}
             </button>
           )}
           <button type="button" className="boton fantasma" onClick={() => s.set({ modal: 'cotizaciones' })}>
-            Ver mis cotizaciones
+            {s.usuario?.esAdmin && !s.usuario.esVendedor ? 'Ver registro' : 'Ver mis cotizaciones'}
           </button>
         </div>
       }
     >
-      <DocumentoCotizacion
-        datos={{
-          numero: c.numero,
-          cliente: c.cliente,
-          detalle: c.detalle,
-          observaciones: c.observaciones,
-          vendedor: c.vendedor.nombre,
-          fecha: c.fecha,
-          valor: c.valor,
-          estado: c.estado,
-          venta: c.venta,
-          miniatura: c.miniatura,
-        }}
-      />
+      <DocumentoCotizacion datos={datosDocumento(c)} acciones={<AccionesEnvio c={c} />} />
     </Modal>
   );
 }
@@ -386,13 +464,12 @@ export function ModalVenta() {
   if (!c) return null;
   const enviar = async (e: FormEvent) => {
     e.preventDefault();
-    if (!s.token) return;
     setEnviando(true);
     setError(null);
     try {
-      const r = await api.registrarVenta(s.token, c.id, { fecha, valor, medioPago, nota: nota.trim() || null });
-      s.set({ cotizacionVista: { ...r.cotizacion, miniatura: c.miniatura }, modal: 'documento' });
-      if (s.cotizacionActual?.id === c.id) s.set({ cotizacionActual: { ...s.cotizacionActual, estado: 'vendida', venta: r.cotizacion.venta } });
+      const r = await backend.registrarVenta(c.id, { fecha, valor, medioPago, nota: nota.trim() || null });
+      s.set({ cotizacionVista: { ...r, miniatura: c.miniatura }, modal: 'documento' });
+      if (s.cotizacionActual?.id === c.id) s.set({ cotizacionActual: { ...s.cotizacionActual, estado: 'vendida', venta: r.venta } });
       s.avisar(`Venta de ${c.numero} registrada`);
     } catch (err) {
       setError((err as Error).message);
@@ -443,27 +520,22 @@ export function ModalVenta() {
 export function ModalCotizaciones() {
   const s = useApp();
   const [lista, setLista] = useState<Cotizacion[] | null>(null);
-  const [totales, setTotales] = useState<TotalesCotizaciones | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<EstadoCotizacion | 'todas'>('todas');
   const [buscar, setBuscar] = useState('');
 
   useEffect(() => {
-    if (!s.token) return;
-    api
-      .cotizaciones(s.token)
-      .then((r) => {
-        setLista(r.cotizaciones);
-        setTotales(r.totales);
-      })
+    backend
+      .cotizaciones()
+      .then(setLista)
       .catch((e) => setError((e as Error).message));
-  }, [s.token]);
+  }, []);
+  const totales = lista ? calcularTotales(lista) : null;
+  const esAdmin = Boolean(s.usuario?.esAdmin);
 
   const abrir = async (c: Cotizacion) => {
-    if (!s.token) return;
     try {
-      const r = await api.cotizacion(s.token, c.id);
-      s.cargarCotizacion(r.cotizacion);
+      s.cargarCotizacion(await backend.cotizacion(c.id));
       s.avisar(`Diseño de ${c.numero} cargado`, 'info');
     } catch (e) {
       s.avisar((e as Error).message, 'error');
@@ -472,12 +544,18 @@ export function ModalCotizaciones() {
 
   const q = buscar.trim().toLowerCase();
   const visibles = (lista ?? []).filter(
-    (c) => (filtro === 'todas' || c.estado === filtro) && (!q || `${c.numero} ${c.cliente.nombre} ${c.modelo}`.toLowerCase().includes(q)),
+    (c) =>
+      (filtro === 'todas' || c.estado === filtro) &&
+      (!q || `${c.numero} ${c.cliente.nombre} ${c.modelo} ${c.vendedor.nombre}`.toLowerCase().includes(q)),
   );
   const cierre = totales && totales.cotizaciones ? Math.round((totales.ventas / totales.cotizaciones) * 100) : 0;
 
   return (
-    <Modal titulo={`Registro de ${s.usuario?.nombre ?? 'vendedor'}`} onCerrar={() => s.set({ modal: null })} ancho="grande">
+    <Modal
+      titulo={esAdmin ? 'Registro de todos los vendedores' : `Registro de ${s.usuario?.nombre ?? 'vendedor'}`}
+      onCerrar={() => s.set({ modal: null })}
+      ancho="grande"
+    >
       {error && <p className="error">{error}</p>}
       {totales && (
         <div className="totales">
@@ -499,7 +577,7 @@ export function ModalCotizaciones() {
         </div>
       )}
       <div className="catalogo-barra">
-        <input type="search" placeholder="Buscar por cliente, N° o modelo…" value={buscar} onChange={(e) => setBuscar(e.target.value)} aria-label="Buscar cotización" />
+        <input type="search" placeholder={esAdmin ? 'Buscar por cliente, vendedor, N° o modelo…' : 'Buscar por cliente, N° o modelo…'} value={buscar} onChange={(e) => setBuscar(e.target.value)} aria-label="Buscar cotización" />
         <div className="chips" role="tablist" aria-label="Estado">
           {(['todas', 'cotizada', 'vendida', 'anulada'] as const).map((f) => (
             <button key={f} type="button" role="tab" aria-selected={filtro === f} className={filtro === f ? 'activa' : ''} onClick={() => setFiltro(f)}>
@@ -513,10 +591,11 @@ export function ModalCotizaciones() {
         <p className="tenue">Aún no registras cotizaciones. Diseña el mueble con tu cliente y usa «Registrar cotización».</p>
       )}
       {lista && lista.length > 0 && (
-        <div className="tabla-cotizaciones" role="table" aria-label="Cotizaciones">
+        <div className={`tabla-cotizaciones${esAdmin ? ' con-vendedor' : ''}`} role="table" aria-label="Cotizaciones">
           <div className="fila cabeza" role="row">
             <span role="columnheader">N°</span>
             <span role="columnheader">Cliente</span>
+            {esAdmin && <span role="columnheader">Vendedor</span>}
             <span role="columnheader">Mueble</span>
             <span role="columnheader">Fecha</span>
             <span role="columnheader">Valor</span>
@@ -532,6 +611,7 @@ export function ModalCotizaciones() {
                 <strong>{c.cliente.nombre}</strong>
                 {c.cliente.telefono && <small className="tenue">{c.cliente.telefono}</small>}
               </span>
+              {esAdmin && <span role="cell">{c.vendedor.nombre}</span>}
               <span role="cell" className="modelo">
                 {c.miniatura && <img src={c.miniatura} alt="" />}
                 {c.modelo}
@@ -550,7 +630,7 @@ export function ModalCotizaciones() {
                 <button type="button" className="boton fantasma chico" onClick={() => abrir(c)}>
                   Abrir diseño
                 </button>
-                {c.estado === 'cotizada' && (
+                {c.estado === 'cotizada' && c.vendedor.id === s.usuario?.id && (
                   <button type="button" className="boton primario chico" onClick={() => s.set({ cotizacionVista: c, modal: 'venta' })}>
                     Vender
                   </button>

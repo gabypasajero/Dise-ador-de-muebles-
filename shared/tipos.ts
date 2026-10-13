@@ -153,12 +153,16 @@ export interface CatalogoMateriales {
   tiradores: Material[];
 }
 
-/** Vendedor con cuenta en la herramienta. */
+/** Persona con sesión: vendedor y/o administración de la tienda. */
 export interface Usuario {
-  id: number;
+  id: string;
   nombre: string;
   email: string;
   telefono: string | null;
+  /** Puede registrar cotizaciones y ventas. */
+  esVendedor: boolean;
+  /** Administración de la tienda: ve las cotizaciones de todos los vendedores. */
+  esAdmin: boolean;
 }
 
 /** Una línea del detalle de la cotización (con sublíneas opcionales). */
@@ -188,7 +192,7 @@ export interface Venta {
 export interface Cotizacion {
   id: number;
   numero: string;
-  vendedor: { id: number; nombre: string; telefono: string | null };
+  vendedor: { id: string; nombre: string; telefono: string | null };
   cliente: Cliente;
   observaciones: string | null;
   productoId: number | null;
@@ -212,4 +216,17 @@ export interface TotalesCotizaciones {
   montoCotizado: number;
   ventas: number;
   montoVendido: number;
+}
+
+/** Datos para registrar o actualizar una cotización. */
+export interface DatosCotizacion {
+  cliente: Cliente;
+  observaciones: string | null;
+  productoId: number | null;
+  modelo: string;
+  config: Diseno;
+  detalle: LineaDetalle[];
+  miniatura: string | null;
+  valor: number;
+  fecha: string;
 }

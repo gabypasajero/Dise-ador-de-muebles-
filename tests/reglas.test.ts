@@ -111,7 +111,7 @@ describe('advertencias de fabricación', () => {
 });
 
 describe('precio referencial y resumen', () => {
-  const productos = JSON.parse(fs.readFileSync('server/data/productos-respaldo.json', 'utf8')) as ProductoTienda[];
+  const productos = JSON.parse(fs.readFileSync('public/datos/productos-respaldo.json', 'utf8')) as ProductoTienda[];
   const p = clasificarProducto(productos.find((x) => x.id === 16)!);
   const base = disenoInicial(p);
 
@@ -139,7 +139,7 @@ describe('precio referencial y resumen', () => {
       cliente: { nombre: 'Fernando Pérez', telefono: '+56 9 1234 5678', email: null, direccion: 'Maipú' },
       detalle: detalleCotizacion(base, p, 'cm', null),
       observaciones: null,
-      vendedor: { id: 1, nombre: 'Camila Rojas', telefono: null },
+      vendedor: { id: 'a1', nombre: 'Camila Rojas', telefono: null },
       fecha: '2026-10-13',
       valor: 519990,
     });

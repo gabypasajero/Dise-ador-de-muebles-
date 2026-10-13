@@ -1923,6 +1923,51 @@ h3 {
   margin: 0;
 }
 
+.documento-acciones {
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--borde-fuerte);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.menu-correo {
+  position: relative;
+}
+
+.menu-correo .menu-desplegable {
+  left: 0;
+  right: auto;
+  top: auto;
+  bottom: calc(100% + 6px);
+  z-index: 5;
+}
+
+.exito {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #e8f6ee;
+  color: var(--wsp-oscuro);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.aviso-demo {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.16);
+  font-weight: 700;
+  font-size: 14px;
+  max-width: 520px;
+}
+
+.tabla-cotizaciones.con-vendedor .fila {
+  grid-template-columns: 92px minmax(130px, 1.1fr) minmax(110px, 0.9fr) minmax(150px, 1.3fr) 96px 110px 92px minmax(200px, auto);
+}
+
 /* Impresión / PDF de la cotización: solo se imprime el documento. */
 @media print {
   @page {
@@ -1940,6 +1985,7 @@ h3 {
   body.imprimiendo .modal-fondo,
   body.imprimiendo .modal-cabeza,
   body.imprimiendo .modal-pie,
+  body.imprimiendo .no-imprimir,
   body.imprimiendo .avisos {
     display: none !important;
   }
