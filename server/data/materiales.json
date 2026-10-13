@@ -1,0 +1,41 @@
+{
+  "nota": "Colores genéricos de muestra mientras llega el catálogo oficial. Los marcados como catalogo-dto aparecen en las fichas de detoditooutlet.cl. Para cargar los oficiales reemplaza este archivo (puedes usar \"textura\" con la ruta a una imagen en public/texturas).",
+  "melaminas": [
+    { "id": "blanco", "nombre": "Blanco", "tipo": "liso", "color": "#f2f1ec", "rugosidad": 0.5, "origen": "generico" },
+    { "id": "gris-blanqueado", "nombre": "Gris Blanqueado", "tipo": "madera", "color": "#8e8883", "veta": "#5b5550", "rugosidad": 0.62, "origen": "catalogo-dto" },
+    { "id": "pino-casina", "nombre": "Pino Casina", "tipo": "madera", "color": "#ddd6c8", "veta": "#b3a893", "rugosidad": 0.6, "origen": "catalogo-dto" },
+    { "id": "pino-nebraska", "nombre": "Pino Nebraska", "tipo": "madera", "color": "#c9a678", "veta": "#946f45", "rugosidad": 0.6, "origen": "catalogo-dto" },
+    { "id": "roble-natural", "nombre": "Roble Natural", "tipo": "madera", "color": "#b98c5a", "veta": "#7f5a34", "rugosidad": 0.6, "origen": "generico" },
+    { "id": "nogal", "nombre": "Nogal", "tipo": "madera", "color": "#6e4a32", "veta": "#3f2818", "rugosidad": 0.58, "origen": "generico" },
+    { "id": "cerezo", "nombre": "Cerezo", "tipo": "madera", "color": "#9a5636", "veta": "#64301a", "rugosidad": 0.58, "origen": "generico" },
+    { "id": "wengue", "nombre": "Wengué", "tipo": "madera", "color": "#3e2c24", "veta": "#1d130e", "rugosidad": 0.6, "origen": "generico" },
+    { "id": "gris-humo", "nombre": "Gris Humo", "tipo": "liso", "color": "#a7a6a2", "rugosidad": 0.5, "origen": "generico" },
+    { "id": "grafito", "nombre": "Grafito", "tipo": "liso", "color": "#46484c", "rugosidad": 0.5, "origen": "generico" },
+    { "id": "negro", "nombre": "Negro", "tipo": "liso", "color": "#202022", "rugosidad": 0.45, "origen": "generico" },
+    { "id": "azul-petroleo", "nombre": "Azul Petróleo", "tipo": "liso", "color": "#2f4f5c", "rugosidad": 0.5, "origen": "generico" },
+    { "id": "verde-salvia", "nombre": "Verde Salvia", "tipo": "liso", "color": "#9fae97", "rugosidad": 0.5, "origen": "generico" },
+    { "id": "rosa-palo", "nombre": "Rosa Palo", "tipo": "liso", "color": "#e5c4c4", "rugosidad": 0.5, "origen": "generico" },
+    { "id": "celeste", "nombre": "Celeste", "tipo": "liso", "color": "#a9cfe3", "rugosidad": 0.5, "origen": "generico" },
+    { "id": "arena", "nombre": "Arena", "tipo": "liso", "color": "#d8c7aa", "rugosidad": 0.5, "origen": "generico" }
+  ],
+  "cubiertas": [
+    { "id": "clasic", "nombre": "Clasic", "tipo": "marmol", "color": "#eeece8", "veta": "#8f9092", "rugosidad": 0.35, "origen": "catalogo-dto" },
+    { "id": "florentino", "nombre": "Florentino", "tipo": "marmol", "color": "#1d2232", "veta": "#c5cad6", "rugosidad": 0.3, "origen": "catalogo-dto" },
+    { "id": "granito", "nombre": "Granito", "tipo": "granito", "color": "#cbb8b1", "motas": ["#7d5d58", "#2e2b2b", "#f3ede9", "#a4827c", "#5e5e60"], "rugosidad": 0.35, "origen": "catalogo-dto" },
+    { "id": "granito-negro", "nombre": "Granito Negro", "tipo": "granito", "color": "#2a2a2c", "motas": ["#111112", "#55565a", "#8a8b90", "#3b3c40"], "rugosidad": 0.3, "origen": "generico" },
+    { "id": "granito-gris", "nombre": "Granito Gris", "tipo": "granito", "color": "#a9a9a7", "motas": ["#5a5a5c", "#e7e6e3", "#2f2f31", "#868684"], "rugosidad": 0.35, "origen": "generico" },
+    { "id": "carrara", "nombre": "Mármol Carrara", "tipo": "marmol", "color": "#f4f4f2", "veta": "#b6b8bb", "rugosidad": 0.3, "origen": "generico" },
+    { "id": "travertino", "nombre": "Travertino", "tipo": "marmol", "color": "#e3d5bf", "veta": "#b89f7d", "rugosidad": 0.45, "origen": "generico" },
+    { "id": "concreto", "nombre": "Concreto", "tipo": "concreto", "color": "#9c9a96", "rugosidad": 0.7, "origen": "generico" },
+    { "id": "roble-cubierta", "nombre": "Roble", "tipo": "madera", "color": "#b98c5a", "veta": "#7f5a34", "rugosidad": 0.55, "origen": "generico" },
+    { "id": "blanco-liso", "nombre": "Blanco", "tipo": "liso", "color": "#f4f3ef", "rugosidad": 0.4, "origen": "generico" },
+    { "id": "negro-mate", "nombre": "Negro Mate", "tipo": "liso", "color": "#1e1e20", "rugosidad": 0.55, "origen": "generico" }
+  ],
+  "tiradores": [
+    { "id": "acero", "nombre": "Acero inoxidable", "tipo": "liso", "color": "#c4c7cb", "metal": 1, "rugosidad": 0.28, "origen": "generico" },
+    { "id": "cromado", "nombre": "Cromado", "tipo": "liso", "color": "#e3e6ea", "metal": 1, "rugosidad": 0.12, "origen": "generico" },
+    { "id": "negro-mate", "nombre": "Negro mate", "tipo": "liso", "color": "#1d1d1f", "metal": 0.4, "rugosidad": 0.5, "origen": "generico" },
+    { "id": "dorado", "nombre": "Dorado", "tipo": "liso", "color": "#c9a45c", "metal": 1, "rugosidad": 0.25, "origen": "generico" },
+    { "id": "blanco", "nombre": "Blanco", "tipo": "liso", "color": "#f4f4f2", "metal": 0, "rugosidad": 0.4, "origen": "generico" }
+  ]
+}
