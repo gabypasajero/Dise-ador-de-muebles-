@@ -36,6 +36,8 @@ interface Estado {
   cotas: boolean;
   fotoRef: boolean;
   pestana: Pestana | null;
+  /** Módulo seleccionado en la pestaña «Módulos y espacios» (índice en diseno.cuerpos). */
+  moduloActivo: number;
   vista: Vista;
   encuadre: number;
 
@@ -112,6 +114,7 @@ export const useApp = create<Estado>((set, get) => ({
   cotas: true,
   fotoRef: true,
   pestana: 'modulos',
+  moduloActivo: 0,
   vista: 'perspectiva',
   encuadre: 0,
 
@@ -168,6 +171,7 @@ export const useApp = create<Estado>((set, get) => ({
       abierto: false,
       encuadre: get().encuadre + 1,
       vista: 'perspectiva',
+      moduloActivo: 0,
       modal: null,
     });
     escribirBorrador(producto.id, d, get().unidad, null);
@@ -185,6 +189,7 @@ export const useApp = create<Estado>((set, get) => ({
       abierto: false,
       encuadre: get().encuadre + 1,
       vista: 'perspectiva',
+      moduloActivo: 0,
       modal: null,
     });
     escribirBorrador(null, d, get().unidad, null);
@@ -240,6 +245,7 @@ export const useApp = create<Estado>((set, get) => ({
       cotizacionActual: resumen,
       modal: null,
       abierto: false,
+      moduloActivo: 0,
       encuadre: get().encuadre + 1,
     });
     escribirBorrador(c.productoId, d, get().unidad, resumen);

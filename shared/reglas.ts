@@ -129,34 +129,152 @@ export function actualizarCuerpo(d: Diseno, indice: number, cambios: Partial<Cue
   return out;
 }
 
-export function agregarCuerpo(d: Diseno, tipo: Cuerpo['tipo'] = 'frentes'): Diseno {
+/** Nombre corto de un módulo según lo que tiene (para la tira y el visor). */
+export function nombreModulo(c: Cuerpo): string {
+  if (c.tipo !== 'frentes') return NOMBRE_CORTO[c.tipo];
+  const puertas = c.puertas > 0 ? `${c.puertas} ${c.puertas === 1 ? 'puerta' : 'puertas'}` : '';
+  const cajones = c.cajones > 0 ? `${c.cajones} ${c.cajones === 1 ? 'cajón' : 'cajones'}` : '';
+  if (puertas && cajones) return `${puertas} + ${cajones}`;
+  return puertas || cajones || 'Abierto';
+}
+
+const NOMBRE_CORTO: Record<Exclude<Cuerpo['tipo'], 'frentes'>, string> = {
+  horno: 'Horno',
+  hueco: 'Espacio libre',
+  escritorio: 'Escritorio',
+};
+
+/** Módulo listo para agregar desde el panel «Módulos y espacios». */
+export interface PresetModulo {
+  id: string;
+  texto: string;
+  ayuda: string;
+  tipo: Cuerpo['tipo'];
+  ancho: number;
+  cambios: Partial<Cuerpo>;
+}
+
+/** Módulos y espacios que se pueden agregar según el tipo de mueble. */
+export function presetsModulo(p: Plantilla): PresetModulo[] {
+  switch (p) {
+    case 'cocina':
+      return [
+        { id: 'puerta', texto: 'Módulo con puerta', ayuda: 'Puerta con repisa interior', tipo: 'frentes', ancho: 450, cambios: { puertas: 1, bisagra: 'der', repisas: 1 } },
+        { id: 'cajonera', texto: 'Cajonera', ayuda: '3 cajones', tipo: 'frentes', ancho: 450, cambios: { cajones: 3 } },
+        { id: 'horno', texto: 'Horno empotrado', ayuda: 'Módulo de 60 cm para horno', tipo: 'horno', ancho: 600, cambios: {} },
+        { id: 'hueco', texto: 'Espacio libre', ayuda: 'Para refrigerador, lavadora u otro equipo', tipo: 'hueco', ancho: 600, cambios: {} },
+      ];
+    case 'cocina-infantil':
+      return [
+        { id: 'puerta', texto: 'Módulo con puerta', ayuda: 'Puerta con repisa interior', tipo: 'frentes', ancho: 300, cambios: { puertas: 1, bisagra: 'der', repisas: 1 } },
+        { id: 'horno', texto: 'Horno de juguete', ayuda: 'Puerta con ventana', tipo: 'horno', ancho: 300, cambios: {} },
+      ];
+    case 'closet':
+      return [
+        { id: 'colgar', texto: 'Módulo para colgar', ayuda: 'Puerta y barra para colgar', tipo: 'frentes', ancho: 450, cambios: { puertas: 1, bisagra: 'der', colgador: true, repisas: 1 } },
+        { id: 'repisas', texto: 'Módulo con repisas', ayuda: 'Puerta y 4 repisas', tipo: 'frentes', ancho: 450, cambios: { puertas: 1, bisagra: 'der', repisas: 4 } },
+        { id: 'cajones', texto: 'Módulo con cajones', ayuda: 'Puerta arriba y 3 cajones abajo', tipo: 'frentes', ancho: 450, cambios: { puertas: 1, bisagra: 'der', cajones: 3, repisas: 1 } },
+        { id: 'abierto', texto: 'Módulo abierto', ayuda: 'Repisas a la vista, sin puerta', tipo: 'frentes', ancho: 400, cambios: { repisas: 4 } },
+      ];
+    case 'escritorio':
+      return [
+        { id: 'colgar', texto: 'Módulo para colgar', ayuda: 'Puerta y barra para colgar', tipo: 'frentes', ancho: 450, cambios: { puertas: 1, bisagra: 'der', colgador: true, repisas: 2 } },
+        { id: 'cajones', texto: 'Módulo con cajones', ayuda: '3 cajones', tipo: 'frentes', ancho: 450, cambios: { cajones: 3, repisas: 2 } },
+        { id: 'abierto', texto: 'Módulo abierto', ayuda: 'Repisas a la vista, sin puerta', tipo: 'frentes', ancho: 400, cambios: { repisas: 4 } },
+        { id: 'escritorio', texto: 'Escritorio', ayuda: 'Cubierta de trabajo de 75 cm de alto', tipo: 'escritorio', ancho: 800, cambios: { alto: 750 } },
+      ];
+    case 'comoda':
+      return [
+        { id: 'cajones', texto: 'Módulo de cajones', ayuda: '4 cajones', tipo: 'frentes', ancho: 450, cambios: { cajones: 4 } },
+        { id: 'puerta', texto: 'Módulo con puerta', ayuda: 'Puerta con repisa interior', tipo: 'frentes', ancho: 450, cambios: { puertas: 1, bisagra: 'der', repisas: 1 } },
+        { id: 'abierto', texto: 'Módulo abierto', ayuda: 'Repisas a la vista, sin puerta', tipo: 'frentes', ancho: 400, cambios: { repisas: 2 } },
+      ];
+    case 'tocador':
+      return [];
+  }
+}
+
+/** Ancho que puede tener un módulo nuevo sin pasar el ancho máximo del mueble (null si no cabe). */
+export function anchoDisponible(d: Diseno, tipo: Cuerpo['tipo'], deseado: number): number | null {
+  const libre = LIMITES[d.plantilla].ancho[1] - d.ancho - (d.cuerpos.length > 0 ? d.separacionCuerpos : 0);
+  const minimo = tipo === 'hueco' ? ANCHO_MIN_HUECO : ANCHO_MIN_CUERPO;
+  if (libre < minimo) return null;
+  return Math.min(deseado, libre);
+}
+
+/**
+ * Agrega un módulo en la posición indicada (por defecto al final). El ancho
+ * total crece con el módulo; si no cabe completo se agrega con el ancho que
+ * queda y si no queda espacio el diseño no cambia.
+ */
+export function agregarCuerpo(
+  d: Diseno,
+  tipo: Cuerpo['tipo'] = 'frentes',
+  posicion: number = d.cuerpos.length,
+  cambios?: Partial<Cuerpo>,
+  anchoDeseado?: number,
+): Diseno {
+  const base =
+    cambios ??
+    {
+      puertas: tipo === 'frentes' ? (d.plantilla === 'comoda' ? 0 : 1) : 0,
+      cajones: tipo === 'frentes' && d.plantilla === 'comoda' ? 4 : 0,
+      bisagra: 'der' as const,
+      colgador: d.plantilla === 'closet' && tipo === 'frentes',
+    };
+  const ancho = anchoDisponible(d, tipo, anchoDeseado ?? (tipo === 'horno' || tipo === 'hueco' ? 600 : 450));
+  if (ancho == null) return d;
   const out = clonar(d);
-  const ancho = tipo === 'horno' ? 600 : tipo === 'hueco' ? 600 : 450;
-  const nuevo = nuevoCuerpo({
-    tipo,
-    ancho,
-    puertas: tipo === 'frentes' ? (d.plantilla === 'comoda' ? 0 : 1) : 0,
-    cajones: tipo === 'frentes' && d.plantilla === 'comoda' ? 4 : 0,
-    bisagra: 'der',
-    colgador: d.plantilla === 'closet',
-  });
-  out.cuerpos.push(nuevo);
+  const nuevo = nuevoCuerpo({ ...base, tipo, ancho, ...(tipo === 'frentes' ? {} : { puertas: 0, cajones: 0 }) });
+  const i = Math.max(0, Math.min(out.cuerpos.length, Math.round(posicion)));
+  out.cuerpos.splice(i, 0, nuevo);
   const n = out.cuerpos.length;
   out.ancho = out.cuerpos.reduce((s, c) => s + c.ancho, 0) + out.separacionCuerpos * (n - 1);
-  if (out.ancho > LIMITES[d.plantilla].ancho[1]) return fijarAncho(out, LIMITES[d.plantilla].ancho[1]);
+  // La encimera y el lavaplatos siguen en el mismo módulo.
+  const correr = (v: number) => (v >= i ? v + 1 : v);
+  if (n > 1) {
+    out.cocina.encimeraCuerpo = correr(out.cocina.encimeraCuerpo);
+    out.cocina.lavaplatosCuerpo = correr(out.cocina.lavaplatosCuerpo);
+  }
   return out;
 }
 
+/** Agrega uno de los módulos de presetsModulo. */
+export function agregarModulo(d: Diseno, preset: PresetModulo, posicion: number = d.cuerpos.length): Diseno {
+  return agregarCuerpo(d, preset.tipo, posicion, preset.cambios, preset.ancho);
+}
+
+/** Módulo más cercano a `cerca` que no sea `evitar`, prefiriendo el tipo indicado y evitando espacios libres. */
+function moduloCercano(cuerpos: Cuerpo[], cerca: number, evitar: number, preferir: Cuerpo['tipo']): number {
+  let mejor = -1;
+  let puntaje = Infinity;
+  cuerpos.forEach((c, i) => {
+    if (i === evitar) return;
+    const p = Math.abs(i - cerca) + (c.tipo === preferir ? 0 : c.tipo === 'hueco' ? 200 : 100);
+    if (p < puntaje) {
+      puntaje = p;
+      mejor = i;
+    }
+  });
+  return mejor >= 0 ? mejor : Math.max(0, Math.min(cuerpos.length - 1, cerca));
+}
+
 export function quitarCuerpo(d: Diseno, indice: number): Diseno {
-  if (d.cuerpos.length <= 1) return d;
+  if (d.cuerpos.length <= 1 || indice < 0 || indice >= d.cuerpos.length) return d;
   const out = clonar(d);
   out.cuerpos.splice(indice, 1);
   const n = out.cuerpos.length;
+  // La encimera y el lavaplatos del módulo quitado pasan al módulo más adecuado y cercano.
+  const { encimeraCuerpo: enc, lavaplatosCuerpo: lav } = d.cocina;
+  const correr = (v: number) => Math.min(n - 1, v > indice ? v - 1 : v);
+  let e = correr(enc);
+  let w = correr(lav);
+  if (enc === indice) e = moduloCercano(out.cuerpos, indice, lav === indice ? -1 : w, 'horno');
+  if (lav === indice) w = moduloCercano(out.cuerpos, indice, e, 'frentes');
+  out.cocina.encimeraCuerpo = e;
+  out.cocina.lavaplatosCuerpo = w;
   out.ancho = out.cuerpos.reduce((s, c) => s + c.ancho, 0) + out.separacionCuerpos * (n - 1);
   if (out.ancho < LIMITES[d.plantilla].ancho[0]) return fijarAncho(out, LIMITES[d.plantilla].ancho[0]);
-  const ajustar = (v: number) => (v === indice ? 0 : v > indice ? v - 1 : v);
-  out.cocina.encimeraCuerpo = Math.min(n - 1, ajustar(out.cocina.encimeraCuerpo));
-  out.cocina.lavaplatosCuerpo = Math.min(n - 1, ajustar(out.cocina.lavaplatosCuerpo));
   return out;
 }
 
@@ -208,7 +326,7 @@ export function advertencias(d: Diseno, unidad: Unidad = 'cm'): Advertencia[] {
   for (const fr of l.frentes) {
     const ancho = fr.rect.x1 - fr.rect.x0;
     const alto = fr.rect.y1 - fr.rect.y0;
-    const nombre = fr.cuerpo >= 0 ? `cuerpo ${fr.cuerpo + 1}` : 'fila superior';
+    const nombre = fr.cuerpo >= 0 ? `módulo ${fr.cuerpo + 1}` : 'fila superior';
     if (fr.tipo === 'puerta' && ancho > 620) {
       out.push({ nivel: 'aviso', texto: `Puerta del ${nombre} mide ${f(ancho)} de ancho; sobre ${f(600)} se recomienda dividirla en 2 puertas.` });
     }
@@ -225,24 +343,24 @@ export function advertencias(d: Diseno, unidad: Unidad = 'cm'): Advertencia[] {
   if (esCocina(d)) {
     d.cuerpos.forEach((c, i) => {
       if (c.tipo === 'horno' && d.plantilla === 'cocina' && c.ancho < 600) {
-        out.push({ nivel: 'aviso', texto: `El horno empotrado estándar necesita un cuerpo de ${f(600)} (cuerpo ${i + 1} mide ${f(c.ancho)}).` });
+        out.push({ nivel: 'aviso', texto: `El horno empotrado estándar necesita un módulo de ${f(600)} (módulo ${i + 1} mide ${f(c.ancho)}).` });
       }
     });
     const lav = d.cuerpos[d.cocina.lavaplatosCuerpo];
     if (d.cocina.lavaplatos !== 'ninguno' && lav) {
       const necesita = d.cocina.lavaplatos === 'doble' ? 800 : 450;
-      if (lav.ancho < necesita) out.push({ nivel: 'aviso', texto: `El lavaplatos ${d.cocina.lavaplatos} necesita un cuerpo de al menos ${f(necesita)}.` });
+      if (lav.ancho < necesita) out.push({ nivel: 'aviso', texto: `El lavaplatos ${d.cocina.lavaplatos} necesita un módulo de al menos ${f(necesita)}.` });
     }
     const enc = d.cuerpos[d.cocina.encimeraCuerpo];
     if (d.cocina.encimera !== 'ninguna' && enc && enc.ancho < (d.cocina.encimera === '4' ? 580 : d.plantilla === 'cocina' ? 400 : 250)) {
-      out.push({ nivel: 'info', texto: `La encimera sobresale del cuerpo ${d.cocina.encimeraCuerpo + 1}; la cubierta igual la soporta.` });
+      out.push({ nivel: 'info', texto: `La encimera sobresale del módulo ${d.cocina.encimeraCuerpo + 1}; la cubierta igual la soporta.` });
     }
     if (
       d.cocina.encimera !== 'ninguna' &&
       d.cocina.lavaplatos !== 'ninguno' &&
       d.cocina.encimeraCuerpo === d.cocina.lavaplatosCuerpo
     ) {
-      out.push({ nivel: 'aviso', texto: 'La encimera y el lavaplatos están sobre el mismo cuerpo: elige cuerpos distintos.' });
+      out.push({ nivel: 'aviso', texto: 'La encimera y el lavaplatos están sobre el mismo módulo: elige módulos distintos.' });
     }
   }
   if (d.plantilla === 'closet' && d.profundidad < 500 && d.cuerpos.some((c) => c.colgador)) {

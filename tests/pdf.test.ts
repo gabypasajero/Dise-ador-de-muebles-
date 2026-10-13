@@ -15,7 +15,7 @@ const datos: DatosDocumento = {
   detalle: [
     { etiqueta: 'Modelo base', valor: 'Cocina full equipo: horno, encimera y lavaplatos · Clasic Pino Casina (código 16)' },
     { etiqueta: 'Medidas', valor: '150 × 90 × 60 cm (ancho × alto × profundidad)' },
-    { etiqueta: 'Distribución', valor: '3 cuerpos', sub: ['Cuerpo 1 (60 cm): horno empotrado', 'Cuerpo 2 (45 cm): 3 cajones'] },
+    { etiqueta: 'Distribución', valor: '3 módulos', sub: ['Módulo 1 (60 cm): horno empotrado', 'Módulo 2 (45 cm): 3 cajones'] },
   ],
   observaciones: 'Instalación incluida, despacho en 5 días hábiles.',
   vendedor: 'Camila Rojas',
@@ -56,7 +56,7 @@ describe('PDF de la cotización', () => {
     expect(t).toContain('Cotización Fernando Pérez');
     expect(t).toContain('N° COT-0007');
     expect(t).toContain('150 × 90 × 60 cm');
-    expect(t).toContain('Cuerpo 2 (45 cm): 3 cajones');
+    expect(t).toContain('Módulo 2 (45 cm): 3 cajones');
     expect(t).toContain('Instalación incluida');
     expect(t).toMatch(/Vendedor\s+Camila Rojas · \+56 9 8765 4321/);
     expect(t).toMatch(/Fecha cotización\s+13-10-2026/);
@@ -80,7 +80,7 @@ describe('PDF de la cotización', () => {
 describe('PDF de una cotización típica', () => {
   it('cabe en una sola página con imagen y cierre', () => {
     const detalle = Array.from({ length: 10 }, (_, i) => ({ etiqueta: `Dato ${i + 1}`, valor: 'texto de prueba '.repeat(i === 8 ? 10 : 3) }));
-    detalle[2] = { ...detalle[2], sub: ['Cuerpo 1 (60 cm): horno empotrado', 'Cuerpo 2 (45 cm): 3 cajones', 'Cuerpo 3 (45 cm): 1 puerta'] } as never;
+    detalle[2] = { ...detalle[2], sub: ['Módulo 1 (60 cm): horno empotrado', 'Módulo 2 (45 cm): 3 cajones', 'Módulo 3 (45 cm): 1 puerta'] } as never;
     const doc = crearPdf({ ...datos, miniatura: null, detalle });
     expect(doc.getNumberOfPages()).toBe(1);
   });

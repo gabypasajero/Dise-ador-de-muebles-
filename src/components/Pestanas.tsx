@@ -1,17 +1,25 @@
 // Categorías de medidas del panel inferior: puertas, cajones, módulos y
 // espacios, equipamiento/interior. Cambian según el tipo de mueble.
 import { calcularLayout, calcularLayoutTocador, type Frente } from '../../shared/layout';
+import { Fragment, useState } from 'react';
 import {
   ANCHO_MIN_CUERPO,
+  ANCHO_MIN_HUECO,
+  LIMITES,
   actualizarCuerpo,
   agregarCuerpo,
+  agregarModulo,
+  anchoDisponible,
   fijarSeparacion,
   formatear,
   moverCuerpo,
+  nombreModulo,
+  presetsModulo,
   quitarCuerpo,
+  type PresetModulo,
 } from '../../shared/reglas';
 import type { Cuerpo, Diseno, Plantilla, Unidad } from '../../shared/tipos';
-import type { Pestana } from '../store/useApp';
+import { useApp, type Pestana } from '../store/useApp';
 import { CampoMedida, Contador, Interruptor, Segmentado, Selector } from './Controles';
 import { IcoBasura, IcoDer, IcoIzq, IcoMas } from './Iconos';
 
@@ -84,7 +92,7 @@ function CabeceraCuerpo({ d, i, unidad }: { d: Diseno; i: number; unidad: Unidad
   return (
     <header className="tarjeta-cuerpo-cabeza">
       <span className="numero-cuerpo">{i + 1}</span>
-      <strong>Cuerpo {i + 1}</strong>
+      <strong>Módulo {i + 1}</strong>
       <span className="tenue">{formatear(c.ancho, unidad)}</span>
     </header>
   );
@@ -285,13 +293,190 @@ function CajonesTocador({ d, unidad, cambiar }: PropsPestana) {
 // ---------- Módulos y espacios ----------
 
 export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
+  const guardado = useApp((s) => s.moduloActivo);
+  const set = useApp((s) => s.set);
+  const [insertarEn, setInsertarEn] = useState<number | null>(null);
   if (d.plantilla === 'tocador') return <EstructuraTocador d={d} unidad={unidad} cambiar={cambiar} />;
+
   const tipos = tiposPermitidos(d.plantilla);
+  const presets = presetsModulo(d.plantilla);
+  const n = d.cuerpos.length;
+  const activo = Math.max(0, Math.min(n - 1, guardado));
+  const c = d.cuerpos[activo];
+  const maximo = LIMITES[d.plantilla].ancho[1];
+
+  const agregar = (preset: PresetModulo, posicion: number) => {
+    setInsertarEn(null);
+    const { avisar } = useApp.getState();
+    const ancho = anchoDisponible(d, preset.tipo, preset.ancho);
+    if (ancho == null) {
+      avisar(`No cabe otro módulo: el ancho máximo de este mueble es ${formatear(maximo, unidad)}. Achica un módulo o el ancho total.`, 'error');
+      return;
+    }
+    cambiar((x) => agregarModulo(x, preset, posicion));
+    set({ moduloActivo: posicion });
+    if (ancho < preset.ancho) avisar(`${preset.texto} agregado con ${formatear(ancho, unidad)}: es lo que quedaba hasta el máximo de ${formatear(maximo, unidad)}.`);
+  };
+  const elegir = (i: number) => {
+    setInsertarEn(null);
+    set({ moduloActivo: i });
+  };
+
   return (
-    <div className="pestana-contenido">
+    <div className="pestana-contenido modulos">
+      <div className="modulos-cabeza">
+        <strong>
+          Distribución · {n} {n === 1 ? 'módulo' : 'módulos'} · {formatear(d.ancho, unidad)}
+        </strong>
+        <div className="modulos-agregar" role="group" aria-label="Agregar al final">
+          {presets.map((p) => (
+            <button key={p.id} type="button" className="boton secundario chico" title={`${p.ayuda}. Se agrega a la derecha.`} onClick={() => agregar(p, n)}>
+              <IcoMas width={14} height={14} /> {p.texto}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="tira-modulos" role="list" aria-label="Módulos del mueble, de izquierda a derecha">
+        {d.cuerpos.map((m, i) => (
+          <Fragment key={m.id}>
+            <BotonInsertar posicion={i} abierto={insertarEn === i} onClick={() => setInsertarEn(insertarEn === i ? null : i)} />
+            <button
+              type="button"
+              role="listitem"
+              className={`bloque-modulo ${m.tipo}${i === activo ? ' activo' : ''}`}
+              style={{ flexGrow: m.ancho }}
+              aria-current={i === activo}
+              aria-label={`Módulo ${i + 1}: ${nombreModulo(m)}, ${formatear(m.ancho, unidad)}`}
+              onClick={() => elegir(i)}
+            >
+              <span className="numero-cuerpo">{i + 1}</span>
+              <span className="bloque-modulo-texto">
+                <span className="bloque-modulo-nombre">{nombreModulo(m)}</span>
+                <span className="bloque-modulo-ancho">{formatear(m.ancho, unidad)}</span>
+              </span>
+            </button>
+          </Fragment>
+        ))}
+        <BotonInsertar posicion={n} abierto={insertarEn === n} onClick={() => setInsertarEn(insertarEn === n ? null : n)} />
+      </div>
+
+      {insertarEn != null ? (
+        <div className="modulos-insertar">
+          <span>
+            {insertarEn === 0
+              ? 'Agregar al comienzo (izquierda):'
+              : insertarEn === n
+                ? 'Agregar al final (derecha):'
+                : `Agregar entre el módulo ${insertarEn} y el ${insertarEn + 1}:`}
+          </span>
+          {presets.map((p) => (
+            <button key={p.id} type="button" className="boton secundario chico" title={p.ayuda} onClick={() => agregar(p, insertarEn)}>
+              <IcoMas width={14} height={14} /> {p.texto}
+            </button>
+          ))}
+          <button type="button" className="boton chico" onClick={() => setInsertarEn(null)}>
+            Cancelar
+          </button>
+        </div>
+      ) : (
+        <div className={`modulo-editor${c.tipo === 'hueco' ? ' hueco' : ''}`}>
+          <div className="modulo-editor-cabeza">
+            <span className="numero-cuerpo">{activo + 1}</span>
+            <strong>Módulo {activo + 1}</strong>
+            <span className="acciones-cuerpo">
+              <button
+                type="button"
+                className="boton-icono"
+                aria-label="Mover a la izquierda"
+                title="Mover a la izquierda"
+                disabled={activo === 0}
+                onClick={() => {
+                  cambiar((x) => moverCuerpo(x, activo, -1));
+                  set({ moduloActivo: activo - 1 });
+                }}
+              >
+                <IcoIzq width={15} height={15} />
+              </button>
+              <button
+                type="button"
+                className="boton-icono"
+                aria-label="Mover a la derecha"
+                title="Mover a la derecha"
+                disabled={activo === n - 1}
+                onClick={() => {
+                  cambiar((x) => moverCuerpo(x, activo, 1));
+                  set({ moduloActivo: activo + 1 });
+                }}
+              >
+                <IcoDer width={15} height={15} />
+              </button>
+              <button
+                type="button"
+                className="boton-icono peligro"
+                aria-label={`Quitar módulo ${activo + 1}`}
+                title="Quitar este módulo"
+                disabled={n <= 1}
+                onClick={() => {
+                  cambiar((x) => quitarCuerpo(x, activo));
+                  set({ moduloActivo: Math.max(0, activo - 1) });
+                }}
+              >
+                <IcoBasura width={15} height={15} />
+              </button>
+            </span>
+          </div>
+          {tipos.length > 1 && (
+            <Selector
+              etiqueta="Tipo"
+              valor={c.tipo}
+              opciones={tipos.map((t) => ({ valor: t, texto: NOMBRE_TIPO[t] }))}
+              onCambio={(v) =>
+                cambiar((x) =>
+                  actualizarCuerpo(x, activo, {
+                    tipo: v,
+                    ...(v === 'frentes' ? { puertas: 1 } : {}),
+                    ...(v === 'escritorio' ? { alto: 750 } : { alto: 0 }),
+                  }),
+                )
+              }
+            />
+          )}
+          <CampoMedida
+            etiqueta="Ancho del módulo"
+            compacto
+            valor={c.ancho}
+            unidad={unidad}
+            min={c.tipo === 'hueco' ? ANCHO_MIN_HUECO : ANCHO_MIN_CUERPO}
+            max={1500}
+            onCambio={(mm) => cambiar((x) => actualizarCuerpo(x, activo, { ancho: mm }), `ancho-cuerpo-${c.id}`)}
+          />
+          {c.tipo === 'escritorio' && (
+            <CampoMedida
+              etiqueta="Alto del escritorio"
+              compacto
+              valor={c.alto || 750}
+              unidad={unidad}
+              min={450}
+              max={Math.min(900, d.alto)}
+              onCambio={(mm) => cambiar((x) => actualizarCuerpo(x, activo, { alto: mm }), `alto-esc-${c.id}`)}
+            />
+          )}
+          <p className="tenue">
+            {c.tipo === 'hueco'
+              ? 'Hueco libre para refrigerador, lavadora u otro equipo. La cubierta pasa por encima.'
+              : c.tipo === 'horno' && d.plantilla === 'cocina'
+                ? 'Horno empotrado de 60 cm con faja de melamina superior.'
+                : c.tipo === 'frentes'
+                  ? 'Sus puertas y cajones se ajustan en las pestañas Puertas y Cajones.'
+                  : 'Toca un módulo de la tira para editarlo.'}
+          </p>
+        </div>
+      )}
+
       <div className="opciones-globales espacios">
         <CampoMedida
-          etiqueta="Separación entre cuerpos"
+          etiqueta="Separación entre módulos"
           compacto
           valor={d.separacionCuerpos}
           unidad={unidad}
@@ -299,16 +484,6 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
           min={0}
           max={200}
           onCambio={(mm) => cambiar((x) => fijarSeparacion(x, mm), 'separacion')}
-        />
-        <CampoMedida
-          etiqueta="Luz entre frentes"
-          compacto
-          valor={d.luzFrentes}
-          unidad="mm"
-          paso={1}
-          min={1}
-          max={10}
-          onCambio={(mm) => cambiar((x) => ({ ...x, luzFrentes: mm }), 'luz')}
         />
         <CampoMedida
           etiqueta="Zócalo"
@@ -320,6 +495,16 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
           max={200}
           onCambio={(mm) => cambiar((x) => ({ ...x, zocalo: mm }), 'zocalo')}
         />
+        <CampoMedida
+          etiqueta="Luz entre frentes"
+          compacto
+          valor={d.luzFrentes}
+          unidad="mm"
+          paso={1}
+          min={1}
+          max={10}
+          onCambio={(mm) => cambiar((x) => ({ ...x, luzFrentes: mm }), 'luz')}
+        />
         <Segmentado
           etiqueta="Espesor melamina"
           valor={String(d.espesor) as '15' | '18'}
@@ -330,88 +515,22 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
           ]}
         />
       </div>
-      <div className="lista-cuerpos">
-        {d.cuerpos.map((c, i) => (
-          <article key={c.id} className={`tarjeta-cuerpo${c.tipo === 'hueco' ? ' hueco' : ''}`}>
-            <header className="tarjeta-cuerpo-cabeza">
-              <span className="numero-cuerpo">{i + 1}</span>
-              <strong>Cuerpo {i + 1}</strong>
-              <span className="acciones-cuerpo">
-                <button type="button" className="boton-icono" aria-label="Mover a la izquierda" disabled={i === 0} onClick={() => cambiar((x) => moverCuerpo(x, i, -1))}>
-                  <IcoIzq width={15} height={15} />
-                </button>
-                <button
-                  type="button"
-                  className="boton-icono"
-                  aria-label="Mover a la derecha"
-                  disabled={i === d.cuerpos.length - 1}
-                  onClick={() => cambiar((x) => moverCuerpo(x, i, 1))}
-                >
-                  <IcoDer width={15} height={15} />
-                </button>
-                <button
-                  type="button"
-                  className="boton-icono peligro"
-                  aria-label={`Quitar cuerpo ${i + 1}`}
-                  disabled={d.cuerpos.length <= 1}
-                  onClick={() => cambiar((x) => quitarCuerpo(x, i))}
-                >
-                  <IcoBasura width={15} height={15} />
-                </button>
-              </span>
-            </header>
-            {tipos.length > 1 && (
-              <Selector
-                etiqueta="Tipo"
-                valor={c.tipo}
-                opciones={tipos.map((t) => ({ valor: t, texto: NOMBRE_TIPO[t] }))}
-                onCambio={(v) =>
-                  cambiar((x) =>
-                    actualizarCuerpo(x, i, {
-                      tipo: v,
-                      ...(v === 'frentes' ? { puertas: 1 } : {}),
-                      ...(v === 'escritorio' ? { alto: 750 } : { alto: 0 }),
-                    }),
-                  )
-                }
-              />
-            )}
-            <CampoMedida
-              etiqueta="Ancho"
-              compacto
-              valor={c.ancho}
-              unidad={unidad}
-              min={c.tipo === 'hueco' ? 100 : ANCHO_MIN_CUERPO}
-              max={1500}
-              onCambio={(mm) => cambiar((x) => actualizarCuerpo(x, i, { ancho: mm }), `ancho-cuerpo-${c.id}`)}
-            />
-            {c.tipo === 'escritorio' && (
-              <CampoMedida
-                etiqueta="Alto del escritorio"
-                compacto
-                valor={c.alto || 750}
-                unidad={unidad}
-                min={450}
-                max={Math.min(900, d.alto)}
-                onCambio={(mm) => cambiar((x) => actualizarCuerpo(x, i, { alto: mm }), `alto-esc-${c.id}`)}
-              />
-            )}
-            {c.tipo === 'hueco' && <p className="tenue">Hueco libre para lavadora, refrigerador u otro equipo. La cubierta pasa por encima.</p>}
-            {c.tipo === 'horno' && d.plantilla === 'cocina' && <p className="tenue">Horno empotrado de 60 cm con faja de melamina superior.</p>}
-          </article>
-        ))}
-        <article className="tarjeta-cuerpo agregar">
-          <header className="tarjeta-cuerpo-cabeza">
-            <strong>Agregar cuerpo</strong>
-          </header>
-          {tipos.map((t) => (
-            <button key={t} type="button" className="boton secundario chico" onClick={() => cambiar((x) => agregarCuerpo(x, t))}>
-              <IcoMas width={14} height={14} /> {NOMBRE_TIPO[t]}
-            </button>
-          ))}
-        </article>
-      </div>
     </div>
+  );
+}
+
+function BotonInsertar({ posicion, abierto, onClick }: { posicion: number; abierto: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className={`insertar-modulo${abierto ? ' abierto' : ''}`}
+      aria-label={`Agregar módulo o espacio en la posición ${posicion + 1}`}
+      aria-expanded={abierto}
+      title="Agregar aquí un módulo o espacio"
+      onClick={onClick}
+    >
+      <IcoMas width={12} height={12} />
+    </button>
   );
 }
 
@@ -466,7 +585,7 @@ function EstructuraTocador({ d, unidad, cambiar }: PropsPestana) {
 // ---------- Equipamiento / interior / extras ----------
 
 export function PestanaEquipamiento({ d, unidad, cambiar }: PropsPestana) {
-  const opcionesCuerpos = d.cuerpos.map((c, i) => ({ valor: i, texto: `Cuerpo ${i + 1} · ${formatear(c.ancho, unidad)}` }));
+  const opcionesCuerpos = d.cuerpos.map((c, i) => ({ valor: i, texto: `Módulo ${i + 1} · ${formatear(c.ancho, unidad)}` }));
   if (d.plantilla === 'cocina' || d.plantilla === 'cocina-infantil') {
     const k = d.cocina;
     const set = (cambios: Partial<Diseno['cocina']>) => cambiar((x) => ({ ...x, cocina: { ...x.cocina, ...cambios } }));
@@ -561,7 +680,7 @@ export function PestanaEquipamiento({ d, unidad, cambiar }: PropsPestana) {
               <p className="tenue">
                 {d.cuerpos.some((c) => c.tipo === 'horno')
                   ? 'Tu mueble lleva horno. Puedes moverlo o quitarlo en Módulos y espacios.'
-                  : 'Agrega un cuerpo de 60 cm preparado para horno empotrado.'}
+                  : 'Agrega un módulo de 60 cm preparado para horno empotrado.'}
               </p>
               {!d.cuerpos.some((c) => c.tipo === 'horno') && (
                 <button type="button" className="boton secundario chico" onClick={() => cambiar((x) => agregarCuerpo(x, 'horno'))}>

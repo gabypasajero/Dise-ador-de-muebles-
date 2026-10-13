@@ -1,12 +1,13 @@
 import { OrbitControls } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Suspense, useEffect, useRef } from 'react';
+import { Suspense, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { OrbitControls as OrbitImpl } from 'three-stdlib';
 import { Mueble3D } from '../furniture/Mueble3D';
 import { Escenario3D } from '../scenes/Escenarios';
 import { escenarioActual, useApp, type Vista } from '../store/useApp';
+import { nombreModulo } from '../../shared/reglas';
 import type { Diseno } from '../../shared/tipos';
 
 function Entorno() {
@@ -120,7 +121,7 @@ function Capturador() {
       capturar: () => {
         const ocultas: THREE.Object3D[] = [];
         scene.traverse((o) => {
-          if (o.name === 'cotas' && o.visible) ocultas.push(o);
+          if ((o.name === 'cotas' || o.name === 'ayudas') && o.visible) ocultas.push(o);
         });
         ocultas.forEach((o) => (o.visible = false));
         gl.render(scene, camera);
@@ -148,6 +149,18 @@ export function Visor3D() {
   const cotas = useApp((s) => s.cotas);
   const unidad = useApp((s) => s.unidad);
   const pestana = useApp((s) => s.pestana);
+  const moduloActivo = useApp((s) => s.moduloActivo);
+  const modulos = useMemo(
+    () =>
+      pestana === 'modulos'
+        ? {
+            activo: moduloActivo,
+            nombre: (i: number) => (diseno.cuerpos[i] ? nombreModulo(diseno.cuerpos[i]) : ''),
+            onElegir: (i: number) => useApp.getState().set({ moduloActivo: i }),
+          }
+        : null,
+    [pestana, moduloActivo, diseno],
+  );
   const tipoEscena = escenarioActual(escenario, producto, diseno);
   const etiquetasFrentes = pestana === 'puertas' || pestana === 'cajones';
 
@@ -167,7 +180,7 @@ export function Visor3D() {
       <Entorno />
       <Suspense fallback={null}>
         <Escenario3D tipo={tipoEscena} diseno={diseno} />
-        <Mueble3D diseno={diseno} materiales={materiales} vista={{ abierto, cotas, etiquetasFrentes, unidad }} />
+        <Mueble3D diseno={diseno} materiales={materiales} vista={{ abierto, cotas, etiquetasFrentes, unidad, modulos }} />
       </Suspense>
       <Camara />
       <Capturador />

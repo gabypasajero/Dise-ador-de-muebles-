@@ -28,9 +28,9 @@ export function describirCuerpos(d: Diseno, unidad: Unidad): string[] {
   const l = calcularLayout(d);
   return d.cuerpos.map((c, i) => {
     const ancho = formatear(c.ancho, unidad);
-    if (c.tipo === 'horno') return `Cuerpo ${i + 1} (${ancho}): horno empotrado`;
-    if (c.tipo === 'hueco') return `Cuerpo ${i + 1} (${ancho}): espacio libre`;
-    if (c.tipo === 'escritorio') return `Cuerpo ${i + 1} (${ancho}): escritorio de ${formatear(c.alto || 750, unidad)} de alto`;
+    if (c.tipo === 'horno') return `Módulo ${i + 1} (${ancho}): horno empotrado`;
+    if (c.tipo === 'hueco') return `Módulo ${i + 1} (${ancho}): espacio libre`;
+    if (c.tipo === 'escritorio') return `Módulo ${i + 1} (${ancho}): escritorio de ${formatear(c.alto || 750, unidad)} de alto`;
     const partes: string[] = [];
     const puertas = l.frentes.filter((f) => f.tipo === 'puerta' && f.cuerpo === i);
     const cajones = l.frentes.filter((f) => f.tipo === 'cajon' && f.cuerpo === i);
@@ -41,7 +41,7 @@ export function describirCuerpos(d: Diseno, unidad: Unidad): string[] {
     if (cajones.length) partes.push(`${cajones.length} ${cajones.length === 1 ? 'cajón' : 'cajones'}`);
     if (c.colgador) partes.push('barra para colgar');
     if (!puertas.length && !cajones.length) partes.push(`abierto con ${c.repisas} repisas`);
-    return `Cuerpo ${i + 1} (${ancho}): ${partes.join(', ')}`;
+    return `Módulo ${i + 1} (${ancho}): ${partes.join(', ')}`;
   });
 }
 
@@ -63,7 +63,7 @@ export function detalleCotizacion(
     etiqueta: 'Medidas',
     valor: `${formatear(d.ancho, unidad, false)} × ${formatear(d.alto, unidad, false)} × ${formatear(d.profundidad, unidad)} (ancho × alto × profundidad)`,
   });
-  lineas.push({ etiqueta: 'Distribución', valor: d.plantilla === 'tocador' ? 'Tocador' : `${d.cuerpos.length} ${d.cuerpos.length === 1 ? 'cuerpo' : 'cuerpos'}`, sub: describirCuerpos(d, unidad) });
+  lineas.push({ etiqueta: 'Distribución', valor: d.plantilla === 'tocador' ? 'Tocador' : `${d.cuerpos.length} ${d.cuerpos.length === 1 ? 'módulo' : 'módulos'}`, sub: describirCuerpos(d, unidad) });
   lineas.push({ etiqueta: 'Melamina frentes', valor: nombreMaterial(materiales?.melaminas, m.frente) });
   lineas.push({ etiqueta: 'Melamina cuerpo', valor: nombreMaterial(materiales?.melaminas, m.casco) });
   if (cocina) lineas.push({ etiqueta: 'Cubierta postformada', valor: nombreMaterial(materiales?.cubiertas, m.cubierta) });
@@ -74,16 +74,16 @@ export function detalleCotizacion(
   if (cocina) {
     const k = d.cocina;
     const eq: string[] = [];
-    if (k.encimera !== 'ninguna') eq.push(`encimera ${k.encimera} platos (cuerpo ${k.encimeraCuerpo + 1})`);
+    if (k.encimera !== 'ninguna') eq.push(`encimera ${k.encimera} platos (módulo ${k.encimeraCuerpo + 1})`);
     if (k.lavaplatos !== 'ninguno') {
-      eq.push(`lavaplatos ${k.lavaplatos === 'doble' ? '2 cubetas' : '1 cubeta'} (cuerpo ${k.lavaplatosCuerpo + 1}), grifería ${k.grifo === 'negro' ? 'negro mate' : 'cromada'}`);
+      eq.push(`lavaplatos ${k.lavaplatos === 'doble' ? '2 cubetas' : '1 cubeta'} (módulo ${k.lavaplatosCuerpo + 1}), grifería ${k.grifo === 'negro' ? 'negro mate' : 'cromada'}`);
     }
     if (d.plantilla === 'cocina') eq.push(`cubierta ${k.espesorCubierta} mm${k.copete ? ' con copete' : ''}`);
     if (eq.length) lineas.push({ etiqueta: 'Equipamiento', valor: eq.join('; ') });
   }
   lineas.push({
     etiqueta: 'Espacios',
-    valor: `separación entre cuerpos ${formatear(d.separacionCuerpos, unidad)}, zócalo ${formatear(d.zocalo, unidad)}, luz entre frentes ${d.luzFrentes} mm, melamina ${d.espesor} mm`,
+    valor: `separación entre módulos ${formatear(d.separacionCuerpos, unidad)}, zócalo ${formatear(d.zocalo, unidad)}, luz entre frentes ${d.luzFrentes} mm, melamina ${d.espesor} mm`,
   });
   const extras: string[] = [];
   if (d.plantilla === 'comoda' && d.mudador) extras.push('mudador');

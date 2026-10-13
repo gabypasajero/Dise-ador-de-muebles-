@@ -7,6 +7,8 @@ import {
   actualizarCuerpo,
   advertencias,
   agregarCuerpo,
+  agregarModulo,
+  anchoDisponible,
   deUnidad,
   fijarAlto,
   fijarAncho,
@@ -14,10 +16,13 @@ import {
   fijarSeparacion,
   formatear,
   moverCuerpo,
+  nombreModulo,
   normalizar,
   precioReferencial,
+  presetsModulo,
   quitarCuerpo,
 } from '../shared/reglas';
+import { calcularLayout } from '../shared/layout';
 import { detalleCotizacion, formatoFecha, telefonoWhatsapp, textoCotizacion } from '../shared/resumen';
 import type { Diseno, ProductoTienda } from '../shared/tipos';
 
@@ -73,6 +78,83 @@ describe('operaciones sobre el diseño', () => {
     expect(d.cocina.encimeraCuerpo).toBeLessThan(d.cuerpos.length);
   });
 
+  it('agrega un módulo entre otros dos y la encimera y el lavaplatos siguen en su módulo', () => {
+    const d = disenoLibre('cocina');
+    const enc = d.cuerpos[d.cocina.encimeraCuerpo].id;
+    const lav = d.cuerpos[d.cocina.lavaplatosCuerpo].id;
+    const cajonera = presetsModulo('cocina').find((p) => p.id === 'cajonera')!;
+    const m = agregarModulo(d, cajonera, 1);
+    expect(m.cuerpos).toHaveLength(d.cuerpos.length + 1);
+    expect(m.cuerpos[1]).toMatchObject({ tipo: 'frentes', cajones: 3, ancho: 450 });
+    expect(m.cuerpos[0].id).toBe(d.cuerpos[0].id);
+    expect(m.cuerpos[m.cocina.encimeraCuerpo].id).toBe(enc);
+    expect(m.cuerpos[m.cocina.lavaplatosCuerpo].id).toBe(lav);
+    expect(m.ancho).toBe(d.ancho + 450);
+    expect(suma(m)).toBe(m.ancho);
+  });
+
+  it('un módulo nuevo no pasa el ancho máximo: usa lo que queda o no se agrega', () => {
+    const max = LIMITES.cocina.ancho[1];
+    const d = fijarAncho(disenoLibre('cocina'), max - 200);
+    const puerta = presetsModulo('cocina')[0];
+    expect(anchoDisponible(d, 'frentes', 450)).toBe(200);
+    const m = agregarModulo(d, puerta);
+    expect(m.ancho).toBe(max);
+    expect(m.cuerpos.at(-1)!.ancho).toBe(200);
+    // Lleno: no cambia nada.
+    expect(anchoDisponible(m, 'frentes', 450)).toBeNull();
+    expect(agregarModulo(m, puerta)).toBe(m);
+    // Los cuerpos existentes no se achican.
+    m.cuerpos.slice(0, d.cuerpos.length).forEach((c, i) => expect(c.ancho).toBe(d.cuerpos[i].ancho));
+  });
+
+  it('cada módulo disponible genera un diseño válido en todos los muebles', () => {
+    for (const plantilla of ['cocina', 'cocina-infantil', 'closet', 'comoda', 'escritorio'] as const) {
+      const presets = presetsModulo(plantilla);
+      expect(presets.length).toBeGreaterThan(0);
+      for (const p of presets) {
+        const base = disenoLibre(plantilla);
+        const m = agregarModulo(base, p, 0);
+        expect(m.cuerpos[0].tipo).toBe(p.tipo);
+        expect(suma(m)).toBe(m.ancho);
+        const l = calcularLayout(m);
+        for (const f of l.frentes) {
+          expect(Number.isFinite(f.rect.x0 + f.rect.x1 + f.rect.y0 + f.rect.y1)).toBe(true);
+          expect(f.rect.x1).toBeGreaterThan(f.rect.x0);
+          expect(f.rect.y1).toBeGreaterThan(f.rect.y0);
+        }
+        expect(nombreModulo(m.cuerpos[0]).length).toBeGreaterThan(0);
+      }
+    }
+    expect(presetsModulo('tocador')).toEqual([]);
+  });
+
+  it('al quitar el módulo del lavaplatos, este pasa a otro módulo con frentes y no al de la encimera', () => {
+    const d = disenoLibre('cocina');
+    const m = quitarCuerpo(d, d.cocina.lavaplatosCuerpo);
+    expect(m.cocina.lavaplatosCuerpo).not.toBe(m.cocina.encimeraCuerpo);
+    expect(m.cuerpos[m.cocina.lavaplatosCuerpo].tipo).toBe('frentes');
+    expect(m.cuerpos[m.cocina.encimeraCuerpo].id).toBe(d.cuerpos[d.cocina.encimeraCuerpo].id);
+  });
+
+  it('quitar un módulo reubica la encimera aunque el mueble quede bajo el ancho mínimo', () => {
+    let d = disenoLibre('cocina');
+    d = fijarAncho(d, LIMITES.cocina.ancho[0]);
+    const lav = d.cuerpos[d.cocina.lavaplatosCuerpo].id;
+    const m = quitarCuerpo(d, 0);
+    expect(m.ancho).toBeGreaterThanOrEqual(LIMITES.cocina.ancho[0]);
+    expect(m.cocina.encimeraCuerpo).toBeLessThan(m.cuerpos.length);
+    if (d.cocina.lavaplatosCuerpo !== 0) expect(m.cuerpos[m.cocina.lavaplatosCuerpo].id).toBe(lav);
+  });
+
+  it('nombra los módulos según lo que tienen', () => {
+    const d = disenoLibre('cocina');
+    const [puerta, cajonera, horno, hueco] = presetsModulo('cocina');
+    const nombres = [puerta, cajonera, horno, hueco].map((p) => nombreModulo(agregarModulo(d, p, 0).cuerpos[0]));
+    expect(nombres).toEqual(['1 puerta', '3 cajones', 'Horno', 'Espacio libre']);
+    expect(nombreModulo({ ...d.cuerpos[0], tipo: 'frentes', puertas: 0, cajones: 0 })).toBe('Abierto');
+  });
+
   it('mover un cuerpo arrastra la encimera y el lavaplatos asignados', () => {
     const d = disenoLibre('cocina');
     const m = moverCuerpo(d, 0, 1);
@@ -103,10 +185,10 @@ describe('advertencias de fabricación', () => {
     const d = actualizarCuerpo(fijarAncho(disenoLibre('closet'), 2400), 1, { puertas: 1 });
     expect(advertencias(d).some((a) => a.texto.includes('dividirla en 2 puertas'))).toBe(true);
   });
-  it('avisa si encimera y lavaplatos van en el mismo cuerpo', () => {
+  it('avisa si encimera y lavaplatos van en el mismo módulo', () => {
     const d = disenoLibre('cocina');
     d.cocina.lavaplatosCuerpo = d.cocina.encimeraCuerpo;
-    expect(advertencias(d).some((a) => a.texto.includes('mismo cuerpo'))).toBe(true);
+    expect(advertencias(d).some((a) => a.texto.includes('mismo módulo'))).toBe(true);
   });
 });
 
