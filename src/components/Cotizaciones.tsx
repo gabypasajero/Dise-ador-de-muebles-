@@ -245,7 +245,8 @@ function AccionesEnvio({ c }: { c: Cotizacion }) {
 
 export function ModalRegistrarCotizacion() {
   const s = useApp();
-  const actual = s.cotizacionActual && s.cotizacionActual.estado === 'cotizada' ? s.cotizacionActual : null;
+  const actual =
+    s.cotizacionActual && s.cotizacionActual.estado === 'cotizada' && s.cotizacionActual.vendedor.id === s.usuario?.id ? s.cotizacionActual : null;
   const referencial = precioReferencial(s.diseno, s.producto, s.disenoBase);
   const [cliente, setCliente] = useState<Cliente>(actual?.cliente ?? { nombre: '', telefono: '', email: '', direccion: '' });
   const [observaciones, setObservaciones] = useState(actual?.observaciones ?? '');

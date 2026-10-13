@@ -103,12 +103,12 @@ export function Acceso() {
             <>
               <label>
                 Nombre y apellido
-                <input value={nombre} onChange={(e) => setNombre(e.target.value)} autoComplete="name" required minLength={3} />
+                <input value={nombre} onChange={(e) => setNombre(e.target.value)} autoComplete="name" required minLength={3} maxLength={80} />
                 <small className="tenue">Aparece como vendedor en tus cotizaciones.</small>
               </label>
               <label>
                 Teléfono (opcional)
-                <input value={telefono} onChange={(e) => setTelefono(e.target.value)} autoComplete="tel" inputMode="tel" placeholder="+56 9 1234 5678" />
+                <input value={telefono} onChange={(e) => setTelefono(e.target.value)} autoComplete="tel" inputMode="tel" placeholder="+56 9 1234 5678" maxLength={30} />
               </label>
             </>
           )}

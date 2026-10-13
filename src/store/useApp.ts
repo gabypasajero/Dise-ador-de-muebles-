@@ -266,7 +266,9 @@ export const useApp = create<Estado>((set, get) => ({
   async revisarSesion() {
     try {
       const usuario = await backend.perfilActual();
-      set({ usuario, sesion: usuario ? 'activa' : 'invitado', errorSesion: null });
+      // Si entra otro vendedor, la cotización en edición no es suya.
+      const ajena = usuario && get().cotizacionActual && get().cotizacionActual?.vendedor.id !== usuario.id;
+      set({ usuario, sesion: usuario ? 'activa' : 'invitado', errorSesion: null, ...(ajena ? { cotizacionActual: null } : {}) });
     } catch (e) {
       set({ usuario: null, sesion: 'invitado', errorSesion: (e as Error).message });
     }

@@ -40,10 +40,11 @@ const BASE_SUPABASE = `
   alter table public.admins enable row level security;
   create table public.productos (id bigint generated always as identity primary key, nombre text not null, activo boolean default true);
   alter table public.productos enable row level security;
-  create policy "publico ve productos activos" on public.productos for select to anon, authenticated using (activo);
   create function public.es_admin() returns boolean language sql stable security definer set search_path = public as $$
     select exists (select 1 from public.admins where user_id = auth.uid());
   $$;
+  create policy "publico ve productos activos" on public.productos for select to anon, authenticated using (activo or public.es_admin());
+  create policy "admin borra productos" on public.productos for delete to authenticated using (public.es_admin());
   create function public.tocar_actualizado() returns trigger language plpgsql set search_path = public as $$
   begin new.actualizado_en = now(); return new; end; $$;
   insert into public.productos (nombre) values ('Cocina full equipo');
@@ -91,26 +92,37 @@ const cotizacion = (cliente = 'Fernando Pérez', valor = 519990) =>
     [cliente, valor],
   );
 
+const codigoActual = () =>
+  comoEditor(async () => (await db.query<{ valor: string }>(`select valor from public.ajustes_privados where clave = 'codigo_vendedores'`)).rows[0]?.valor);
+
 let ana: string;
 let pedro: string;
 let admin: string;
+let previo: string;
+let codigo: string;
 
 beforeAll(async () => {
   db = new PGlite();
   await db.exec(BASE_SUPABASE);
+  // Alguien que se registró como vendedor antes de ejecutar el SQL.
+  previo = await registrar('jo@dto.cl', { rol: 'vendedor', nombre: 'Jo', telefono: '+56 9 2222 2222 anexo 1234567890 ext' });
   // Se ejecuta dos veces: el SQL debe tolerar que se corra de nuevo.
   await comoEditor(() => db.exec(MIGRACION));
+  codigo = await codigoActual();
   await comoEditor(() => db.exec(MIGRACION));
-  ana = await registrar('ana@dto.cl', { rol: 'vendedor', nombre: 'Ana Rojas', telefono: '+56 9 1111 1111', codigo: 'x' });
-  pedro = await registrar('pedro@dto.cl', { rol: 'vendedor', nombre: 'Pedro Soto' });
+  ana = await registrar('ana@dto.cl', { rol: 'vendedor', nombre: 'Ana Rojas', telefono: '+56 9 1111 1111', codigo });
+  pedro = await registrar('pedro@dto.cl', { rol: 'vendedor', nombre: 'Pedro Soto', codigo });
   admin = await registrar('admin@dto.cl', {});
   await comoEditor(() => db.query('insert into public.admins (user_id) values ($1)', [admin]));
 }, 60_000);
 
 describe('ejecución del SQL en Supabase', () => {
-  it('no usa DROP (el SQL Editor no muestra advertencias) y termina con "Listo"', () => {
+  it('no usa DROP (el SQL Editor no muestra advertencias) y termina con "Listo" y el código', async () => {
     expect(MIGRACION).not.toMatch(/\bdrop\b/i);
-    expect(MIGRACION).toMatch(/'Listo' as resultado/);
+    const r = await comoEditor(() => db.exec(MIGRACION));
+    const ultima = r[r.length - 1].rows[0] as { resultado: string; codigo_vendedores: string };
+    expect(ultima.resultado).toBe('Listo');
+    expect(ultima.codigo_vendedores).toBe(codigo);
   });
 
   it('crea los triggers en auth.users sin ser dueño de la tabla', async () => {
@@ -147,16 +159,35 @@ describe('registro de vendedores', () => {
     expect(r.rows).toHaveLength(0);
   });
 
-  it('exige el código de vendedor cuando está configurado', async () => {
-    await comoEditor(() => db.exec(`insert into public.ajustes_privados values ('codigo_vendedores', 'DTO-2026')`));
+  it('genera un código de vendedor la primera vez, lo conserva y lo exige', async () => {
+    expect(codigo).toMatch(/^DTO-[0-9A-F]{6}$/);
+    expect(await codigoActual()).toBe(codigo);
     await como(null);
     expect((await db.query<{ r: boolean }>('select public.registro_requiere_codigo() as r')).rows[0].r).toBe(true);
-    await expect(registrar('malo@dto.cl', { rol: 'vendedor', nombre: 'Sin Código', codigo: 'otro' })).rejects.toThrow(/CODIGO_VENDEDOR_INVALIDO/);
-    const ok = await registrar('bueno@dto.cl', { rol: 'vendedor', nombre: 'Con Código', codigo: 'DTO-2026' });
-    expect(ok).toBeTruthy();
+    await expect(registrar('malo@dto.cl', { rol: 'vendedor', nombre: 'Código Malo', codigo: 'otro' })).rejects.toThrow(/CODIGO_VENDEDOR_INVALIDO/);
+    await expect(registrar('sin@dto.cl', { rol: 'vendedor', nombre: 'Sin Código' })).rejects.toThrow(/CODIGO_VENDEDOR_INVALIDO/);
     // Un admin creado sin rol vendedor no necesita código.
     await expect(registrar('otroadmin@dto.cl', {})).resolves.toBeTruthy();
-    await comoEditor(() => db.exec(`delete from public.ajustes_privados`));
+  });
+
+  it('con el código vacío el registro queda abierto', async () => {
+    await comoEditor(() => db.exec(`update public.ajustes_privados set valor = '' where clave = 'codigo_vendedores'`));
+    await como(null);
+    expect((await db.query<{ r: boolean }>('select public.registro_requiere_codigo() as r')).rows[0].r).toBe(false);
+    await expect(registrar('abierto@dto.cl', { rol: 'vendedor', nombre: 'Registro Abierto' })).resolves.toBeTruthy();
+    await comoEditor(() => db.query(`update public.ajustes_privados set valor = $1 where clave = 'codigo_vendedores'`, [codigo]));
+  });
+
+  it('ajusta nombre y teléfono fuera de rango en vez de rechazar el registro', async () => {
+    const id = await registrar('largo@dto.cl', { rol: 'vendedor', nombre: 'N'.repeat(120), telefono: '9'.repeat(45), codigo });
+    const r = await comoEditor(() => db.query<{ nombre: string; telefono: string }>('select nombre, telefono from public.vendedores where id = $1', [id]));
+    expect(r.rows[0].nombre).toHaveLength(80);
+    expect(r.rows[0].telefono).toHaveLength(30);
+  });
+
+  it('crea el perfil de quienes se registraron antes de ejecutar el SQL', async () => {
+    const r = await comoEditor(() => db.query<{ nombre: string; telefono: string; activo: boolean }>('select nombre, telefono, activo from public.vendedores where id = $1', [previo]));
+    expect(r.rows[0]).toEqual({ nombre: 'jo@dto.cl', telefono: '+56 9 2222 2222 anexo 12345678', activo: true });
   });
 
   it('el vendedor edita su nombre pero no su estado', async () => {
@@ -195,9 +226,10 @@ describe('cotizaciones y ventas', () => {
     await expect(cotizacion()).rejects.toThrow(/row-level security|violates/);
   });
 
-  it('nadie sin sesión ve cotizaciones', async () => {
+  it('nadie sin sesión ve cotizaciones ni vendedores', async () => {
     await como(null);
-    expect((await db.query('select id from public.cotizaciones')).rows).toHaveLength(0);
+    await expect(db.query('select id from public.cotizaciones')).rejects.toThrow(/permission denied/);
+    await expect(db.query('select id from public.vendedores')).rejects.toThrow(/permission denied/);
   });
 
   it('venta, bloqueo de cambios, anulación y reactivación', async () => {
@@ -221,21 +253,63 @@ describe('cotizaciones y ventas', () => {
     await expect(db.query(`update public.cotizaciones set estado = 'vendida' where id = $1`, [id])).rejects.toThrow(/venta_completa/);
   });
 
+  it('la tienda puede borrar un producto aunque tenga cotizaciones vendidas', async () => {
+    const producto = await comoEditor(async () => (await db.query<{ id: number }>(`insert into public.productos (nombre) values ('Closet 2 puertas') returning id`)).rows[0].id);
+    const otro = await comoEditor(async () => (await db.query<{ id: number }>(`insert into public.productos (nombre) values ('Rack TV') returning id`)).rows[0].id);
+    await como(ana);
+    const nueva = async () =>
+      (
+        await db.query<{ id: number }>(
+          `insert into public.cotizaciones (cliente_nombre, modelo, config, detalle, valor, producto_id)
+           values ('Cliente Closet', 'Closet', '{}', '[]', 200000, $1) returning id`,
+          [producto],
+        )
+      ).rows[0].id;
+    const vendida = await nueva();
+    const vendida2 = await nueva();
+    for (const id of [vendida, vendida2]) {
+      await db.query(`update public.cotizaciones set estado = 'vendida', fecha_venta = '2026-10-15', valor_venta = 200000 where id = $1`, [id]);
+    }
+    // El vendedor no puede cambiar ni quitar el producto de una venta.
+    await expect(db.query('update public.cotizaciones set producto_id = null where id = $1', [vendida])).rejects.toThrow(/ya está vendida/);
+    await expect(db.query('update public.cotizaciones set producto_id = $2 where id = $1', [vendida, otro])).rejects.toThrow(/ya está vendida/);
+    // Un admin borra el producto desde la tienda (y la base, desde el panel).
+    await como(admin);
+    expect((await db.query('delete from public.productos where id = $1', [producto])).affectedRows).toBe(1);
+    await comoEditor(() => db.query('delete from public.productos where id = $1', [otro]));
+    const r = await comoEditor(() => db.query<{ producto_id: number | null; estado: string }>('select producto_id, estado from public.cotizaciones where id = any($1)', [[vendida, vendida2]]));
+    expect(r.rows).toEqual([
+      { producto_id: null, estado: 'vendida' },
+      { producto_id: null, estado: 'vendida' },
+    ]);
+  });
+
   it('las cotizaciones no se borran', async () => {
     await como(ana);
     await expect(db.query('delete from public.cotizaciones')).rejects.toThrow(/permission denied/);
+    await expect(db.query('truncate public.cotizaciones')).rejects.toThrow(/permission denied/);
   });
 
-  it('valida cliente y valor', async () => {
+  it('valida cliente, valor y tamaño del detalle', async () => {
     await como(ana);
     await expect(cotizacion('', 100)).rejects.toThrow(/check/);
     await expect(cotizacion('Cliente', 0)).rejects.toThrow(/check/);
+    const enorme = JSON.stringify([{ etiqueta: 'Texto', valor: 'x'.repeat(60_000) }]);
+    await expect(
+      db.query(`insert into public.cotizaciones (cliente_nombre, modelo, config, detalle, valor) values ('Cliente', 'Mueble', '{}', $1, 1000)`, [enorme]),
+    ).rejects.toThrow(/check/);
   });
 
-  it('un vendedor desactivado no puede registrar', async () => {
+  it('un vendedor desactivado no registra ni ve sus cotizaciones; la administración sí', async () => {
     await comoEditor(() => db.query('update public.vendedores set activo = false where id = $1', [pedro]));
     await como(pedro);
     await expect(cotizacion()).rejects.toThrow(/row-level security|violates/);
+    expect((await db.query('select id from public.cotizaciones')).rows).toHaveLength(0);
+    await como(admin);
+    const r = await db.query<{ cliente_nombre: string }>('select cliente_nombre from public.cotizaciones where vendedor_id = $1', [pedro]);
+    expect(r.rows.map((x) => x.cliente_nombre)).toEqual(['Marcela Díaz']);
     await comoEditor(() => db.query('update public.vendedores set activo = true where id = $1', [pedro]));
+    await como(pedro);
+    expect((await db.query('select id from public.cotizaciones')).rows).toHaveLength(1);
   });
 });

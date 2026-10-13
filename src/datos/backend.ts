@@ -119,6 +119,17 @@ export function calcularTotales(lista: Cotizacion[]): TotalesCotizaciones {
 }
 
 /** Validaciones de la app (la base de datos vuelve a validarlas). */
+/** Mismos límites que la tabla vendedores en Supabase. */
+export function validarRegistro(d: DatosRegistro): string | null {
+  const nombre = d.nombre.trim();
+  if (nombre.length < 3) return 'Ingresa tu nombre y apellido';
+  if (nombre.length > 80) return 'El nombre puede tener hasta 80 caracteres';
+  if (d.telefono.trim().length > 30) return 'El teléfono puede tener hasta 30 caracteres';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email.trim())) return 'Ingresa un correo válido';
+  if (d.password.length < 8) return 'La contraseña debe tener al menos 8 caracteres';
+  return null;
+}
+
 export function validarDatos(d: DatosCotizacion): string | null {
   if (d.cliente.nombre.trim().length < 2) return 'Ingresa el nombre del cliente';
   if (d.cliente.email && d.cliente.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.cliente.email.trim())) return 'Correo del cliente no válido';

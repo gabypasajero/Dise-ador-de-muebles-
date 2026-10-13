@@ -2,7 +2,7 @@
 // Sirve para probar la herramienta sin Supabase (npm run dev:local).
 // Aplica las mismas reglas que la base de datos.
 import type { Cotizacion, ProductoTienda, Usuario } from '../../shared/tipos';
-import { aCotizacion, aFila, validarDatos, type Backend, type FilaCotizacion } from './backend';
+import { aCotizacion, aFila, validarDatos, validarRegistro, type Backend, type FilaCotizacion } from './backend';
 
 interface UsuarioLocal {
   id: string;
@@ -87,8 +87,8 @@ export const backendLocal: Backend = {
   async registrar({ nombre, email, telefono, password }) {
     const usuarios = leer<UsuarioLocal[]>(CLAVES.usuarios, []);
     const correo = email.trim().toLowerCase();
-    if (nombre.trim().length < 3) throw new Error('Ingresa tu nombre y apellido');
-    if (password.length < 8) throw new Error('La contraseña debe tener al menos 8 caracteres');
+    const invalido = validarRegistro({ nombre, email, telefono, password });
+    if (invalido) throw new Error(invalido);
     if (usuarios.some((u) => u.email === correo)) throw new Error('Ya existe una cuenta con ese correo');
     const u: UsuarioLocal = { id: crypto.randomUUID(), nombre: nombre.trim(), email: correo, telefono: telefono.trim() || null, hash: await hash(password) };
     escribir(CLAVES.usuarios, [...usuarios, u]);

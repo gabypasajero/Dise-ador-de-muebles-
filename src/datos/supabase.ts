@@ -2,7 +2,7 @@
 // productos de la tienda y cotizaciones protegidas con RLS.
 import { createClient, type PostgrestError } from '@supabase/supabase-js';
 import type { Cotizacion, ProductoTienda, Usuario } from '../../shared/tipos';
-import { aCotizacion, aFila, validarDatos, type Backend, type FilaCotizacion } from './backend';
+import { aCotizacion, aFila, validarDatos, validarRegistro, type Backend, type FilaCotizacion } from './backend';
 
 const URL_SUPABASE = import.meta.env.VITE_SUPABASE_URL || 'https://bmxmqhbkgvgyqpwsuazm.supabase.co';
 const CLAVE_PUBLICA = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_C4bwkSAfBBHNg8z523_qpw_P-PDzciI';
@@ -76,6 +76,8 @@ export const backendSupabase: Backend = {
   },
 
   async registrar({ nombre, email, telefono, password, codigo }) {
+    const invalido = validarRegistro({ nombre, email, telefono, password });
+    if (invalido) throw new Error(invalido);
     const { data, error } = await supabase.auth.signUp({
       email: email.trim().toLowerCase(),
       password,
@@ -87,8 +89,11 @@ export const backendSupabase: Backend = {
     if (error) {
       if (/already registered|already exists/i.test(error.message)) throw new Error('Ya existe una cuenta con ese correo');
       if (/database error/i.test(error.message)) {
-        const pideCodigo = await backendSupabase.requiereCodigo();
-        throw new Error(pideCodigo ? 'Código de vendedor incorrecto. Pídelo a la administración de la tienda.' : SQL_PENDIENTE);
+        // Un trigger rechazó el registro: falta el SQL o el código no coincide.
+        const r = await supabase.rpc('registro_requiere_codigo');
+        if (r.error && (r.error.code === 'PGRST202' || r.error.code === '42883')) throw new ErrorConfiguracion(SQL_PENDIENTE);
+        if (r.data === true) throw new Error('Código de vendedor incorrecto. Pídelo a la administración de la tienda.');
+        throw new Error('No se pudo crear la cuenta. Revisa tus datos e inténtalo de nuevo.');
       }
       if (/password/i.test(error.message)) throw new Error('La contraseña es muy débil: usa al menos 8 caracteres');
       if (/rate limit|too many/i.test(error.message)) throw new Error('Demasiados intentos. Espera unos minutos e inténtalo de nuevo.');

@@ -4,7 +4,7 @@ Herramienta web **para los vendedores** de De Todito Outlet. El vendedor parte d
 
 ## Qué hace
 
-- **Acceso solo para vendedores** con Supabase Auth: «Registrarme como vendedor» (nombre, correo, teléfono opcional y contraseña) e «Ingresar». Se puede exigir un código de vendedor.
+- **Acceso solo para vendedores** con Supabase Auth: «Registrarme como vendedor» (nombre, correo, teléfono opcional, contraseña y **código de vendedor**) e «Ingresar».
 - **Catálogo de la tienda en vivo**: lee la tabla `productos` del proyecto de Supabase de la tienda (con una copia local de respaldo). Cada producto se asocia a un modelo 3D paramétrico y su foto queda como referencia en el visor.
 - **Modelo 3D bien definido**: casco, frentes, cubierta postformada con copete, encimera, lavaplatos con grifería, horno, tiradores, repisas, barra para colgar y cajones. Puertas y cajones se abren con un clic.
 - **Escenario según el mueble**: cocina, dormitorio o dormitorio infantil (o estudio neutro).
@@ -20,9 +20,9 @@ Herramienta web **para los vendedores** de De Todito Outlet. El vendedor parte d
 
 1. Abre el archivo [`supabase/migrations/20261013120000_vendedores_cotizaciones.sql`](supabase/migrations/20261013120000_vendedores_cotizaciones.sql) y copia **todo su contenido** (en GitHub, botón «Copy raw file»). No pegues la ruta del archivo: el SQL Editor la intentaría ejecutar y mostraría `syntax error at or near "supabase"`.
 2. En el panel de Supabase abre el proyecto **DTO detoditooutlet** → **SQL Editor** → **New query**.
-3. Pega el contenido y presiona **Run**. Debe aparecer una fila con **Listo**.
+3. Pega el contenido y presiona **Run**. Debe aparecer una fila con **Listo** y el **código de vendedor** (por ejemplo `DTO-4F9A2C`). Compártelo solo con tu equipo: lo piden al registrarse.
 
-Se puede ejecutar más de una vez sin problema, y si por error se ejecuta en otro proyecto se detiene con un mensaje claro sin crear nada.
+No hace falta crear otra organización ni otro proyecto. Se puede ejecutar más de una vez sin problema (el código se mantiene), y si por error se ejecuta en otro proyecto se detiene con un mensaje claro sin crear nada.
 
 Crea, sin modificar lo que ya existe en la tienda:
 
@@ -33,7 +33,7 @@ Crea, sin modificar lo que ya existe en la tienda:
 | `ajustes_privados` | Código de vendedor (no accesible desde la app) |
 | Triggers en `auth.users` | Validan el código y crean el perfil **solo** cuando el registro es de vendedor; las cuentas de administración no se ven afectadas |
 
-Las reglas se aplican en la base de datos (RLS y triggers): una cotización vendida no se edita, los datos de venta solo existen en cotizaciones vendidas y las cotizaciones no se borran (se anulan).
+Las reglas se aplican en la base de datos (RLS y triggers): una cotización vendida no se edita, los datos de venta solo existen en cotizaciones vendidas y las cotizaciones no se borran (se anulan). Si la tienda borra un producto, sus cotizaciones se conservan (quedan sin enlace al producto).
 
 ### 2. Ajustes de autenticación en Supabase
 
@@ -41,18 +41,26 @@ En **Authentication → URL Configuration**:
 - **Site URL**: la dirección donde publiques la app (por ejemplo `https://disenador.detoditooutlet.cl`).
 - **Redirect URLs**: agrega esa misma dirección (y `http://localhost:5173` para desarrollo).
 
-Por defecto Supabase pide **confirmar el correo**: el vendedor recibe un enlace y luego ingresa. El correo integrado de Supabase permite pocos envíos por hora; si van a registrarse varios vendedores, configura un SMTP propio (**Authentication → SMTP Settings**) o desactiva la confirmación (**Authentication → Sign In / Providers → Email → Confirm email**) si usas código de vendedor.
+Por defecto Supabase pide **confirmar el correo**: el vendedor recibe un enlace y luego ingresa. El correo integrado de Supabase permite pocos envíos por hora; si van a registrarse varios vendedores, configura un SMTP propio (**Authentication → SMTP Settings**). También puedes desactivar la confirmación (**Authentication → Sign In / Providers → Email → Confirm email**), ya que el código de vendedor impide registros ajenos; ten en cuenta que esa opción aplica a todas las cuentas del proyecto, incluidas las de la tienda.
 
-### 3. Código de vendedor (recomendado)
+### 3. Código de vendedor y vendedores
 
-Para que solo tu equipo pueda registrarse, en el SQL Editor:
+Para ver o cambiar el código, en el SQL Editor:
 
 ```sql
-insert into public.ajustes_privados (clave, valor) values ('codigo_vendedores', 'TU-CODIGO')
-on conflict (clave) do update set valor = excluded.valor;
+select valor from public.ajustes_privados where clave = 'codigo_vendedores';
+update public.ajustes_privados set valor = 'NUEVO-CODIGO' where clave = 'codigo_vendedores';
 ```
 
-Para desactivar a un vendedor: `update public.vendedores set activo = false where email = 'correo@dto.cl';`
+Cambiarlo no afecta a quienes ya tienen cuenta. Con el valor vacío (`''`) cualquiera puede registrarse como vendedor.
+
+Para **desactivar a un vendedor** (no puede ingresar, registrar ni ver cotizaciones; la administración sigue viendo las suyas):
+
+```sql
+update public.vendedores set activo = false where email = 'correo@dto.cl';
+```
+
+No borres vendedores desde **Authentication → Users**: si tienen cotizaciones, Supabase lo rechaza («Database error deleting user») porque el registro de cotizaciones se conserva.
 
 ### 4. Ejecutar
 

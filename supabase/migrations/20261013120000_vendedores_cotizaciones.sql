@@ -8,6 +8,9 @@
 -- Crea los perfiles de vendedor (Supabase Auth) y el registro de
 -- cotizaciones y ventas. No modifica productos ni admins de la tienda.
 -- Se puede ejecutar más de una vez sin problema.
+--
+-- Al final muestra el código que deben ingresar los vendedores para
+-- registrarse (se genera solo la primera vez y se puede cambiar).
 -- =====================================================================
 
 -- Verifica que se esté ejecutando en el proyecto de la tienda.
@@ -29,6 +32,11 @@ revoke all on public.ajustes_privados from anon, authenticated;
 comment on table public.ajustes_privados is
   'Ajustes internos. codigo_vendedores: código que se exige para registrar vendedores (vacío = registro abierto).';
 
+-- Código de vendedor inicial: solo quien lo conozca puede registrarse.
+insert into public.ajustes_privados (clave, valor)
+values ('codigo_vendedores', 'DTO-' || upper(substr(md5(gen_random_uuid()::text), 1, 6)))
+on conflict (clave) do nothing;
+
 -- ---------- Vendedores ----------
 create table if not exists public.vendedores (
   id uuid primary key references auth.users (id) on delete cascade,
@@ -42,7 +50,7 @@ alter table public.vendedores enable row level security;
 
 -- El vendedor solo puede cambiar su nombre y teléfono. Para desactivar a un
 -- vendedor la administración cambia "activo" desde el panel de Supabase.
-revoke insert, update, delete on public.vendedores from anon, authenticated;
+revoke all on public.vendedores from anon, authenticated;
 grant select on public.vendedores to authenticated;
 grant update (nombre, telefono) on public.vendedores to authenticated;
 
@@ -55,6 +63,7 @@ set search_path = public
 as $$
   select exists (select 1 from public.vendedores where id = auth.uid() and activo);
 $$;
+grant execute on function public.es_vendedor() to authenticated;
 
 create or replace function public.registro_requiere_codigo()
 returns boolean
@@ -97,17 +106,17 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  nombre_perfil text := left(trim(coalesce(new.raw_user_meta_data ->> 'nombre', '')), 80);
 begin
   if coalesce(new.raw_user_meta_data ->> 'rol', '') <> 'vendedor' then
     return new;
   end if;
+  if char_length(nombre_perfil) < 3 then
+    nombre_perfil := left(new.email, 80);
+  end if;
   insert into public.vendedores (id, nombre, email, telefono)
-  values (
-    new.id,
-    coalesce(nullif(trim(new.raw_user_meta_data ->> 'nombre'), ''), split_part(new.email, '@', 1)),
-    new.email,
-    nullif(trim(new.raw_user_meta_data ->> 'telefono'), '')
-  )
+  values (new.id, nombre_perfil, new.email, left(nullif(trim(new.raw_user_meta_data ->> 'telefono'), ''), 30))
   on conflict (id) do nothing;
   return new;
 end;
@@ -125,7 +134,7 @@ create table if not exists public.cotizaciones (
   producto_id bigint references public.productos (id) on delete set null,
   modelo text not null check (char_length(modelo) between 1 and 200),
   config jsonb not null check (octet_length(config::text) <= 3000000),
-  detalle jsonb not null check (jsonb_typeof(detalle) = 'array'),
+  detalle jsonb not null check (jsonb_typeof(detalle) = 'array' and octet_length(detalle::text) <= 50000),
   miniatura text check (miniatura is null or char_length(miniatura) <= 600000),
   valor integer not null check (valor > 0 and valor <= 100000000),
   fecha date not null default current_date,
@@ -142,8 +151,9 @@ alter table public.cotizaciones enable row level security;
 create index if not exists cotizaciones_vendedor_fecha on public.cotizaciones (vendedor_id, fecha desc, id desc);
 create index if not exists cotizaciones_producto on public.cotizaciones (producto_id);
 
--- Las cotizaciones no se borran: se anulan.
-revoke delete on public.cotizaciones from anon, authenticated;
+-- Solo vendedores con sesión. Las cotizaciones no se borran: se anulan.
+revoke all on public.cotizaciones from anon, authenticated;
+grant select, insert, update on public.cotizaciones to authenticated;
 
 -- Reglas del registro: el vendedor no cambia, una venta no se edita y
 -- los datos de venta solo existen en cotizaciones vendidas.
@@ -160,12 +170,16 @@ begin
     if new.vendedor_id <> old.vendedor_id then
       raise exception 'No se puede cambiar el vendedor de una cotización';
     end if;
+    -- Si la tienda borra el producto, Postgres deja producto_id en null
+    -- (trigger anidado): eso no cuenta como editar la venta.
     if old.estado = 'vendida' and new.estado = 'vendida' and
        row(new.cliente_nombre, new.cliente_telefono, new.cliente_email, new.cliente_direccion, new.observaciones,
-           new.producto_id, new.modelo, new.config, new.detalle, new.valor, new.fecha)
+           case when new.producto_id is null and pg_trigger_depth() > 1 then old.producto_id else new.producto_id end,
+           new.modelo, new.config, new.detalle, new.valor, new.fecha)
        is distinct from
        row(old.cliente_nombre, old.cliente_telefono, old.cliente_email, old.cliente_direccion, old.observaciones,
-           old.producto_id, old.modelo, old.config, old.detalle, old.valor, old.fecha) then
+           old.producto_id,
+           old.modelo, old.config, old.detalle, old.valor, old.fecha) then
       raise exception 'La cotización ya está vendida: registra una nueva para cambiarla';
     end if;
     if old.estado = 'anulada' and new.estado = 'vendida' then
@@ -202,7 +216,7 @@ begin
   if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'cotizaciones' and policyname = 'vendedor ve sus cotizaciones') then
     create policy "vendedor ve sus cotizaciones" on public.cotizaciones
       for select to authenticated
-      using (vendedor_id = (select auth.uid()) or (select public.es_admin()));
+      using ((vendedor_id = (select auth.uid()) and (select public.es_vendedor())) or (select public.es_admin()));
   end if;
 
   if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'cotizaciones' and policyname = 'vendedor registra cotizaciones') then
@@ -239,5 +253,26 @@ begin
 end;
 $$;
 
+-- Perfiles de quienes se registraron como vendedor antes de ejecutar este SQL.
+do $$
+begin
+  if has_table_privilege('auth.users', 'select') then
+    insert into public.vendedores (id, nombre, email, telefono)
+    select u.id,
+           case when char_length(trim(coalesce(u.raw_user_meta_data ->> 'nombre', ''))) >= 3
+                then left(trim(u.raw_user_meta_data ->> 'nombre'), 80)
+                else left(u.email, 80) end,
+           u.email,
+           left(nullif(trim(u.raw_user_meta_data ->> 'telefono'), ''), 30)
+    from auth.users u
+    where u.raw_user_meta_data ->> 'rol' = 'vendedor' and u.email is not null
+    on conflict (id) do nothing;
+  else
+    raise notice 'No se pudieron revisar registros anteriores de vendedores.';
+  end if;
+end;
+$$;
+
 select 'Listo' as resultado,
-  'Tablas vendedores y cotizaciones creadas. Ya puedes registrar vendedores en el diseñador.' as detalle;
+  coalesce(nullif((select valor from public.ajustes_privados where clave = 'codigo_vendedores'), ''), '(sin código: registro abierto)') as codigo_vendedores,
+  'Comparte el código solo con tu equipo: lo piden al registrarse en el diseñador.' as detalle;
