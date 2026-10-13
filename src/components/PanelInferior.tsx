@@ -3,7 +3,8 @@ import { LIMITES, advertencias, aUnidad, fijarAlto, fijarAncho, fijarProfundidad
 import type { Unidad } from '../../shared/tipos';
 import { useApp } from '../store/useApp';
 import { CampoMedida, Segmentado } from './Controles';
-import { IcoAviso, IcoGuardar, IcoWsp } from './Iconos';
+import { api } from '../api/cliente';
+import { IcoAviso, IcoGuardar } from './Iconos';
 import { PestanaCajones, PestanaEquipamiento, PestanaModulos, PestanaPuertas, pestanasDe } from './Pestanas';
 
 /** Una de las tres líneas de medida (alto, ancho, profundidad). */
@@ -62,6 +63,18 @@ export function PanelInferior() {
   const avisos = advertencias(d, unidad);
   const precio = precioReferencial(d, producto, disenoBase);
   const props = { d, unidad, cambiar };
+  const cotizacion = useApp((s) => s.cotizacionActual);
+  const editable = cotizacion?.estado === 'cotizada';
+  const verActual = async () => {
+    const { token, avisar, verCotizacion } = useApp.getState();
+    if (!token || !cotizacion) return;
+    try {
+      const r = await api.cotizacion(token, cotizacion.id);
+      verCotizacion(r.cotizacion);
+    } catch (e) {
+      avisar((e as Error).message, 'error');
+    }
+  };
 
   return (
     <section className="panel-inferior" aria-label="Medidas del mueble">
@@ -136,25 +149,39 @@ export function PanelInferior() {
       </div>
 
       <div className="bloque-precio">
-        <span className="campo-etiqueta">{precio ? 'Precio referencial' : 'Diseño a medida'}</span>
-        <strong className="precio">{precio ? formatoPrecio(precio) : 'Cotízalo'}</strong>
+        {cotizacion ? (
+          <span className="campo-etiqueta">
+            {cotizacion.numero} · {cotizacion.cliente.nombre} · <span className={`estado-cotizacion ${cotizacion.estado}`}>{cotizacion.estado}</span>
+          </span>
+        ) : (
+          <span className="campo-etiqueta">{precio ? 'Valor referencial' : 'Diseño a medida'}</span>
+        )}
+        <strong className="precio">{cotizacion ? formatoPrecio(cotizacion.venta?.valor ?? cotizacion.valor) : precio ? formatoPrecio(precio) : 'Sin referencia'}</strong>
         <span className="resumen-medidas">
           {formatear(d.ancho, unidad, false)} × {formatear(d.alto, unidad, false)} × {formatear(d.profundidad, unidad)}
         </span>
-        <span className="tenue chico">{precio ? 'Estimado según medidas; la tienda confirma el valor.' : 'Rachel te envía el valor por WhatsApp.'}</span>
+        <span className="tenue chico">
+          {cotizacion
+            ? precio
+              ? `Referencial con las medidas actuales: ${formatoPrecio(precio)}`
+              : 'Valor registrado en la cotización.'
+            : precio
+              ? 'Calculado desde el precio de la tienda; lo ajustas al cotizar.'
+              : 'Ingresa el valor al registrar la cotización.'}
+        </span>
         <div className="acciones-precio">
-          <button type="button" className="boton wsp" onClick={() => set({ modal: 'cotizar' })}>
-            <IcoWsp /> Cotizar por WhatsApp
+          <button type="button" className="boton primario" onClick={() => set({ modal: 'registrarCotizacion' })}>
+            <IcoGuardar /> {editable ? `Actualizar ${cotizacion!.numero}` : 'Registrar cotización'}
           </button>
-          <button
-            type="button"
-            className="boton secundario"
-            onClick={() =>
-              useApp.getState().usuario ? set({ modal: 'guardar' }) : set({ modal: 'auth', modoAuth: 'login', trasAuth: 'guardar' })
-            }
-          >
-            <IcoGuardar /> Guardar diseño
-          </button>
+          {cotizacion ? (
+            <button type="button" className="boton secundario" onClick={() => verActual()}>
+              Ver cotización
+            </button>
+          ) : (
+            <button type="button" className="boton secundario" onClick={() => set({ modal: 'cotizaciones' })}>
+              Mis cotizaciones
+            </button>
+          )}
         </div>
       </div>
     </section>

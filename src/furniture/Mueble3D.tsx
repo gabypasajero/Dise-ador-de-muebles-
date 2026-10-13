@@ -59,7 +59,8 @@ function Cotas({ diseno: d, unidad }: { diseno: Diseno; unidad: Unidad }) {
   const D = d.profundidad;
   const sep = 140;
   return (
-    <group>
+    // El nombre permite ocultarlas al capturar la miniatura de la cotización.
+    <group name="cotas">
       <Cota desde={[-W / 2, H + sep, D]} hasta={[W / 2, H + sep, D]} normal={[0, 1, 0]} texto={`Ancho ${formatear(W, unidad)}`} />
       <Cota desde={[W / 2 + sep, 0, D]} hasta={[W / 2 + sep, H, D]} normal={[1, 0, 0]} texto={`Alto ${formatear(H, unidad)}`} />
       <Cota desde={[W / 2 + sep, H + sep, 0]} hasta={[W / 2 + sep, H + sep, D]} normal={[1, 0, 0]} texto={`Prof. ${formatear(D, unidad)}`} />

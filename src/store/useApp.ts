@@ -1,11 +1,14 @@
 import { create } from 'zustand';
 import { clasificarProducto, disenoInicial, disenoLibre } from '../../shared/catalogo';
 import { normalizar } from '../../shared/reglas';
-import type { CatalogoMateriales, Diseno, Escenario, Plantilla, ProductoCatalogo, Unidad, Usuario } from '../../shared/tipos';
+import type { CatalogoMateriales, Cotizacion, Diseno, Escenario, Plantilla, ProductoCatalogo, Unidad, Usuario } from '../../shared/tipos';
 import { api, guardarToken, tokenGuardado, type RespuestaCatalogo } from '../api/cliente';
 
 export type Pestana = 'puertas' | 'cajones' | 'modulos' | 'equipamiento';
-export type Modal = null | 'catalogo' | 'auth' | 'misDisenos' | 'cotizar' | 'guardar';
+export type Modal = null | 'catalogo' | 'registrarCotizacion' | 'cotizaciones' | 'documento' | 'venta';
+
+/** Cotización a la que pertenece el diseño que se está editando. */
+export type CotizacionEnEdicion = Omit<Cotizacion, 'config' | 'miniatura'>;
 export type Vista = 'perspectiva' | 'frontal' | 'superior';
 
 interface Aviso {
@@ -37,12 +40,11 @@ interface Estado {
 
   usuario: Usuario | null;
   token: string | null;
-  guardadoId: number | null;
-  nombreGuardado: string;
+  sesion: 'verificando' | 'invitado' | 'activa';
+  cotizacionActual: CotizacionEnEdicion | null;
+  /** Cotización abierta en el documento o en el registro de venta. */
+  cotizacionVista: Cotizacion | null;
   modal: Modal;
-  /** Modal que se abre después de iniciar sesión (p. ej. guardar). */
-  trasAuth: Modal;
-  modoAuth: 'login' | 'registro';
   avisos: Aviso[];
   capturar: (() => string | null) | null;
 
@@ -53,7 +55,8 @@ interface Estado {
   deshacer: () => void;
   rehacer: () => void;
   restablecer: () => void;
-  cargarGuardado: (id: number, nombre: string, config: Diseno, productoId: number | null) => void;
+  cargarCotizacion: (c: Cotizacion) => void;
+  verCotizacion: (c: Cotizacion) => void;
   set: (parcial: Partial<Estado>) => void;
   avisar: (texto: string, tipo?: Aviso['tipo']) => void;
   iniciarSesion: (token: string, usuario: Usuario) => void;
@@ -62,7 +65,14 @@ interface Estado {
 
 const CLAVE_BORRADOR = 'dto-borrador-v1';
 
-function leerBorrador(): { productoId: number | null; diseno: Diseno; unidad?: Unidad } | null {
+interface Borrador {
+  productoId: number | null;
+  diseno: Diseno;
+  unidad?: Unidad;
+  cotizacion?: CotizacionEnEdicion | null;
+}
+
+function leerBorrador(): Borrador | null {
   try {
     const t = localStorage.getItem(CLAVE_BORRADOR);
     return t ? JSON.parse(t) : null;
@@ -71,9 +81,10 @@ function leerBorrador(): { productoId: number | null; diseno: Diseno; unidad?: U
   }
 }
 
-function escribirBorrador(productoId: number | null, diseno: Diseno, unidad: Unidad) {
+function escribirBorrador(productoId: number | null, diseno: Diseno, unidad: Unidad, cotizacion: CotizacionEnEdicion | null) {
   try {
-    localStorage.setItem(CLAVE_BORRADOR, JSON.stringify({ productoId, diseno, unidad }));
+    const b: Borrador = { productoId, diseno, unidad, cotizacion };
+    localStorage.setItem(CLAVE_BORRADOR, JSON.stringify(b));
   } catch {
     // sin almacenamiento local (o imagen muy grande): se omite el borrador
   }
@@ -104,15 +115,24 @@ export const useApp = create<Estado>((set, get) => ({
 
   usuario: null,
   token: tokenGuardado(),
-  guardadoId: null,
-  nombreGuardado: '',
+  sesion: tokenGuardado() ? 'verificando' : 'invitado',
+  cotizacionActual: null,
+  cotizacionVista: null,
   modal: null,
-  trasAuth: null,
-  modoAuth: 'login',
   avisos: [],
   capturar: null,
 
   async cargarDatos() {
+    const token = get().token;
+    if (token) {
+      api
+        .yo(token)
+        .then(({ usuario }) => set({ usuario, sesion: 'activa' }))
+        .catch(() => {
+          guardarToken(null);
+          set({ token: null, usuario: null, sesion: 'invitado' });
+        });
+    }
     try {
       const [catalogo, materiales] = await Promise.all([api.productos(), api.materiales()]);
       set({ catalogo, materiales, errorCarga: null });
@@ -124,6 +144,7 @@ export const useApp = create<Estado>((set, get) => ({
           disenoBase: producto ? disenoInicial(producto) : null,
           diseno: normalizar(borrador.diseno),
           unidad: borrador.unidad ?? 'cm',
+          cotizacionActual: borrador.cotizacion ?? null,
           encuadre: get().encuadre + 1,
         });
       } else {
@@ -134,16 +155,6 @@ export const useApp = create<Estado>((set, get) => ({
       }
     } catch (e) {
       set({ errorCarga: (e as Error).message });
-    }
-    const token = get().token;
-    if (token) {
-      api
-        .yo(token)
-        .then(({ usuario }) => set({ usuario }))
-        .catch(() => {
-          guardarToken(null);
-          set({ token: null, usuario: null });
-        });
     }
   },
 
@@ -156,14 +167,13 @@ export const useApp = create<Estado>((set, get) => ({
       diseno: d,
       pasado: [],
       futuro: [],
-      guardadoId: null,
-      nombreGuardado: '',
+      cotizacionActual: null,
       abierto: false,
       encuadre: get().encuadre + 1,
       vista: 'perspectiva',
       modal: null,
     });
-    escribirBorrador(producto.id, d, get().unidad);
+    escribirBorrador(producto.id, d, get().unidad, null);
   },
 
   empezarLibre(plantilla) {
@@ -174,18 +184,17 @@ export const useApp = create<Estado>((set, get) => ({
       diseno: d,
       pasado: [],
       futuro: [],
-      guardadoId: null,
-      nombreGuardado: '',
+      cotizacionActual: null,
       abierto: false,
       encuadre: get().encuadre + 1,
       vista: 'perspectiva',
       modal: null,
     });
-    escribirBorrador(null, d, get().unidad);
+    escribirBorrador(null, d, get().unidad, null);
   },
 
   cambiar(f, grupo) {
-    const { diseno, pasado, ultimoGrupo, producto, unidad } = get();
+    const { diseno, pasado, ultimoGrupo, producto, unidad, cotizacionActual } = get();
     const nuevo = f(diseno);
     if (nuevo === diseno) return;
     const ahora = Date.now();
@@ -196,7 +205,7 @@ export const useApp = create<Estado>((set, get) => ({
       futuro: [],
       ultimoGrupo: grupo ? { clave: grupo, t: ahora } : null,
     });
-    escribirBorrador(producto?.id ?? null, nuevo, unidad);
+    escribirBorrador(producto?.id ?? null, nuevo, unidad, cotizacionActual);
   },
 
   deshacer() {
@@ -219,29 +228,35 @@ export const useApp = create<Estado>((set, get) => ({
     set({ encuadre: get().encuadre + 1 });
   },
 
-  cargarGuardado(id, nombre, config, productoId) {
+  cargarCotizacion(c) {
     const catalogo = get().catalogo;
-    const producto = productoId != null ? (catalogo?.productos.find((p) => p.id === productoId) ?? null) : null;
-    const d = normalizar(config);
+    const producto = c.productoId != null ? (catalogo?.productos.find((p) => p.id === c.productoId) ?? null) : null;
+    if (!c.config) return;
+    const d = normalizar(c.config);
+    const { config: _config, miniatura: _miniatura, ...resumen } = c;
     set({
       producto,
       disenoBase: producto ? disenoInicial(producto) : null,
       diseno: d,
       pasado: [],
       futuro: [],
-      guardadoId: id,
-      nombreGuardado: nombre,
+      cotizacionActual: resumen,
       modal: null,
+      abierto: false,
       encuadre: get().encuadre + 1,
     });
-    escribirBorrador(productoId, d, get().unidad);
+    escribirBorrador(c.productoId, d, get().unidad, resumen);
+  },
+
+  verCotizacion(c) {
+    set({ cotizacionVista: c, modal: 'documento' });
   },
 
   set(parcial) {
     set(parcial);
-    if ('unidad' in parcial) {
-      const { producto, diseno, unidad } = get();
-      escribirBorrador(producto?.id ?? null, diseno, unidad);
+    if ('unidad' in parcial || 'cotizacionActual' in parcial) {
+      const { producto, diseno, unidad, cotizacionActual } = get();
+      escribirBorrador(producto?.id ?? null, diseno, unidad, cotizacionActual);
     }
   },
 
@@ -253,12 +268,18 @@ export const useApp = create<Estado>((set, get) => ({
 
   iniciarSesion(token, usuario) {
     guardarToken(token);
-    set({ token, usuario, modal: null });
+    set({ token, usuario, sesion: 'activa' });
   },
 
   cerrarSesion() {
     guardarToken(null);
-    set({ token: null, usuario: null, guardadoId: null, nombreGuardado: '' });
+    try {
+      // En un equipo compartido el siguiente vendedor parte de cero.
+      localStorage.removeItem(CLAVE_BORRADOR);
+    } catch {
+      // sin almacenamiento local
+    }
+    set({ token: null, usuario: null, sesion: 'invitado', cotizacionActual: null, cotizacionVista: null, modal: null });
   },
 }));
 

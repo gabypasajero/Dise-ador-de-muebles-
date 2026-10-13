@@ -8,6 +8,10 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as typeof
 
 export type Db = TipoDatabaseSync;
 
+function columnas(db: Db, tabla: string): string[] {
+  return (db.prepare(`PRAGMA table_info(${tabla})`).all() as { name: string }[]).map((c) => c.name);
+}
+
 export function abrirDb(ruta: string): Db {
   if (ruta !== ':memory:') fs.mkdirSync(path.dirname(ruta), { recursive: true });
   const db = new DatabaseSync(ruta);
@@ -15,6 +19,7 @@ export function abrirDb(ruta: string): Db {
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
 
+    -- Cuentas de los vendedores.
     CREATE TABLE IF NOT EXISTS usuarios (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       nombre TEXT NOT NULL,
@@ -22,30 +27,39 @@ export function abrirDb(ruta: string): Db {
       hash TEXT NOT NULL,
       creado TEXT NOT NULL DEFAULT (datetime('now'))
     );
+  `);
+  if (!columnas(db, 'usuarios').includes('telefono')) db.exec('ALTER TABLE usuarios ADD COLUMN telefono TEXT');
 
-    CREATE TABLE IF NOT EXISTS disenos (
+  // La primera versión guardaba cotizaciones de clientes sin vendedor: se archivan.
+  const previas = columnas(db, 'cotizaciones');
+  if (previas.length && !previas.includes('vendedor_id')) db.exec('ALTER TABLE cotizaciones RENAME TO cotizaciones_v1');
+
+  db.exec(`
+    -- Cotizaciones y ventas registradas por cada vendedor.
+    CREATE TABLE IF NOT EXISTS cotizaciones (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-      nombre TEXT NOT NULL,
+      vendedor_id INTEGER NOT NULL REFERENCES usuarios(id),
+      cliente_nombre TEXT NOT NULL,
+      cliente_telefono TEXT,
+      cliente_email TEXT,
+      cliente_direccion TEXT,
+      observaciones TEXT,
       producto_id INTEGER,
+      modelo TEXT NOT NULL,
       config TEXT NOT NULL,
+      detalle TEXT NOT NULL,
       miniatura TEXT,
+      valor INTEGER NOT NULL,
+      fecha TEXT NOT NULL,
+      estado TEXT NOT NULL DEFAULT 'cotizada' CHECK (estado IN ('cotizada', 'vendida', 'anulada')),
+      fecha_venta TEXT,
+      valor_venta INTEGER,
+      medio_pago TEXT,
+      nota_venta TEXT,
       creado TEXT NOT NULL DEFAULT (datetime('now')),
       actualizado TEXT NOT NULL DEFAULT (datetime('now'))
     );
-    CREATE INDEX IF NOT EXISTS disenos_usuario ON disenos(usuario_id, actualizado DESC);
-
-    CREATE TABLE IF NOT EXISTS cotizaciones (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
-      nombre TEXT,
-      telefono TEXT,
-      comentario TEXT,
-      producto_id INTEGER,
-      config TEXT NOT NULL,
-      resumen TEXT NOT NULL,
-      creado TEXT NOT NULL DEFAULT (datetime('now'))
-    );
+    CREATE INDEX IF NOT EXISTS cotizaciones_vendedor ON cotizaciones(vendedor_id, fecha DESC, id DESC);
   `);
   return db;
 }

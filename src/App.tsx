@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
+import { Acceso } from './components/Acceso';
 import { BarraVisor } from './components/BarraVisor';
 import { Cabecera } from './components/Cabecera';
-import { ModalAuth, ModalCatalogo, ModalCotizar, ModalGuardar, ModalMisDisenos } from './components/Modales';
+import { ModalCotizaciones, ModalDocumento, ModalRegistrarCotizacion, ModalVenta } from './components/Cotizaciones';
+import { ModalCatalogo } from './components/Modales';
 import { PanelColores } from './components/PanelColores';
 import { PanelInferior } from './components/PanelInferior';
 import { Visor3D } from './components/Visor3D';
@@ -22,6 +24,7 @@ function Avisos() {
 
 export default function App() {
   const modal = useApp((s) => s.modal);
+  const sesion = useApp((s) => s.sesion);
   const errorCarga = useApp((s) => s.errorCarga);
   const cargado = useApp((s) => s.catalogo !== null && s.materiales !== null);
 
@@ -47,6 +50,16 @@ export default function App() {
     return () => window.removeEventListener('keydown', tecla);
   }, []);
 
+  // La herramienta es solo para vendedores: sin sesión se muestra el ingreso.
+  if (sesion === 'verificando') return <div className="cargando-visor pantalla">Verificando sesión…</div>;
+  if (sesion === 'invitado')
+    return (
+      <>
+        <Acceso />
+        <Avisos />
+      </>
+    );
+
   return (
     <div className="app">
       <Cabecera />
@@ -63,10 +76,10 @@ export default function App() {
       </main>
       <PanelInferior />
       {modal === 'catalogo' && <ModalCatalogo />}
-      {modal === 'auth' && <ModalAuth />}
-      {modal === 'guardar' && <ModalGuardar />}
-      {modal === 'misDisenos' && <ModalMisDisenos />}
-      {modal === 'cotizar' && <ModalCotizar />}
+      {modal === 'registrarCotizacion' && <ModalRegistrarCotizacion />}
+      {modal === 'cotizaciones' && <ModalCotizaciones />}
+      {modal === 'documento' && <ModalDocumento />}
+      {modal === 'venta' && <ModalVenta />}
       <Avisos />
     </div>
   );

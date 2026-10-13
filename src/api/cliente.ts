@@ -1,4 +1,14 @@
-import type { CatalogoMateriales, CategoriaTienda, Diseno, DisenoGuardado, ProductoCatalogo, Usuario } from '../../shared/tipos';
+import type {
+  CatalogoMateriales,
+  CategoriaTienda,
+  Cliente,
+  Cotizacion,
+  Diseno,
+  LineaDetalle,
+  ProductoCatalogo,
+  TotalesCotizaciones,
+  Usuario,
+} from '../../shared/tipos';
 
 export interface RespuestaCatalogo {
   fuente: 'tienda' | 'respaldo';
@@ -7,6 +17,18 @@ export interface RespuestaCatalogo {
   whatsapp: string;
   categorias: CategoriaTienda[];
   productos: ProductoCatalogo[];
+}
+
+export interface DatosCotizacion {
+  cliente: Cliente;
+  observaciones: string | null;
+  productoId: number | null;
+  modelo: string;
+  config: Diseno;
+  detalle: LineaDetalle[];
+  miniatura: string | null;
+  valor: number;
+  fecha: string;
 }
 
 const CLAVE_TOKEN = 'dto-token';
@@ -47,28 +69,25 @@ async function pedir<T>(ruta: string, opciones: RequestInit = {}, token?: string
   return datos as T;
 }
 
+const post = (body: unknown) => ({ method: 'POST', body: JSON.stringify(body) });
+
 export const api = {
   productos: () => pedir<RespuestaCatalogo>('/api/productos'),
   materiales: () => pedir<CatalogoMateriales>('/api/materiales'),
-  registro: (nombre: string, email: string, password: string) =>
-    pedir<{ token: string; usuario: Usuario }>('/api/auth/registro', {
-      method: 'POST',
-      body: JSON.stringify({ nombre, email, password }),
-    }),
-  login: (email: string, password: string) =>
-    pedir<{ token: string; usuario: Usuario }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+
+  opcionesRegistro: () => pedir<{ requiereCodigo: boolean }>('/api/auth/registro'),
+  registro: (datos: { nombre: string; email: string; telefono: string; password: string; codigo?: string }) =>
+    pedir<{ token: string; usuario: Usuario }>('/api/auth/registro', post(datos)),
+  login: (email: string, password: string) => pedir<{ token: string; usuario: Usuario }>('/api/auth/login', post({ email, password })),
   yo: (token: string) => pedir<{ usuario: Usuario }>('/api/auth/yo', {}, token),
-  disenos: (token: string) => pedir<{ disenos: DisenoGuardado[] }>('/api/disenos', {}, token),
-  crearDiseno: (token: string, datos: { nombre: string; productoId: number | null; config: Diseno; miniatura: string | null }) =>
-    pedir<{ diseno: DisenoGuardado }>('/api/disenos', { method: 'POST', body: JSON.stringify(datos) }, token),
-  actualizarDiseno: (
-    token: string,
-    id: number,
-    datos: { nombre: string; productoId: number | null; config: Diseno; miniatura: string | null },
-  ) => pedir<{ diseno: DisenoGuardado }>(`/api/disenos/${id}`, { method: 'PUT', body: JSON.stringify(datos) }, token),
-  borrarDiseno: (token: string, id: number) => pedir<void>(`/api/disenos/${id}`, { method: 'DELETE' }, token),
-  cotizar: (
-    token: string | null,
-    datos: { nombre?: string; telefono?: string; comentario?: string; productoId: number | null; config: Diseno; resumen: string },
-  ) => pedir<{ id: number }>('/api/cotizaciones', { method: 'POST', body: JSON.stringify(datos) }, token),
+
+  cotizaciones: (token: string) => pedir<{ cotizaciones: Cotizacion[]; totales: TotalesCotizaciones }>('/api/cotizaciones', {}, token),
+  cotizacion: (token: string, id: number) => pedir<{ cotizacion: Cotizacion }>(`/api/cotizaciones/${id}`, {}, token),
+  crearCotizacion: (token: string, datos: DatosCotizacion) => pedir<{ cotizacion: Cotizacion }>('/api/cotizaciones', post(datos), token),
+  actualizarCotizacion: (token: string, id: number, datos: DatosCotizacion) =>
+    pedir<{ cotizacion: Cotizacion }>(`/api/cotizaciones/${id}`, { method: 'PUT', body: JSON.stringify(datos) }, token),
+  registrarVenta: (token: string, id: number, venta: { fecha: string; valor: number; medioPago: string | null; nota: string | null }) =>
+    pedir<{ cotizacion: Cotizacion }>(`/api/cotizaciones/${id}/venta`, post(venta), token),
+  cambiarEstado: (token: string, id: number, estado: 'cotizada' | 'anulada') =>
+    pedir<{ cotizacion: Cotizacion }>(`/api/cotizaciones/${id}/estado`, post({ estado }), token),
 };

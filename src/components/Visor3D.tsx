@@ -118,7 +118,13 @@ function Capturador() {
   useEffect(() => {
     useApp.getState().set({
       capturar: () => {
+        const ocultas: THREE.Object3D[] = [];
+        scene.traverse((o) => {
+          if (o.name === 'cotas' && o.visible) ocultas.push(o);
+        });
+        ocultas.forEach((o) => (o.visible = false));
         gl.render(scene, camera);
+        ocultas.forEach((o) => (o.visible = true));
         const origen = gl.domElement;
         const escala = 480 / origen.width;
         const c = document.createElement('canvas');

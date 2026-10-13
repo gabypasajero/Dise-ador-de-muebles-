@@ -1,18 +1,18 @@
 import { useState } from 'react';
 import { NOMBRE_PLANTILLA } from '../../shared/catalogo';
 import { useApp } from '../store/useApp';
-import { IcoCarpeta, IcoCatalogo, IcoDeshacer, IcoRehacer, IcoReiniciar, IcoUsuario } from './Iconos';
+import { IcoCarpeta, IcoCatalogo, IcoDeshacer, IcoRehacer, IcoReiniciar } from './Iconos';
 
 export function Cabecera() {
   const producto = useApp((s) => s.producto);
   const plantilla = useApp((s) => s.diseno.plantilla);
-  const nombreGuardado = useApp((s) => s.nombreGuardado);
+  const cotizacion = useApp((s) => s.cotizacionActual);
   const usuario = useApp((s) => s.usuario);
   const hayPasado = useApp((s) => s.pasado.length > 0);
   const hayFuturo = useApp((s) => s.futuro.length > 0);
   const { set, deshacer, rehacer, restablecer, cerrarSesion, avisar } = useApp.getState();
   const [menu, setMenu] = useState(false);
-  const titulo = nombreGuardado || producto?.modelo || NOMBRE_PLANTILLA[plantilla];
+  const titulo = producto?.modelo || NOMBRE_PLANTILLA[plantilla];
 
   return (
     <header className="cabecera">
@@ -33,7 +33,9 @@ export function Cabecera() {
           </span>
         )}
         <span className="selector-modelo-texto">
-          <small>{producto?.variante ? producto.variante : NOMBRE_PLANTILLA[plantilla]}</small>
+          <small>
+            {cotizacion ? `${cotizacion.numero} · Cotización ${cotizacion.cliente.nombre}` : producto?.variante ? producto.variante : NOMBRE_PLANTILLA[plantilla]}
+          </small>
           <strong>{titulo}</strong>
         </span>
         <span className="selector-modelo-accion">Cambiar mueble</span>
@@ -60,15 +62,17 @@ export function Cabecera() {
             <IcoReiniciar />
           </button>
         </div>
+        <button type="button" className="boton secundario" aria-label="Cotizaciones y ventas" onClick={() => set({ modal: 'cotizaciones' })}>
+          <IcoCarpeta /> <span className="ocultar-movil">Cotizaciones y ventas</span>
+        </button>
         {usuario && (
-          <button type="button" className="boton fantasma" onClick={() => set({ modal: 'misDisenos' })}>
-            <IcoCarpeta /> <span className="ocultar-movil">Mis diseños</span>
-          </button>
-        )}
-        {usuario ? (
           <div className="menu-usuario">
-            <button type="button" className="avatar" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)} title={usuario.email}>
-              {usuario.nombre.trim().charAt(0).toUpperCase()}
+            <button type="button" className="vendedor" aria-label={`Vendedor ${usuario.nombre}`} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)} title={usuario.email}>
+              <span className="avatar">{usuario.nombre.trim().charAt(0).toUpperCase()}</span>
+              <span className="vendedor-texto ocultar-movil">
+                <small>Vendedor</small>
+                <strong>{usuario.nombre.split(' ').slice(0, 2).join(' ')}</strong>
+              </span>
             </button>
             {menu && (
               <div className="menu-desplegable" role="menu" onMouseLeave={() => setMenu(false)}>
@@ -81,10 +85,10 @@ export function Cabecera() {
                   role="menuitem"
                   onClick={() => {
                     setMenu(false);
-                    set({ modal: 'misDisenos' });
+                    set({ modal: 'cotizaciones' });
                   }}
                 >
-                  Mis diseños
+                  Mis cotizaciones y ventas
                 </button>
                 <button
                   type="button"
@@ -92,7 +96,6 @@ export function Cabecera() {
                   onClick={() => {
                     setMenu(false);
                     cerrarSesion();
-                    avisar('Sesión cerrada', 'info');
                   }}
                 >
                   Cerrar sesión
@@ -100,10 +103,6 @@ export function Cabecera() {
               </div>
             )}
           </div>
-        ) : (
-          <button type="button" className="boton primario" onClick={() => set({ modal: 'auth', modoAuth: 'login' })}>
-            <IcoUsuario /> <span className="ocultar-movil">Iniciar sesión</span>
-          </button>
         )}
       </div>
     </header>

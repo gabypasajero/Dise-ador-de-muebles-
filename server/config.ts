@@ -21,6 +21,11 @@ export const config = {
   tiendaSupabaseUrl: process.env.TIENDA_SUPABASE_URL ?? 'https://bmxmqhbkgvgyqpwsuazm.supabase.co',
   tiendaSupabaseKey: process.env.TIENDA_SUPABASE_KEY ?? 'sb_publishable_C4bwkSAfBBHNg8z523_qpw_P-PDzciI',
   whatsapp: process.env.WHATSAPP ?? '56931719740',
+  /**
+   * Código que deben ingresar los vendedores para crear su cuenta. Si no se
+   * define, cualquiera con acceso a la página puede registrarse como vendedor.
+   */
+  codigoRegistro: process.env.CODIGO_VENDEDORES?.trim() || null,
   cacheProductosMs: Number(process.env.CACHE_PRODUCTOS_MS ?? 15 * 60 * 1000),
   rutaRespaldo: path.join(raiz, 'server', 'data', 'productos-respaldo.json'),
   rutaMateriales: path.join(raiz, 'server', 'data', 'materiales.json'),

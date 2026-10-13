@@ -153,18 +153,63 @@ export interface CatalogoMateriales {
   tiradores: Material[];
 }
 
+/** Vendedor con cuenta en la herramienta. */
 export interface Usuario {
   id: number;
   nombre: string;
   email: string;
+  telefono: string | null;
 }
 
-export interface DisenoGuardado {
-  id: number;
+/** Una línea del detalle de la cotización (con sublíneas opcionales). */
+export interface LineaDetalle {
+  etiqueta: string;
+  valor: string;
+  sub?: string[];
+}
+
+export type EstadoCotizacion = 'cotizada' | 'vendida' | 'anulada';
+
+export interface Cliente {
   nombre: string;
+  telefono: string | null;
+  email: string | null;
+  direccion: string | null;
+}
+
+export interface Venta {
+  fecha: string;
+  valor: number;
+  medioPago: string | null;
+  nota: string | null;
+}
+
+/** Cotización registrada por un vendedor. */
+export interface Cotizacion {
+  id: number;
+  numero: string;
+  vendedor: { id: number; nombre: string; telefono: string | null };
+  cliente: Cliente;
+  observaciones: string | null;
   productoId: number | null;
-  config: Diseno;
+  modelo: string;
+  detalle: LineaDetalle[];
   miniatura: string | null;
+  /** Valor del mueble en pesos chilenos. */
+  valor: number;
+  /** Fecha de la cotización (AAAA-MM-DD). */
+  fecha: string;
+  estado: EstadoCotizacion;
+  venta: Venta | null;
   creado: string;
   actualizado: string;
+  /** Solo viene al pedir una cotización puntual. */
+  config?: Diseno;
+}
+
+export interface TotalesCotizaciones {
+  cotizaciones: number;
+  montoCotizado: number;
+  ventas: number;
+  montoVendido: number;
 }

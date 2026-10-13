@@ -18,7 +18,7 @@ import {
   precioReferencial,
   quitarCuerpo,
 } from '../shared/reglas';
-import { resumenDiseno } from '../shared/resumen';
+import { detalleCotizacion, formatoFecha, telefonoWhatsapp, textoCotizacion } from '../shared/resumen';
 import type { Diseno, ProductoTienda } from '../shared/tipos';
 
 const suma = (d: Diseno) => d.cuerpos.reduce((s, c) => s + c.ancho, 0) + d.separacionCuerpos * (d.cuerpos.length - 1);
@@ -124,11 +124,41 @@ describe('precio referencial y resumen', () => {
     expect(precioReferencial(grande, p, base)!).toBeGreaterThan(p.precio_oferta!);
   });
 
-  it('el resumen incluye medidas, colores y equipamiento', () => {
-    const texto = resumenDiseno(base, p, 'cm', null, 519990);
-    expect(texto).toContain('150 × 90 × 60 cm');
-    expect(texto).toContain('código 16');
-    expect(texto).toContain('encimera 4 platos');
-    expect(texto).toContain('$519.990');
+  it('el detalle en lista incluye medidas, distribución y equipamiento', () => {
+    const detalle = detalleCotizacion(base, p, 'cm', null);
+    const medidas = detalle.find((l) => l.etiqueta === 'Medidas')!;
+    expect(medidas.valor).toContain('150 × 90 × 60 cm');
+    expect(detalle.find((l) => l.etiqueta === 'Modelo base')!.valor).toContain('código 16');
+    expect(detalle.find((l) => l.etiqueta === 'Distribución')!.sub).toHaveLength(3);
+    expect(detalle.find((l) => l.etiqueta === 'Equipamiento')!.valor).toContain('encimera 4 platos');
+  });
+
+  it('el texto de la cotización termina con vendedor, fecha y valor del mueble', () => {
+    const texto = textoCotizacion({
+      numero: 'COT-0007',
+      cliente: { nombre: 'Fernando Pérez', telefono: '+56 9 1234 5678', email: null, direccion: 'Maipú' },
+      detalle: detalleCotizacion(base, p, 'cm', null),
+      observaciones: null,
+      vendedor: { id: 1, nombre: 'Camila Rojas', telefono: null },
+      fecha: '2026-10-13',
+      valor: 519990,
+    });
+    const lineas = texto.split('\n');
+    expect(lineas[0]).toBe('Cotización Fernando Pérez · N° COT-0007');
+    expect(lineas.slice(-3)).toEqual(['Vendedor: Camila Rojas', 'Fecha cotización: 13-10-2026', 'Valor mueble: $519.990']);
+    expect(texto).toContain('• Dirección / comuna: Maipú');
+  });
+});
+
+describe('utilidades de cotización', () => {
+  it('formatea fechas como DD-MM-AAAA', () => {
+    expect(formatoFecha('2026-10-13')).toBe('13-10-2026');
+  });
+  it('normaliza teléfonos chilenos para WhatsApp', () => {
+    expect(telefonoWhatsapp('+56 9 1234 5678')).toBe('56912345678');
+    expect(telefonoWhatsapp('9 1234 5678')).toBe('56912345678');
+    expect(telefonoWhatsapp('1234 5678')).toBe('56912345678');
+    expect(telefonoWhatsapp('123')).toBeNull();
+    expect(telefonoWhatsapp(null)).toBeNull();
   });
 });
