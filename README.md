@@ -18,8 +18,11 @@ Herramienta web **para los vendedores** de De Todito Outlet. El vendedor parte d
 
 ### 1. Crear las tablas en Supabase (una sola vez)
 
-En el panel de Supabase del proyecto **DTO detoditooutlet** abre **SQL Editor**, pega el contenido de
-[`supabase/migrations/20261013120000_vendedores_cotizaciones.sql`](supabase/migrations/20261013120000_vendedores_cotizaciones.sql) y ejecútalo.
+1. Abre el archivo [`supabase/migrations/20261013120000_vendedores_cotizaciones.sql`](supabase/migrations/20261013120000_vendedores_cotizaciones.sql) y copia **todo su contenido** (en GitHub, botón «Copy raw file»). No pegues la ruta del archivo: el SQL Editor la intentaría ejecutar y mostraría `syntax error at or near "supabase"`.
+2. En el panel de Supabase abre el proyecto **DTO detoditooutlet** → **SQL Editor** → **New query**.
+3. Pega el contenido y presiona **Run**. Debe aparecer una fila con **Listo**.
+
+Se puede ejecutar más de una vez sin problema, y si por error se ejecuta en otro proyecto se detiene con un mensaje claro sin crear nada.
 
 Crea, sin modificar lo que ya existe en la tienda:
 

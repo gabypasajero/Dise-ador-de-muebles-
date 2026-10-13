@@ -1,5 +1,23 @@
--- Diseñador 3D para vendedores: perfiles de vendedor (Supabase Auth) y
--- registro de cotizaciones y ventas. No modifica las tablas de la tienda.
+-- =====================================================================
+-- Diseñador 3D para vendedores · De Todito Outlet
+--
+-- CÓMO USARLO: en Supabase abre el proyecto "DTO detoditooutlet",
+-- entra a SQL Editor, pega TODO este contenido y presiona "Run".
+-- Al terminar debe aparecer la fila "Listo".
+--
+-- Crea los perfiles de vendedor (Supabase Auth) y el registro de
+-- cotizaciones y ventas. No modifica productos ni admins de la tienda.
+-- Se puede ejecutar más de una vez sin problema.
+-- =====================================================================
+
+-- Verifica que se esté ejecutando en el proyecto de la tienda.
+do $$
+begin
+  if to_regclass('public.productos') is null or to_regprocedure('public.es_admin()') is null then
+    raise exception 'Este SQL es para el proyecto "DTO detoditooutlet": no se encontró la tabla productos ni la función es_admin(). Revisa que tengas abierto ese proyecto.';
+  end if;
+end;
+$$;
 
 -- ---------- Ajustes privados (solo accesibles desde funciones) ----------
 create table if not exists public.ajustes_privados (
@@ -22,18 +40,10 @@ create table if not exists public.vendedores (
 );
 alter table public.vendedores enable row level security;
 
-create policy "vendedor ve su perfil" on public.vendedores
-  for select to authenticated
-  using (id = (select auth.uid()) or (select public.es_admin()));
-
-create policy "vendedor edita su perfil" on public.vendedores
-  for update to authenticated
-  using (id = (select auth.uid()))
-  with check (id = (select auth.uid()));
-
 -- El vendedor solo puede cambiar su nombre y teléfono. Para desactivar a un
 -- vendedor la administración cambia "activo" desde el panel de Supabase.
 revoke insert, update, delete on public.vendedores from anon, authenticated;
+grant select on public.vendedores to authenticated;
 grant update (nombre, telefono) on public.vendedores to authenticated;
 
 create or replace function public.es_vendedor()
@@ -103,16 +113,6 @@ begin
 end;
 $$;
 
-drop trigger if exists validar_registro_vendedor on auth.users;
-create trigger validar_registro_vendedor
-  before insert on auth.users
-  for each row execute function public.validar_registro_vendedor();
-
-drop trigger if exists crear_perfil_vendedor on auth.users;
-create trigger crear_perfil_vendedor
-  after insert on auth.users
-  for each row execute function public.crear_perfil_vendedor();
-
 -- ---------- Cotizaciones y ventas ----------
 create table if not exists public.cotizaciones (
   id bigint generated always as identity primary key,
@@ -141,19 +141,6 @@ create table if not exists public.cotizaciones (
 alter table public.cotizaciones enable row level security;
 create index if not exists cotizaciones_vendedor_fecha on public.cotizaciones (vendedor_id, fecha desc, id desc);
 create index if not exists cotizaciones_producto on public.cotizaciones (producto_id);
-
-create policy "vendedor ve sus cotizaciones" on public.cotizaciones
-  for select to authenticated
-  using (vendedor_id = (select auth.uid()) or (select public.es_admin()));
-
-create policy "vendedor registra cotizaciones" on public.cotizaciones
-  for insert to authenticated
-  with check (vendedor_id = (select auth.uid()) and (select public.es_vendedor()));
-
-create policy "vendedor actualiza sus cotizaciones" on public.cotizaciones
-  for update to authenticated
-  using (vendedor_id = (select auth.uid()) and (select public.es_vendedor()))
-  with check (vendedor_id = (select auth.uid()));
 
 -- Las cotizaciones no se borran: se anulan.
 revoke delete on public.cotizaciones from anon, authenticated;
@@ -196,7 +183,61 @@ begin
 end;
 $$;
 
-drop trigger if exists validar_cotizacion on public.cotizaciones;
-create trigger validar_cotizacion
-  before insert or update on public.cotizaciones
-  for each row execute function public.validar_cotizacion();
+-- ---------- Políticas y triggers (solo se crean si no existen) ----------
+do $$
+begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'vendedores' and policyname = 'vendedor ve su perfil') then
+    create policy "vendedor ve su perfil" on public.vendedores
+      for select to authenticated
+      using (id = (select auth.uid()) or (select public.es_admin()));
+  end if;
+
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'vendedores' and policyname = 'vendedor edita su perfil') then
+    create policy "vendedor edita su perfil" on public.vendedores
+      for update to authenticated
+      using (id = (select auth.uid()))
+      with check (id = (select auth.uid()));
+  end if;
+
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'cotizaciones' and policyname = 'vendedor ve sus cotizaciones') then
+    create policy "vendedor ve sus cotizaciones" on public.cotizaciones
+      for select to authenticated
+      using (vendedor_id = (select auth.uid()) or (select public.es_admin()));
+  end if;
+
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'cotizaciones' and policyname = 'vendedor registra cotizaciones') then
+    create policy "vendedor registra cotizaciones" on public.cotizaciones
+      for insert to authenticated
+      with check (vendedor_id = (select auth.uid()) and (select public.es_vendedor()));
+  end if;
+
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'cotizaciones' and policyname = 'vendedor actualiza sus cotizaciones') then
+    create policy "vendedor actualiza sus cotizaciones" on public.cotizaciones
+      for update to authenticated
+      using (vendedor_id = (select auth.uid()) and (select public.es_vendedor()))
+      with check (vendedor_id = (select auth.uid()));
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'validar_cotizacion' and tgrelid = 'public.cotizaciones'::regclass) then
+    create trigger validar_cotizacion
+      before insert or update on public.cotizaciones
+      for each row execute function public.validar_cotizacion();
+  end if;
+
+  -- Triggers en auth.users: el rol postgres puede crearlos (no necesita ser dueño de la tabla).
+  if not exists (select 1 from pg_trigger where tgname = 'validar_registro_vendedor' and tgrelid = 'auth.users'::regclass) then
+    create trigger validar_registro_vendedor
+      before insert on auth.users
+      for each row execute function public.validar_registro_vendedor();
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'crear_perfil_vendedor' and tgrelid = 'auth.users'::regclass) then
+    create trigger crear_perfil_vendedor
+      after insert on auth.users
+      for each row execute function public.crear_perfil_vendedor();
+  end if;
+end;
+$$;
+
+select 'Listo' as resultado,
+  'Tablas vendedores y cotizaciones creadas. Ya puedes registrar vendedores en el diseñador.' as detalle;

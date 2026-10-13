@@ -1,6 +1,7 @@
-// Valida la migración de Supabase en un Postgres embebido (PGlite) que imita
-// lo que ya existe en el proyecto de la tienda: esquema auth, roles anon y
-// authenticated, tabla productos, admins y es_admin().
+// Valida la migración de Supabase en un Postgres embebido (PGlite) con el mismo
+// modelo de permisos que el proyecto de la tienda: el rol que usa el SQL Editor
+// ("editor" aquí, "postgres" en Supabase) NO es superusuario, auth.users
+// pertenece a supabase_auth_admin y los registros los inserta Supabase Auth.
 import { PGlite } from '@electric-sql/pglite';
 import fs from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -8,10 +9,12 @@ import { beforeAll, describe, expect, it } from 'vitest';
 const MIGRACION = fs.readFileSync('supabase/migrations/20261013120000_vendedores_cotizaciones.sql', 'utf8');
 
 const BASE_SUPABASE = `
+  create role supabase_auth_admin nologin;
   create role anon nologin;
   create role authenticated nologin;
-  create schema auth;
-  grant usage on schema public, auth to anon, authenticated;
+  create role editor nologin;
+  create schema auth authorization supabase_auth_admin;
+  set role supabase_auth_admin;
   create table auth.users (
     id uuid primary key default gen_random_uuid(),
     email text not null,
@@ -20,13 +23,19 @@ const BASE_SUPABASE = `
   create function auth.uid() returns uuid language sql stable as $$
     select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
   $$;
-  grant execute on function auth.uid() to anon, authenticated;
+  reset role;
+  grant usage on schema auth to editor, anon, authenticated;
+  grant select, trigger, references on auth.users to editor;
+  grant execute on function auth.uid() to editor, anon, authenticated;
+  alter schema public owner to editor;
+  grant usage on schema public to anon, authenticated;
   -- Privilegios por defecto como en Supabase.
-  alter default privileges in schema public grant all on tables to anon, authenticated;
-  alter default privileges in schema public grant all on sequences to anon, authenticated;
-  alter default privileges in schema public grant execute on functions to anon, authenticated;
+  alter default privileges for role editor in schema public grant all on tables to anon, authenticated;
+  alter default privileges for role editor in schema public grant all on sequences to anon, authenticated;
+  alter default privileges for role editor in schema public grant execute on functions to anon, authenticated;
 
   -- Lo que ya existe en el proyecto de la tienda.
+  set role editor;
   create table public.admins (user_id uuid primary key references auth.users(id), creado_en timestamptz default now());
   alter table public.admins enable row level security;
   create table public.productos (id bigint generated always as identity primary key, nombre text not null, activo boolean default true);
@@ -38,13 +47,19 @@ const BASE_SUPABASE = `
   create function public.tocar_actualizado() returns trigger language plpgsql set search_path = public as $$
   begin new.actualizado_en = now(); return new; end; $$;
   insert into public.productos (nombre) values ('Cocina full equipo');
+  reset role;
 `;
 
 let db: PGlite;
 
-async function comoSuperusuario<T>(f: () => Promise<T>): Promise<T> {
-  await db.exec(`reset role; select set_config('request.jwt.claim.sub', '', false);`);
-  return f();
+/** Como el SQL Editor de Supabase (rol postgres, sin superusuario). */
+async function comoEditor<T>(f: () => Promise<T>): Promise<T> {
+  await db.exec(`reset role; select set_config('request.jwt.claim.sub', '', false); set role editor;`);
+  try {
+    return await f();
+  } finally {
+    await db.exec('reset role');
+  }
 }
 
 async function como(usuario: string | null) {
@@ -57,11 +72,15 @@ async function como(usuario: string | null) {
   }
 }
 
+/** Registro como lo hace Supabase Auth (rol supabase_auth_admin). */
 async function registrar(email: string, meta: Record<string, string>): Promise<string> {
-  return comoSuperusuario(async () => {
+  await db.exec(`reset role; set role supabase_auth_admin;`);
+  try {
     const r = await db.query<{ id: string }>('insert into auth.users (email, raw_user_meta_data) values ($1, $2) returning id', [email, meta]);
     return r.rows[0].id;
-  });
+  } finally {
+    await db.exec('reset role');
+  }
 }
 
 const cotizacion = (cliente = 'Fernando Pérez', valor = 519990) =>
@@ -79,16 +98,41 @@ let admin: string;
 beforeAll(async () => {
   db = new PGlite();
   await db.exec(BASE_SUPABASE);
-  await db.exec(MIGRACION);
+  // Se ejecuta dos veces: el SQL debe tolerar que se corra de nuevo.
+  await comoEditor(() => db.exec(MIGRACION));
+  await comoEditor(() => db.exec(MIGRACION));
   ana = await registrar('ana@dto.cl', { rol: 'vendedor', nombre: 'Ana Rojas', telefono: '+56 9 1111 1111', codigo: 'x' });
   pedro = await registrar('pedro@dto.cl', { rol: 'vendedor', nombre: 'Pedro Soto' });
   admin = await registrar('admin@dto.cl', {});
-  await comoSuperusuario(() => db.query('insert into public.admins (user_id) values ($1)', [admin]));
+  await comoEditor(() => db.query('insert into public.admins (user_id) values ($1)', [admin]));
 }, 60_000);
+
+describe('ejecución del SQL en Supabase', () => {
+  it('no usa DROP (el SQL Editor no muestra advertencias) y termina con "Listo"', () => {
+    expect(MIGRACION).not.toMatch(/\bdrop\b/i);
+    expect(MIGRACION).toMatch(/'Listo' as resultado/);
+  });
+
+  it('crea los triggers en auth.users sin ser dueño de la tabla', async () => {
+    const r = await db.query<{ tgname: string }>(`select tgname from pg_trigger where tgrelid = 'auth.users'::regclass and not tgisinternal order by 1`);
+    expect(r.rows.map((x) => x.tgname)).toEqual(['crear_perfil_vendedor', 'validar_registro_vendedor']);
+  });
+
+  it('se detiene con un mensaje claro si se ejecuta en otro proyecto', async () => {
+    const otro = new PGlite();
+    await otro.exec(`create role anon nologin; create role authenticated nologin; create schema auth;
+      create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb);
+      create function auth.uid() returns uuid language sql as $$ select null::uuid $$;`);
+    await expect(otro.exec(MIGRACION)).rejects.toThrow(/DTO detoditooutlet/);
+    const t = await otro.query<{ n: number }>(`select count(*)::int as n from pg_tables where schemaname = 'public'`);
+    expect(t.rows[0].n).toBe(0);
+    await otro.close();
+  });
+});
 
 describe('registro de vendedores', () => {
   it('crea el perfil de vendedor y quita el código de los metadatos', async () => {
-    const r = await comoSuperusuario(() =>
+    const r = await comoEditor(() =>
       db.query<{ nombre: string; telefono: string; meta: Record<string, string> }>(
         `select v.nombre, v.telefono, u.raw_user_meta_data as meta from public.vendedores v join auth.users u on u.id = v.id where v.id = $1`,
         [ana],
@@ -99,12 +143,12 @@ describe('registro de vendedores', () => {
   });
 
   it('no toca las cuentas que no son de vendedor (admins de la tienda)', async () => {
-    const r = await comoSuperusuario(() => db.query('select 1 from public.vendedores where id = $1', [admin]));
+    const r = await comoEditor(() => db.query('select 1 from public.vendedores where id = $1', [admin]));
     expect(r.rows).toHaveLength(0);
   });
 
   it('exige el código de vendedor cuando está configurado', async () => {
-    await comoSuperusuario(() => db.exec(`insert into public.ajustes_privados values ('codigo_vendedores', 'DTO-2026')`));
+    await comoEditor(() => db.exec(`insert into public.ajustes_privados values ('codigo_vendedores', 'DTO-2026')`));
     await como(null);
     expect((await db.query<{ r: boolean }>('select public.registro_requiere_codigo() as r')).rows[0].r).toBe(true);
     await expect(registrar('malo@dto.cl', { rol: 'vendedor', nombre: 'Sin Código', codigo: 'otro' })).rejects.toThrow(/CODIGO_VENDEDOR_INVALIDO/);
@@ -112,7 +156,7 @@ describe('registro de vendedores', () => {
     expect(ok).toBeTruthy();
     // Un admin creado sin rol vendedor no necesita código.
     await expect(registrar('otroadmin@dto.cl', {})).resolves.toBeTruthy();
-    await comoSuperusuario(() => db.exec(`delete from public.ajustes_privados`));
+    await comoEditor(() => db.exec(`delete from public.ajustes_privados`));
   });
 
   it('el vendedor edita su nombre pero no su estado', async () => {
@@ -189,9 +233,9 @@ describe('cotizaciones y ventas', () => {
   });
 
   it('un vendedor desactivado no puede registrar', async () => {
-    await comoSuperusuario(() => db.query('update public.vendedores set activo = false where id = $1', [pedro]));
+    await comoEditor(() => db.query('update public.vendedores set activo = false where id = $1', [pedro]));
     await como(pedro);
     await expect(cotizacion()).rejects.toThrow(/row-level security|violates/);
-    await comoSuperusuario(() => db.query('update public.vendedores set activo = true where id = $1', [pedro]));
+    await comoEditor(() => db.query('update public.vendedores set activo = true where id = $1', [pedro]));
   });
 });
