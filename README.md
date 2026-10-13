@@ -37,9 +37,7 @@ Las reglas se aplican en la base de datos (RLS y triggers): una cotización vend
 
 ### 2. Ajustes de autenticación en Supabase
 
-En **Authentication → URL Configuration**:
-- **Site URL**: la dirección donde publiques la app (por ejemplo `https://disenador.detoditooutlet.cl`).
-- **Redirect URLs**: agrega esa misma dirección (y `http://localhost:5173` para desarrollo).
+En **Authentication → URL Configuration → Redirect URLs** agrega la dirección de la app publicada, `https://disenador-muebles-dto.vercel.app/**` (y `http://localhost:5173/**` para desarrollo), para que el enlace de confirmación del correo vuelva al diseñador. No cambies el **Site URL**: es el de la tienda, que comparte este proyecto.
 
 Por defecto Supabase pide **confirmar el correo**: el vendedor recibe un enlace y luego ingresa. El correo integrado de Supabase permite pocos envíos por hora; si van a registrarse varios vendedores, configura un SMTP propio (**Authentication → SMTP Settings**). También puedes desactivar la confirmación (**Authentication → Sign In / Providers → Email → Confirm email**), ya que el código de vendedor impide registros ajenos; ten en cuenta que esa opción aplica a todas las cuentas del proyecto, incluidas las de la tienda.
 
@@ -78,7 +76,7 @@ npm run dev:local    # modo demostración sin Supabase (guarda todo en el navega
 npm run build        # genera dist/
 ```
 
-En Vercel: importa el repositorio, framework **Vite**, comando `npm run build`, carpeta `dist`. Las variables `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` ya vienen por defecto con los valores públicos de la tienda (ver `.env.example`).
+Publicada en **https://disenador-muebles-dto.vercel.app** (proyecto `disenador-muebles-dto` en Vercel). Para otra publicación: importa el repositorio, framework **Vite**, comando `npm run build`, carpeta `dist`. Las variables `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` ya vienen por defecto con los valores públicos de la tienda (ver `.env.example`).
 
 ## Colores oficiales
 
