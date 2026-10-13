@@ -1,11 +1,13 @@
 // Ensambla los muebles basados en cuerpos: cocinas, clósets, cómodas,
 // clóset escritorio y cocina infantil.
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { altoBaseInfantil, calcularLayout, centroCuerpo, esCocina, type Layout, type LayoutCuerpo, type Rect } from '../../shared/layout';
+import { formatear } from '../../shared/reglas';
 import type { Diseno, Unidad } from '../../shared/tipos';
 import { Cilindro, Panel, useMats } from './base3d';
 import { Cubierta, Encimera, EspacioLibre, Horno, Lavaplatos, huecosLavaplatos, medidasEncimera, type Hueco } from './Cocina3D';
 import { Cajon, Puerta, Tirador, materialFrente, type ContextoFrente } from './Frentes';
+import { ajustarImagenFrentes } from './texturas';
 
 interface Props {
   diseno: Diseno;
@@ -28,6 +30,9 @@ export function MuebleCuerpos({ diseno: d, abierto, etiquetas, unidad }: Props) 
     };
   }, [d.imagenFrontal, l]);
 
+  useEffect(() => {
+    if (totalFrentes) ajustarImagenFrentes(m.imagenFrontal, totalFrentes.x1 - totalFrentes.x0, totalFrentes.y1 - totalFrentes.y0);
+  }, [m.imagenFrontal, totalFrentes]);
   const ctx: ContextoFrente = {
     zFrente: l.zFrente,
     espesor: l.espesorFrente,
@@ -47,7 +52,7 @@ export function MuebleCuerpos({ diseno: d, abierto, etiquetas, unidad }: Props) 
   return (
     <group>
       {l.cuerpos.map((lc) => (
-        <Casco key={lc.cuerpo.id} d={d} l={l} lc={lc} />
+        <Casco key={lc.cuerpo.id} d={d} l={l} lc={lc} unidad={unidad} />
       ))}
       {l.divisiones.map((dv, i) => (
         <Panel key={`div${i}`} x0={dv.x - d.espesor / 2} x1={dv.x + d.espesor / 2} y0={dv.y0} y1={dv.y1} z0={0} z1={l.profundidadCasco} mat={m.casco} />
@@ -91,7 +96,7 @@ export function MuebleCuerpos({ diseno: d, abierto, etiquetas, unidad }: Props) 
 
 // ---------- Casco de un cuerpo ----------
 
-function Casco({ d, l, lc }: { d: Diseno; l: Layout; lc: LayoutCuerpo }) {
+function Casco({ d, l, lc, unidad }: { d: Diseno; l: Layout; lc: LayoutCuerpo; unidad: Unidad }) {
   const m = useMats();
   const t = d.espesor;
   const Dc = l.profundidadCasco;
@@ -101,7 +106,7 @@ function Casco({ d, l, lc }: { d: Diseno; l: Layout; lc: LayoutCuerpo }) {
 
   if (c.tipo === 'hueco') {
     const tope = cocina ? (d.plantilla === 'cocina' ? d.alto - l.espesorCubierta : altoBaseInfantil(d)) : d.alto;
-    return <EspacioLibre x0={x0} x1={x1} y1={tope} profundidad={Dc} />;
+    return <EspacioLibre x0={x0} x1={x1} y1={tope} profundidad={Dc} texto={`Espacio libre ${formatear(c.ancho, unidad)}`} />;
   }
   if (c.tipo === 'escritorio') return <Escritorio d={d} l={l} lc={lc} />;
 

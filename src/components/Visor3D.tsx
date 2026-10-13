@@ -41,7 +41,7 @@ function objetivoCamara(d: Diseno, vista: Vista, aspecto: number) {
   const objetivo = new THREE.Vector3(0, H * 0.5, D * 0.55);
   const fov = THREE.MathUtils.degToRad(38);
   // Distancia para que entren ancho (con cotas) y alto en pantalla.
-  const anchoVisible = W + 0.7;
+  const anchoVisible = W + (aspecto < 1 ? 0.35 : 0.7);
   const altoVisible = H + 0.55;
   const distV = altoVisible / 2 / Math.tan(fov / 2);
   const distH = anchoVisible / 2 / Math.tan(fov / 2) / Math.max(0.5, aspecto);

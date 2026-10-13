@@ -1,5 +1,6 @@
 // Equipamiento de cocina: cubierta postformada, lavaplatos, grifería,
 // encimera a gas y horno empotrado. Todas las medidas en mm.
+import { Html } from '@react-three/drei';
 import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { Cilindro, Panel, useMats } from './base3d';
@@ -314,7 +315,19 @@ export function Horno({
 
 // ---------- Espacio libre ----------
 
-export function EspacioLibre({ x0, x1, y1, profundidad }: { x0: number; x1: number; y1: number; profundidad: number }) {
+export function EspacioLibre({
+  x0,
+  x1,
+  y1,
+  profundidad,
+  texto,
+}: {
+  x0: number;
+  x1: number;
+  y1: number;
+  profundidad: number;
+  texto: string;
+}) {
   const geo = useMemo(() => new THREE.BoxGeometry(x1 - x0 - 20, y1 - 10, profundidad - 30), [x0, x1, y1, profundidad]);
   const bordes = useMemo(() => new THREE.EdgesGeometry(geo), [geo]);
   useEffect(() => () => {
@@ -329,6 +342,9 @@ export function EspacioLibre({ x0, x1, y1, profundidad }: { x0: number; x1: numb
       <lineSegments geometry={bordes}>
         <lineBasicMaterial color="#a8325e" transparent opacity={0.6} />
       </lineSegments>
+      <Html position={[0, 0, (profundidad - 30) / 2]} center zIndexRange={[20, 0]}>
+        <div className="etiqueta-hueco">{texto}</div>
+      </Html>
     </group>
   );
 }

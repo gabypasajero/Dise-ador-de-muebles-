@@ -9,10 +9,10 @@
   },
   "scripts": {
     "dev": "concurrently -k -n api,web -c magenta,cyan \"npm:dev:server\" \"npm:dev:client\"",
-    "dev:server": "tsx watch server/index.ts",
+    "dev:server": "NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx watch server/index.ts",
     "dev:client": "vite",
     "build": "tsc -p tsconfig.json && vite build",
-    "start": "NODE_ENV=production tsx server/index.ts",
+    "start": "NODE_ENV=production NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx server/index.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "sync:productos": "tsx server/scripts/syncProductos.ts"

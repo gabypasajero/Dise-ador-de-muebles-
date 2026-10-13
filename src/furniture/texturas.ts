@@ -387,9 +387,36 @@ function mezclarHex(a: string, b: string, t: number): string {
 /** Textura de una imagen subida por el cliente (para los frentes). */
 export function texturaImagen(url: string): THREE.Texture {
   return cacheada(`img:${url.length}:${url.slice(-64)}`, () => {
-    const t = new THREE.TextureLoader().load(url);
+    const t = new THREE.TextureLoader().load(url, (cargada) => {
+      const img = cargada.image as { width: number; height: number };
+      cargada.userData.aspecto = img.width / img.height;
+      (cargada.userData.alCargar as (() => void) | undefined)?.();
+    });
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = 8;
     return t;
   });
+}
+
+/**
+ * Recorta la imagen para que cubra el área de frentes sin deformarse
+ * (como "cover" en CSS). Se vuelve a aplicar cuando la imagen termina de cargar.
+ */
+export function ajustarImagenFrentes(material: THREE.Material | null, ancho: number, alto: number) {
+  const tex = (material as THREE.MeshStandardMaterial | null)?.map;
+  if (!tex) return;
+  const aplicar = () => {
+    const ai = tex.userData.aspecto as number | undefined;
+    if (!ai || ancho <= 0 || alto <= 0) return;
+    const af = ancho / alto;
+    if (ai > af) {
+      tex.repeat.set(af / ai, 1);
+      tex.offset.set((1 - af / ai) / 2, 0);
+    } else {
+      tex.repeat.set(1, ai / af);
+      tex.offset.set(0, (1 - ai / af) / 2);
+    }
+  };
+  tex.userData.alCargar = aplicar;
+  aplicar();
 }

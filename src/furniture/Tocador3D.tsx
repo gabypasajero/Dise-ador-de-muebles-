@@ -1,10 +1,11 @@
 // Tocador con cajoneras, cubierta y espejo (ovalado LED, Hollywood o rectangular LED).
 import { MeshReflectorMaterial } from '@react-three/drei';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { calcularLayoutTocador, type Rect } from '../../shared/layout';
 import type { Diseno, Unidad } from '../../shared/tipos';
 import { Cilindro, Panel, useMats } from './base3d';
 import { Cajon, materialFrente, type ContextoFrente } from './Frentes';
+import { ajustarImagenFrentes } from './texturas';
 
 export function Tocador3D({ diseno: d, abierto, etiquetas, unidad }: { diseno: Diseno; abierto: boolean; etiquetas: boolean; unidad: Unidad }) {
   const m = useMats();
@@ -26,6 +27,9 @@ export function Tocador3D({ diseno: d, abierto, etiquetas, unidad }: { diseno: D
       y1: Math.max(...l.frentes.map((f) => f.rect.y1)),
     };
   }, [d.imagenFrontal, l]);
+  useEffect(() => {
+    if (totalFrentes) ajustarImagenFrentes(m.imagenFrontal, totalFrentes.x1 - totalFrentes.x0, totalFrentes.y1 - totalFrentes.y0);
+  }, [m.imagenFrontal, totalFrentes]);
   const ctx: ContextoFrente = {
     zFrente: Dc,
     espesor: tf,
