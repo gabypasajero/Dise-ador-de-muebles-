@@ -4,7 +4,7 @@ import { calcularLayoutAereos, type LayoutAereoCuerpo, type LayoutAereos } from 
 import type { Diseno, Unidad } from '../../shared/tipos';
 import { Cilindro, Panel, useMats } from './base3d';
 import { Cubierta } from './Cocina3D';
-import { Puerta, materialFrente, type ContextoFrente } from './Frentes';
+import { Puerta, type ContextoFrente } from './Frentes';
 
 export function Aereos3D({ d, abierto, etiquetas, unidad }: { d: Diseno; abierto: boolean; etiquetas: boolean; unidad: Unidad }) {
   const la = calcularLayoutAereos(d);
@@ -21,7 +21,8 @@ export function Aereos3D({ d, abierto, etiquetas, unidad }: { d: Diseno; abierto
     etiquetas,
     unidad,
   };
-  const matFrente = materialFrente(m);
+  // La imagen del cliente va solo en los frentes del tramo principal.
+  const matFrente = m.frente;
   return (
     <group>
       {la.montaje === 'apoyado' && <Estructura d={d} la={la} />}

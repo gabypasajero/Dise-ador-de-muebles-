@@ -61,17 +61,20 @@ export function PanelInferior() {
   const altoPestanas = useApp((s) => s.altoPestanas);
   const fijarVista = useApp((s) => s.fijarVista);
   const panelPestanas = useRef<HTMLDivElement>(null);
-  const arrastre = useRef<{ y: number; alto: number } | null>(null);
+  const arrastre = useRef<{ y: number; alto: number; max: number } | null>(null);
   // Arrastrar el borde superior agranda o achica el panel; doble clic vuelve al tamaño automático.
   const empezarArrastre = (e: EventoPuntero<HTMLDivElement>) => {
     if (plegado || !panelPestanas.current) return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    arrastre.current = { y: e.clientY, alto: panelPestanas.current.getBoundingClientRect().height };
+    const alto = panelPestanas.current.getBoundingClientRect().height;
+    // El visor conserva al menos 180 px (en ≤1100 px la fila de medidas y precio también va encima).
+    const visor = document.querySelector('.visor')?.getBoundingClientRect().height ?? 0;
+    arrastre.current = { y: e.clientY, alto, max: Math.max(110, Math.min(window.innerHeight * 0.6, alto + visor - 180)) };
   };
   const moverArrastre = (e: EventoPuntero<HTMLDivElement>) => {
     const a = arrastre.current;
     if (!a) return;
-    const alto = Math.round(Math.min(window.innerHeight * 0.6, Math.max(110, a.alto + a.y - e.clientY)));
+    const alto = Math.round(Math.min(a.max, Math.max(110, a.alto + a.y - e.clientY)));
     useApp.getState().set({ altoPestanas: alto });
   };
   const terminarArrastre = () => {

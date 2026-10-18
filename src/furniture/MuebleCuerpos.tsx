@@ -21,7 +21,8 @@ interface Props {
 export function MuebleCuerpos({ diseno: d, abierto, etiquetas, unidad, extensionCubierta = [0, 0] }: Props) {
   const l = useMemo(() => calcularLayout(d), [d]);
   const m = useMats();
-  const matFrente = materialFrente(m);
+  // El retorno de la L llega sin imagen: la imagen del cliente va solo en el tramo principal.
+  const matFrente = d.imagenFrontal ? materialFrente(m) : m.frente;
   const totalFrentes = useMemo<Rect | null>(() => {
     if (!d.imagenFrontal || l.frentes.length === 0) return null;
     return {
@@ -235,6 +236,7 @@ function FilaSuperior({ d, l }: { d: Diseno; l: Layout }) {
 // ---------- Equipamiento de cocina ----------
 
 function EquipoCocina({ d, l, extension }: { d: Diseno; l: Layout; extension: [number, number] }) {
+  const m = useMats();
   const ct = d.cocina.espesorCubierta;
   const D = d.profundidad;
   const r = ct / 2;
@@ -271,6 +273,19 @@ function EquipoCocina({ d, l, extension }: { d: Diseno; l: Layout; extension: [n
   return (
     <group>
       <Cubierta x0={-W / 2 - extension[0]} x1={W / 2 + extension[1]} yTop={d.alto} espesor={ct} profundidad={D} huecos={huecos} copete={d.cocina.copete} />
+      {/* Cocina en L: copete sobre el muro lateral en la esquina (el del retorno parte en z = D). */}
+      {d.cocina.copete &&
+        [-1, 1].map((s) => {
+          const e = s < 0 ? extension[0] : extension[1];
+          if (e <= 0) return null;
+          const xm = s * (W / 2 + e);
+          return (
+            <group key={s}>
+              <Panel x0={Math.min(xm, xm - s * 14)} x1={Math.max(xm, xm - s * 14)} y0={d.alto} y1={d.alto + 42} z0={14} z1={D} mat={m.cubierta} />
+              <Cilindro r={7} largo={D - 14} pos={[xm - s * 7, d.alto + 42, (14 + D) / 2]} eje="z" mat={m.cubierta} />
+            </group>
+          );
+        })}
       {lavaplatos}
       {encimera}
       {l.cuerpos

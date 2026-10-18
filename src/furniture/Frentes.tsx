@@ -97,7 +97,7 @@ function EtiquetaFrente({ rect, z, unidad }: { rect: Rect; z: number; unidad: Un
   const w = rect.x1 - rect.x0;
   const h = rect.y1 - rect.y0;
   return (
-    <Html position={[(rect.x0 + rect.x1) / 2, (rect.y0 + rect.y1) / 2, z + 40]} center zIndexRange={[20, 0]}>
+    <Html position={[(rect.x0 + rect.x1) / 2, (rect.y0 + rect.y1) / 2, z + 40]} center zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
       <div className="etiqueta-frente">
         {formatear(w, unidad, false)} × {formatear(h, unidad)}
       </div>

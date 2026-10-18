@@ -1,17 +1,22 @@
 // Cocina en L, muebles aéreos y cocina compacta.
 import { describe, expect, it } from 'vitest';
 import { clasificarProducto, disenoInicial, disenoLibre } from '../shared/catalogo';
-import { calcularLayout, calcularLayoutAereos, dimensionesTotales, disenoRetorno, extremosPrincipal } from '../shared/layout';
+import { calcularLayout, calcularLayoutAereos, centroCuerpo, dimensionesTotales, disenoRetorno, extremosPrincipal } from '../shared/layout';
 import {
   ANCHO_HORNO,
+  LIMITES,
   LIMITES_RETORNO,
   actualizarCuerpo,
   activarAereos,
   advertencias,
   agregarModulo,
   anchoDisponible,
+  cabeHorno,
+  cuerposDe,
+  fijarAereos,
   fijarAlto,
   fijarAncho,
+  fijarAnchoAereos,
   fijarAnchoCuerpo,
   fijarForma,
   fijarProfundidad,
@@ -23,7 +28,7 @@ import {
   presetsModulo,
   quitarCuerpo,
 } from '../shared/reglas';
-import { detalleCotizacion } from '../shared/resumen';
+import { describirCuerpos, detalleCotizacion } from '../shared/resumen';
 import type { Diseno, ProductoTienda } from '../shared/tipos';
 
 const producto = (nombre: string, medidas: string): ProductoTienda => ({
@@ -267,5 +272,145 @@ describe('horno empotrado de medida fija', () => {
     const d = disenoLibre('cocina-infantil');
     const m = fijarAncho(d, d.ancho + 300);
     expect(m.cuerpos.find((c) => c.tipo === 'horno')!.ancho).not.toBe(d.cuerpos.find((c) => c.tipo === 'horno')!.ancho);
+  });
+});
+
+describe('correcciones de la revisión de tramos', () => {
+  const full = () => disenoInicial(clasificarProducto(producto('Cocina full equipo: horno, encimera y lavaplatos · Clasic Pino Casina', '60 × 150 × 90 cm')));
+  const c3 = () => disenoInicial(clasificarProducto(producto('Mueble de cocina compacto 3C · Calacatta Verde Salvia', '40 × 110 × 192 cm')));
+  const c5 = () => disenoInicial(clasificarProducto(producto('Mueble de cocina compacto 5C · Clasic Pino Nebraska', '40 × 180 × 190 cm')));
+  const anchos = (d: Diseno, tramo: 'base' | 'retorno' | 'aereos') => cuerposDe(d, tramo).map((c) => c.ancho);
+  const recargar = (d: Diseno) => normalizar(JSON.parse(JSON.stringify(d)));
+  const textos = (d: Diseno) => advertencias(d).map((a) => a.texto);
+  const preset = (p: Diseno['plantilla'], tramo: 'base' | 'retorno' | 'aereos', id: string) => presetsModulo(p, tramo).find((x) => x.id === id)!;
+  const conPuertas = (d: Diseno, k: number) => {
+    for (let i = 0; i < k; i++) d = agregarModulo(d, preset('cocina', 'base', 'puerta'));
+    return d;
+  };
+  const campanaSobreEncimera = (d: Diseno) => {
+    const x = centroCuerpo(calcularLayout(d), d.cocina.encimeraCuerpo);
+    return calcularLayoutAereos(d)!.cuerpos.some((c) => c.cuerpo.tipo === 'campana' && c.x0 <= x && x <= c.x1);
+  };
+
+  it('1: el cajón arriba con alto a medida deja siempre una puerta de al menos 20 cm', () => {
+    const d = fijarAlto(actualizarCuerpo(full(), 2, { cajones: 1, cajonesArriba: true, altoCajon: 600 }), 700);
+    const frentes = calcularLayout(d).frentes.filter((f) => f.cuerpo === 2);
+    const cajon = frentes.find((f) => f.tipo === 'cajon')!;
+    const puerta = frentes.find((f) => f.tipo === 'puerta')!;
+    expect(puerta.rect.y1 - puerta.rect.y0).toBeGreaterThanOrEqual(200);
+    expect(cajon.rect.y0).toBeGreaterThan(puerta.rect.y1);
+    expect(cajon.rect.y0).toBeGreaterThan(d.zocalo);
+    expect(describirCuerpos(d, 'cm')[2]).not.toContain('-');
+  });
+
+  it('2 y 27: en el compacto un superior único mide siempre lo mismo que el base', () => {
+    const d = quitarCuerpo(c3(), 1, 'aereos');
+    expect(anchos(d, 'aereos')).toEqual([d.ancho]);
+    expect(anchos(fijarAnchoCuerpo(d, 0, 600, 'aereos'), 'aereos')).toEqual([d.ancho]);
+    const m = actualizarCuerpo(d, 0, { ancho: 500 }, 'aereos');
+    expect(anchos(m, 'aereos')).toEqual([d.ancho]);
+    expect(anchos(recargar(m), 'aereos')).toEqual(anchos(m, 'aereos'));
+  });
+
+  it('3 y 29: en el compacto el base no queda más angosto que lo mínimo del superior', () => {
+    let d = c3();
+    for (let i = 0; i < 3; i++) d = agregarModulo(d, preset('compacto', 'aereos', 'aereo-puerta'), undefined, 'aereos');
+    for (const m of [fijarAncho(d, 600), quitarCuerpo(d, 1)]) {
+      expect(Math.min(...anchos(m, 'aereos'))).toBeGreaterThanOrEqual(150);
+      expect(largoTramo(m, 'aereos')).toBe(m.ancho);
+      expect(largoTramo(m, 'base')).toBe(m.ancho);
+    }
+    // Un módulo base único no deja el compacto bajo su ancho mínimo.
+    const q = fijarAnchoCuerpo(quitarCuerpo(quitarCuerpo(c5(), 0), 0), 0, 150);
+    expect(q.ancho).toBeGreaterThanOrEqual(LIMITES.compacto.ancho[0]);
+    expect(Math.min(...anchos(q, 'aereos'))).toBeGreaterThanOrEqual(150);
+    expect(recargar(q).ancho).toBe(q.ancho);
+  });
+
+  it('4: un módulo no pasa a horno si los 60 cm no caben en el ancho máximo', () => {
+    const d = conPuertas(full(), 5);
+    expect(d.ancho).toBe(LIMITES.cocina.ancho[1]);
+    expect(actualizarCuerpo(d, 3, { tipo: 'horno' })).toBe(d);
+    expect(cabeHorno(d, 3)).toBe(false);
+    // El módulo de 60 cm sí puede pasar a horno, y en una cocina con espacio también los demás.
+    expect(cabeHorno(d, 0)).toBe(true);
+    expect(cabeHorno(full(), 1)).toBe(true);
+    expect(actualizarCuerpo(full(), 1, { tipo: 'horno' }).ancho).toBe(1650);
+  });
+
+  it('5: al repartir, ningún módulo queda bajo el mínimo si el largo alcanza', () => {
+    const d = fijarAncho(conPuertas(full(), 5), 1650);
+    expect(anchos(d, 'base')).toEqual([600, 150, 150, 150, 150, 150, 150, 150]);
+    let a = agregarModulo(activarAereos(full(), true), preset('cocina', 'aereos', 'aereo-puerta'), undefined, 'aereos');
+    a = fijarAnchoAereos(a, 450);
+    expect(anchos(a, 'aereos')).toEqual([150, 150, 150]);
+    let e = c5();
+    for (let i = 0; i < 2; i++) e = agregarModulo(e, preset('compacto', 'aereos', 'aereo-puerta'), undefined, 'aereos');
+    e = actualizarCuerpo(e, 0, { ancho: 1500 }, 'aereos');
+    expect(anchos(e, 'aereos')).toEqual([1200, 150, 150, 150, 150]);
+  });
+
+  it('6 y 28: el módulo de la L no deja la L bajo su largo mínimo', () => {
+    const d = fijarForma(full(), 'der');
+    for (const m of [actualizarCuerpo(d, 0, { ancho: 150 }, 'retorno'), fijarAnchoCuerpo(d, 0, 200, 'retorno')]) {
+      expect(m.retorno!.largo).toBe(LIMITES_RETORNO.largo[0]);
+      expect(largoTramo(m, 'retorno')).toBe(util(m));
+      expect(recargar(m).retorno).toEqual(m.retorno);
+    }
+  });
+
+  it('7: en la L los aéreos se acortan si el tramo principal o la esquina se achican', () => {
+    const d = activarAereos(fijarForma(full(), 'der'), true);
+    const m = quitarCuerpo(fijarRetorno(fijarAncho(d, 1100), { profundidad: 450 }), 1);
+    for (const x of [fijarAncho(d, 1100), fijarRetorno(d, { profundidad: 450 }), m]) {
+      const [x0, x1] = extremosPrincipal(x);
+      const la = calcularLayoutAereos(x)!;
+      expect(la.x0).toBeGreaterThanOrEqual(x0);
+      expect(la.x1).toBeLessThanOrEqual(x1);
+      expect(textos(x).some((t) => t.includes('pasan del muro'))).toBe(false);
+    }
+  });
+
+  it('8: avisa si el nicho del microondas queda muy bajo', () => {
+    const d = agregarModulo(activarAereos(full(), true), preset('cocina', 'aereos', 'nicho'), undefined, 'aereos');
+    expect(textos(d).some((t) => t.includes('nicho'))).toBe(false);
+    expect(textos(fijarAereos(d, { alto: 400 })).some((t) => t.includes('El nicho del aéreo 3'))).toBe(true);
+    expect(textos(c5()).some((t) => t.includes('nicho'))).toBe(false);
+    expect(textos(fijarAereos(c5(), { alto: 350 })).some((t) => t.includes('El nicho del mueble superior'))).toBe(true);
+  });
+
+  it('9: avisa si la campana no queda sobre la encimera', () => {
+    const d = activarAereos(full(), true);
+    expect(textos(d).some((t) => t.includes('campana'))).toBe(false);
+    const otra = { ...d, cocina: { ...d.cocina, encimeraCuerpo: 1, lavaplatosCuerpo: 2 } };
+    expect(textos(otra).some((t) => t.includes('La campana de los aéreos no queda sobre la encimera'))).toBe(true);
+  });
+
+  it('11: en el compacto la encimera de 3 platos sobre un módulo angosto también avisa', () => {
+    let d = c5();
+    d = actualizarCuerpo({ ...d, cocina: { ...d.cocina, encimera: '3', encimeraCuerpo: 1 } }, 1, { ancho: 300 });
+    expect(textos(d).some((t) => t.includes('La encimera sobresale del módulo 2'))).toBe(true);
+  });
+
+  it('18: al cambiar la forma la campana sigue sobre la encimera', () => {
+    const d = activarAereos(full(), true);
+    expect(campanaSobreEncimera(d)).toBe(true);
+    const izq = fijarForma(d, 'izq');
+    for (const x of [izq, fijarForma(d, 'der'), fijarForma(izq, 'der'), fijarForma(izq, null)]) {
+      expect(campanaSobreEncimera(x)).toBe(true);
+      expect(textos(x).some((t) => t.includes('pasan del muro'))).toBe(false);
+    }
+    // Aéreos creados en la L: el módulo de la esquina pasa a la otra punta.
+    const l = activarAereos(fijarForma(full(), 'izq'), true);
+    for (const x of [fijarForma(l, 'der'), fijarForma(l, null), fijarRetorno(l, { profundidad: 450 })]) {
+      expect(campanaSobreEncimera(x)).toBe(true);
+      expect(textos(x).some((t) => t.includes('pasan del muro'))).toBe(false);
+    }
+  });
+
+  it('32: avisa si el compacto lleva encimera a gas bajo el mueble superior', () => {
+    const d = c5();
+    expect(textos(d).some((t) => t.includes('bajo el mueble superior'))).toBe(false);
+    expect(textos({ ...d, cocina: { ...d.cocina, encimera: '4' } }).some((t) => t.includes('La encimera a gas queda 46 cm bajo el mueble superior'))).toBe(true);
   });
 });

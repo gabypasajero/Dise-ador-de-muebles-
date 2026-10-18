@@ -25,7 +25,7 @@ describe('clasificación del catálogo de la tienda', () => {
   it('asigna plantilla y escenario a todos los productos', () => {
     for (const p of productos) {
       const c = clasificarProducto(p);
-      expect(['cocina', 'closet', 'comoda', 'tocador', 'escritorio', 'cocina-infantil']).toContain(c.plantilla);
+      expect(['cocina', 'compacto', 'closet', 'comoda', 'tocador', 'escritorio', 'cocina-infantil']).toContain(c.plantilla);
       expect(c.medidasBase.ancho).toBeGreaterThan(0);
     }
   });
@@ -39,6 +39,17 @@ describe('clasificación del catálogo de la tienda', () => {
     const closet = clasificarProducto(productos.find((p) => p.id === 152)!);
     expect(closet.plantilla).toBe('closet');
     expect(['dormitorio', 'infantil']).toContain(closet.escenario);
+  });
+
+  it('los compactos de la tienda se diseñan como cocina compacta con sus colores', () => {
+    const c3 = clasificarProducto(productos.find((p) => /compacto 3C/i.test(p.nombre))!);
+    expect(c3.plantilla).toBe('compacto');
+    expect(c3.escenario).toBe('cocina');
+    expect(c3.variante).toBe('Calacatta Verde Salvia');
+    const c5 = clasificarProducto(productos.find((p) => /compacto 5C/i.test(p.nombre))!);
+    expect(c5.plantilla).toBe('compacto');
+    expect(c5.variante).toBe('Clasic Pino Nebraska');
+    expect(coloresDeVariante('Calacatta Verde Salvia')).toEqual({ cubierta: 'calacatta', frente: 'verde-salvia' });
   });
 
   it('lee la combinación de colores de cocina desde el nombre', () => {
@@ -80,7 +91,7 @@ describe('clasificación del catálogo de la tienda', () => {
   });
 
   it('se puede partir de cero con cada plantilla', () => {
-    const plantillas: Plantilla[] = ['cocina', 'closet', 'comoda', 'tocador', 'escritorio', 'cocina-infantil'];
+    const plantillas: Plantilla[] = ['cocina', 'compacto', 'closet', 'comoda', 'tocador', 'escritorio', 'cocina-infantil'];
     for (const pl of plantillas) {
       const d = disenoLibre(pl);
       expect(d.plantilla).toBe(pl);

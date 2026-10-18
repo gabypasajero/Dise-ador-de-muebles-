@@ -102,6 +102,8 @@ h3 {
 
 .visor {
   position: relative;
+  /* Las capas del 3D y de la barra quedan dentro del visor: no tapan los menús de la cabecera ni el panel inferior. */
+  isolation: isolate;
   min-height: 0;
   background: #f3f1ee;
   overflow: hidden;
@@ -440,7 +442,8 @@ h3 {
   display: flex;
   gap: 8px;
   align-items: center;
-  z-index: 2;
+  /* Sobre las cotas y los números de módulo del 3D (z-index 20 a 31). */
+  z-index: 40;
   flex-wrap: wrap;
 }
 
@@ -1089,10 +1092,10 @@ h3 {
   overflow-y: auto;
 }
 
-/* Módulos y espacios necesita más alto para mostrar tira, editor y espacios sin cortes. */
+/* Módulos y espacios necesita más alto para mostrar forma, tira, editor y espacios sin cortes. */
 .pestana-panel.modulos {
   height: auto;
-  max-height: min(300px, 42dvh);
+  max-height: min(420px, 48dvh);
 }
 
 .pestana-contenido {
@@ -1423,6 +1426,8 @@ h3 {
 }
 
 .interruptor {
+  /* Ancla el input oculto: sin esto escapa del recorte de las listas con desplazamiento y desborda la página. */
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -2269,6 +2274,10 @@ h3 {
   .categorias {
     border-top: 1px solid var(--borde);
   }
+  /* Con la fila de medidas y precio encima, el visor conserva unos 180 px. */
+  .pestana-panel.modulos {
+    max-height: min(300px, calc(100dvh - 530px));
+  }
 }
 
 @media (max-width: 900px) {
@@ -2360,7 +2369,8 @@ h3 {
   }
   .barra-visor.derecha {
     top: auto;
-    bottom: 12px;
+    /* Sobre la lengüeta «Ocultar medidas», que sobresale 24 px dentro del visor. */
+    bottom: 36px;
     right: 8px;
     max-width: calc(100% - 16px);
   }
@@ -2455,10 +2465,9 @@ h3 {
 .separador-tramo {
   flex: 0 0 auto;
   align-self: stretch;
+  /* Texto vertical que empieza arriba: así se lee aunque la lista sea más alta que el panel. */
   writing-mode: vertical-rl;
-  transform: rotate(180deg);
-  display: grid;
-  place-items: center;
+  display: block;
   padding: 8px 4px;
   border-radius: 8px;
   background: var(--panel-2);
@@ -2516,10 +2525,19 @@ h3 {
   white-space: nowrap;
 }
 
+/* El alto guardado se acota a la ventana actual: el visor conserva unos 180 px. */
 .panel-inferior.alto-fijo .pestana-panel,
 .panel-inferior.alto-fijo .pestana-panel.modulos {
-  height: var(--alto-pestanas);
+  height: min(var(--alto-pestanas), calc(100dvh - 310px));
   max-height: none;
+}
+
+@media (max-width: 1100px) {
+  /* Con la fila de medidas y precio encima. */
+  .panel-inferior.alto-fijo .pestana-panel,
+  .panel-inferior.alto-fijo .pestana-panel.modulos {
+    height: min(var(--alto-pestanas), calc(100dvh - 530px));
+  }
 }
 
 .panel-inferior.plegado {
@@ -2577,6 +2595,13 @@ h3 {
 
 .area-trabajo.colores-plegados {
   grid-template-columns: minmax(0, 1fr);
+}
+
+/* Solo se ocultan donde está el botón para volver a mostrarlos; en el teléfono siguen bajo las medidas. */
+@media (min-width: 901px) {
+  .area-trabajo.colores-plegados .panel-colores {
+    display: none;
+  }
 }
 
 @media (max-width: 900px) {

@@ -88,7 +88,7 @@ export function ModalCatalogo() {
     (a, b) => posicion(a.id) - posicion(b.id),
   );
 
-  const libres: Plantilla[] = ['cocina', 'closet', 'comoda', 'tocador', 'escritorio', 'cocina-infantil'];
+  const libres: Plantilla[] = ['cocina', 'compacto', 'closet', 'comoda', 'tocador', 'escritorio', 'cocina-infantil'];
 
   return (
     <Modal titulo="Elige el mueble a diseñar" onCerrar={cerrar} ancho="grande">

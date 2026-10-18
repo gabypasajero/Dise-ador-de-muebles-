@@ -342,7 +342,7 @@ export function EspacioLibre({
       <lineSegments geometry={bordes}>
         <lineBasicMaterial color="#a8325e" transparent opacity={0.6} />
       </lineSegments>
-      <Html position={[0, 0, (profundidad - 30) / 2]} center zIndexRange={[20, 0]}>
+      <Html position={[0, 0, (profundidad - 30) / 2]} center zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
         <div className="etiqueta-hueco">{texto}</div>
       </Html>
     </group>

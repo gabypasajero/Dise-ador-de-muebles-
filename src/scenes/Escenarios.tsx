@@ -264,7 +264,10 @@ function EscenaCocina({ d }: { d: Diseno }) {
   const r = d.retorno;
   const la = calcularLayoutAereos(d);
   const mural = la?.montaje === 'mural';
-  const mitad = Math.max(2.8, Math.max(-ex0, ex1) + 1.7);
+  // Los aéreos pueden ser más largos que el mueble base: el refrigerador va al lado de ambos.
+  const xa0 = la && mural ? Math.min(ex0, la.x0 / 1000) : ex0;
+  const xa1 = la && mural ? Math.max(ex1, la.x1 / 1000) : ex1;
+  const mitad = Math.max(2.8, Math.max(-xa0, xa1) + 1.7);
   const piso = texturaBaldosas('#d8d4cd', '#b9b4ab', 2, 1200);
   const pared = texturaPared('#f1ede6');
   const azulejo = texturaAzulejo('#f7f6f2', '#d9d6cf');
@@ -277,12 +280,14 @@ function EscenaCocina({ d }: { d: Diseno }) {
   const altoAz = la && mural ? Math.max(0.3, la.y0 / 1000 - H) : 0.62;
   const anchoAz = ex1 - ex0;
   const geoAz = useGeo(() => planoUV(anchoAz, altoAz), [anchoAz, altoAz]);
-  const largoL = r ? (r.largo - d.profundidad) / 1000 : 0;
+  // Cerámica del muro lateral: todo el retorno, desde la esquina.
+  const largoL = r ? r.largo / 1000 : 0;
   const geoAzL = useGeo(() => planoUV(Math.max(0.01, largoL), altoAz), [largoL, altoAz]);
   // Muros laterales: la L se apoya en uno de ellos.
   const xMuroIzq = r?.lado === 'izq' ? ex0 : -mitad;
   const xMuroDer = r?.lado === 'der' ? ex1 : null;
-  const zL = d.profundidad / 1000 + largoL / 2;
+  const zL = largoL / 2;
+  const xRefri = r?.lado === 'der' ? xa0 - 0.05 - 0.35 : xa1 + 0.05 + 0.35;
   return (
     <group>
       <Luces lado={mitad} />
@@ -313,8 +318,9 @@ function EscenaCocina({ d }: { d: Diseno }) {
       />
       {!la && xEnc !== null && <Campana x={xEnc} y={H + 0.68} />}
       {!la && lav !== null && (xEnc === null || Math.abs(lav - xEnc) > 0.85) && <Repisa x={lav} y={H + 0.95} ancho={0.8} />}
-      <Refrigerador x={r?.lado === 'der' ? ex0 - 0.05 - 0.35 : ex1 + 0.05 + 0.35} />
-      {r?.lado !== 'izq' && <Planta pos={[ex0 - (r?.lado === 'der' ? 1.15 : 0) - 1.25, 0, 0.28]} escala={0.85} />}
+      <Refrigerador x={xRefri} />
+      {/* Con la L derecha la planta va junto al refrigerador, sin pasar el muro izquierdo. */}
+      {r?.lado !== 'izq' && <Planta pos={[r?.lado === 'der' ? xRefri - 0.35 - 0.4 : ex0 - 1.25, 0, 0.28]} escala={0.85} />}
     </group>
   );
 }

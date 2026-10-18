@@ -82,7 +82,8 @@ export default function App() {
             {coloresPlegados ? '‹ Colores' : '›'}
           </button>
         </section>
-        {!coloresPlegados && <PanelColores />}
+        {/* Siempre montado: en el teléfono no hay botón para mostrarlo, así que ahí el CSS no lo oculta. */}
+        <PanelColores />
       </main>
       <PanelInferior />
       {modal === 'catalogo' && <ModalCatalogo />}

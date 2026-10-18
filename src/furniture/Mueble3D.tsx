@@ -14,7 +14,6 @@ import { formatear, type Tramo } from '../../shared/reglas';
 import type { CatalogoMateriales, Diseno, Unidad } from '../../shared/tipos';
 import { Aereos3D } from './Aereos3D';
 import { MaterialesProvider, Panel, useMats } from './base3d';
-import { materialFrente } from './Frentes';
 import { MuebleCuerpos } from './MuebleCuerpos';
 import { Tocador3D } from './Tocador3D';
 
@@ -31,7 +30,11 @@ export interface OpcionesVista {
 export function Mueble3D({ diseno, materiales, vista }: { diseno: Diseno; materiales: CatalogoMateriales | null; vista: OpcionesVista }) {
   const props = { abierto: vista.abierto, etiquetas: vista.etiquetasFrentes, unidad: vista.unidad };
   const base = useMemo(() => disenoBase(diseno), [diseno]);
-  const dr = useMemo(() => disenoRetorno(diseno), [diseno]);
+  // La imagen del cliente va solo en los frentes del tramo principal (comparten la textura).
+  const dr = useMemo(() => {
+    const t = disenoRetorno(diseno);
+    return t && { ...t, imagenFrontal: null };
+  }, [diseno]);
   const tr = transformRetorno(diseno);
   const r = diseno.retorno;
   const extension: [number, number] = r ? (r.lado === 'izq' ? [r.profundidad, 0] : [0, r.profundidad]) : [0, 0];
@@ -70,7 +73,7 @@ function EsquinaL({ d }: { d: Diseno }) {
   const zF = l.zFrente;
   return (
     <group>
-      <Panel x0={x0} x1={x1} y0={d.zocalo + 2} y1={l.yTope - d.luzFrentes / 2} z0={zF} z1={zF + l.espesorFrente} mat={materialFrente(m)} eje="x" />
+      <Panel x0={x0} x1={x1} y0={d.zocalo + 2} y1={l.yTope - d.luzFrentes / 2} z0={zF} z1={zF + l.espesorFrente} mat={m.frente} eje="x" />
       <Panel x0={x0} x1={x1} y0={d.zocalo} y1={d.zocalo + t} z0={0} z1={zF} mat={m.casco} />
       {d.zocalo > 0 && <Panel x0={x0} x1={x1} y0={0} y1={d.zocalo} z0={zF - 50 - t} z1={zF - 50} mat={m.casco} />}
       <Panel
@@ -107,7 +110,8 @@ function Cota({
       <Line points={[desde, hasta]} color="#a8325e" lineWidth={2} />
       <Line points={tick(desde)} color="#a8325e" lineWidth={2} />
       <Line points={tick(hasta)} color="#a8325e" lineWidth={2} />
-      <Html position={medio} center zIndexRange={[30, 0]}>
+      {/* Sin transform, drei aplica `style` al div que recibe el clic: así no tapa los botones del visor. */}
+      <Html position={medio} center zIndexRange={[30, 0]} style={{ pointerEvents: 'none' }}>
         <div className="cota-etiqueta">{texto}</div>
       </Html>
     </group>
@@ -125,6 +129,9 @@ function Cotas({ diseno: d, unidad }: { diseno: Diseno; unidad: Unidad }) {
   const xAlto = r?.lado === 'der' ? x0 - sep : x1 + sep;
   const nx = r?.lado === 'der' ? -1 : 1;
   const xBorde = r?.lado === 'der' ? x0 : x1;
+  // La del retorno va pegada al muro lateral (por dentro) y más alta que la de largo, para no cruzarla.
+  const xr = r?.lado === 'der' ? x1 - 20 : x0 + 20;
+  const yr = H + sep * 2;
   return (
     // El nombre permite ocultarlas al capturar la miniatura de la cotización.
     <group name="cotas">
@@ -132,12 +139,10 @@ function Cotas({ diseno: d, unidad }: { diseno: Diseno; unidad: Unidad }) {
       <Cota desde={[xAlto, 0, D]} hasta={[xAlto, H, D]} normal={[1, 0, 0]} texto={`Alto ${formatear(H, unidad)}`} />
       <Cota desde={[xAlto, H + sep, 0]} hasta={[xAlto, H + sep, D]} normal={[1, 0, 0]} texto={`Prof. ${formatear(D, unidad)}`} />
       {r && (
-        <Cota
-          desde={[r.lado === 'der' ? x1 + sep : x0 - sep, H + sep, 0]}
-          hasta={[r.lado === 'der' ? x1 + sep : x0 - sep, H + sep, r.largo]}
-          normal={[1, 0, 0]}
-          texto={`Retorno ${formatear(r.largo, unidad)}`}
-        />
+        <>
+          <Cota desde={[xr, yr, 0]} hasta={[xr, yr, r.largo]} normal={[0, 1, 0]} texto={`Retorno ${formatear(r.largo, unidad)}`} />
+          <Line points={[[xr, H, r.largo], [xr, yr + 40, r.largo]]} color="#a8325e" lineWidth={1} dashed dashSize={20} gapSize={15} />
+        </>
       )}
       {/* Líneas de referencia hacia el mueble */}
       <Line points={[[x0, H, D], [x0, H + sep + 40, D]]} color="#a8325e" lineWidth={1} dashed dashSize={20} gapSize={15} />

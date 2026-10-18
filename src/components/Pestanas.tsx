@@ -366,16 +366,27 @@ function CajonesTocador({ d, unidad, cambiar }: PropsPestana) {
 
 // ---------- Módulos y espacios ----------
 
+/** Largo máximo del tramo, para los avisos. */
+function maximoTexto(d: Diseno, tramo: Tramo, unidad: Unidad): string {
+  return formatear(tramo === 'retorno' ? LIMITES_RETORNO.largo[1] : maximoTramo(d, tramo), unidad);
+}
+
+/** Avisa que un módulo no cabe en el tramo (al agregarlo o al cambiarlo a horno). */
+function avisarNoCabe(d: Diseno, texto: string, anchoMinimo: number | null | undefined, unidad: Unidad, tramo: Tramo) {
+  const maximo = maximoTexto(d, tramo, unidad);
+  const necesita = anchoMinimo ? ` de ${formatear(anchoMinimo, unidad)}` : '';
+  const donde =
+    tramo === 'retorno' ? `el largo máximo de la L es ${maximo}` : tramo === 'aereos' && d.plantilla === 'compacto' ? 'el mueble superior ya está lleno' : `el ancho máximo es ${maximo}`;
+  useApp.getState().avisar(`No cabe «${texto}»${necesita}: ${donde}. Achica un módulo o el largo total.`, 'error');
+}
+
 /** Agrega un módulo avisando si no cabe o si queda más angosto. Devuelve la posición en que quedó. */
 function agregarConAviso(d: Diseno, preset: PresetModulo, posicion: number, cambiar: Cambiar, unidad: Unidad, tramo: Tramo = 'base'): number | null {
   const { avisar } = useApp.getState();
-  const maximo = formatear(tramo === 'retorno' ? LIMITES_RETORNO.largo[1] : maximoTramo(d, tramo), unidad);
+  const maximo = maximoTexto(d, tramo, unidad);
   const ancho = anchoDisponible(d, preset.tipo, preset.ancho, preset.anchoMinimo, tramo);
   if (ancho == null) {
-    const necesita = preset.anchoMinimo ? ` de ${formatear(preset.anchoMinimo, unidad)}` : '';
-    const donde =
-      tramo === 'retorno' ? `el largo máximo de la L es ${maximo}` : tramo === 'aereos' && d.plantilla === 'compacto' ? 'el mueble superior ya está lleno' : `el ancho máximo es ${maximo}`;
-    avisar(`No cabe «${preset.texto}»${necesita}: ${donde}. Achica un módulo o el largo total.`, 'error');
+    avisarNoCabe(d, preset.texto, preset.anchoMinimo, unidad, tramo);
     return null;
   }
   const i = Math.max(posicionMinima(d, tramo), Math.min(cuerposDe(d, tramo).length, posicion));
@@ -449,6 +460,8 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
   const prefijo = prefijoTramo(d, tramo);
   const largo = tramo === 'retorno' && d.retorno ? d.retorno.largo : largoTramo(d, tramo);
   const cocinaAdulta = d.plantilla === 'cocina' || d.plantilla === 'compacto';
+  // El horno mide siempre lo mismo, y el superior único del compacto, lo mismo que el base.
+  const anchoBloqueado = !!c && (anchoFijo(d.plantilla, c) != null || (tramo === 'aereos' && d.plantilla === 'compacto' && n === 1));
 
   const agregar = (preset: PresetModulo, posicion: number) => {
     setInsertarEn(null);
@@ -499,6 +512,98 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
                 </button>
               ))}
             </div>
+          )}
+        </div>
+      )}
+      {/* Medidas propias de la L o de los aéreos: van antes de la tira para que se vean sin desplazar el panel. */}
+      {tramo === 'retorno' && d.retorno && (
+        <div className="opciones-globales espacios">
+          <CampoMedida
+            etiqueta="Largo de la L (desde el muro)"
+            compacto
+            valor={d.retorno.largo}
+            unidad={unidad}
+            min={Math.max(LIMITES_RETORNO.largo[0], d.profundidad + 150)}
+            max={LIMITES_RETORNO.largo[1]}
+            onCambio={(mm) => cambiar((x) => fijarRetorno(x, { largo: mm }), 'largo-l')}
+          />
+          <CampoMedida
+            etiqueta="Fondo de la L"
+            compacto
+            valor={d.retorno.profundidad}
+            unidad={unidad}
+            min={LIMITES_RETORNO.profundidad[0]}
+            max={LIMITES_RETORNO.profundidad[1]}
+            onCambio={(mm) => cambiar((x) => fijarRetorno(x, { profundidad: mm }), 'fondo-l')}
+          />
+          <p className="ayuda">
+            Largo total del tramo principal con la esquina: {formatear(d.ancho + d.retorno.profundidad, unidad)}.
+          </p>
+        </div>
+      )}
+      {tramo === 'aereos' && (
+        <div className="opciones-globales espacios">
+          {d.plantilla === 'compacto' ? (
+            <CampoMedida
+              etiqueta="Alto del mueble base"
+              compacto
+              valor={d.aereos.elevacion}
+              unidad={unidad}
+              min={LIMITES_AEREOS.base[0]}
+              max={LIMITES_AEREOS.base[1]}
+              onCambio={(mm) => cambiar((x) => fijarAereos(x, { elevacion: mm }), 'base-compacto')}
+            />
+          ) : (
+            <CampoMedida
+              etiqueta="Altura desde el piso"
+              compacto
+              valor={d.aereos.elevacion}
+              unidad={unidad}
+              min={LIMITES_AEREOS.elevacion[0]}
+              max={LIMITES_AEREOS.elevacion[1]}
+              onCambio={(mm) => cambiar((x) => fijarAereos(x, { elevacion: mm }), 'elevacion')}
+            />
+          )}
+          <CampoMedida
+            etiqueta={d.plantilla === 'compacto' ? 'Alto del mueble superior' : 'Alto de los aéreos'}
+            compacto
+            valor={d.aereos.alto}
+            unidad={unidad}
+            min={LIMITES_AEREOS.alto[0]}
+            max={d.plantilla === 'compacto' ? d.alto - d.aereos.elevacion - 300 : LIMITES_AEREOS.alto[1]}
+            onCambio={(mm) => cambiar((x) => fijarAereos(x, { alto: mm }), 'alto-aereos')}
+          />
+          <CampoMedida
+            etiqueta="Fondo"
+            compacto
+            valor={d.aereos.profundidad}
+            unidad={unidad}
+            min={LIMITES_AEREOS.profundidad[0]}
+            max={d.plantilla === 'compacto' ? Math.min(LIMITES_AEREOS.profundidad[1], d.profundidad) : LIMITES_AEREOS.profundidad[1]}
+            onCambio={(mm) => cambiar((x) => fijarAereos(x, { profundidad: mm }), 'fondo-aereos')}
+          />
+          {d.plantilla !== 'compacto' && (
+            <>
+              <CampoMedida
+                etiqueta="Largo de los aéreos"
+                compacto
+                valor={largoTramo(d, 'aereos')}
+                unidad={unidad}
+                min={LIMITES_AEREOS.ancho[0]}
+                max={LIMITES_AEREOS.ancho[1]}
+                onCambio={(mm) => cambiar((x) => fijarAnchoAereos(x, mm), 'largo-aereos')}
+              />
+              <Segmentado
+                etiqueta="Alineación"
+                valor={d.aereos.alineacion}
+                onCambio={(v) => cambiar((x) => fijarAereos(x, { alineacion: v }))}
+                opciones={[
+                  { valor: 'izq', texto: 'Izquierda' },
+                  { valor: 'centro', texto: 'Centro' },
+                  { valor: 'der', texto: 'Derecha' },
+                ]}
+              />
+            </>
           )}
         </div>
       )}
@@ -614,25 +719,32 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
               etiqueta="Tipo"
               valor={c.tipo}
               opciones={tipos.map((t) => ({ valor: t, texto: nombreTipo(t, d.plantilla) }))}
-              onCambio={(v) =>
-                act({
+              onCambio={(v) => {
+                const cambios: Partial<Cuerpo> = {
                   tipo: v,
                   ...(v === 'frentes' ? { puertas: Math.max(1, c.puertas), abatible: false } : {}),
                   ...(v === 'campana' ? { puertas: 2, abatible: false } : {}),
                   ...(v === 'nicho' ? { puertas: 1, abatible: true } : {}),
                   ...(v === 'escritorio' ? { alto: 750 } : { alto: 0 }),
-                })
-              }
+                };
+                // El horno mide siempre lo mismo; si no cabe, las reglas no hacen el cambio y se avisa por qué.
+                const fijo = anchoFijo(d.plantilla, { ...c, tipo: v });
+                if (fijo != null && actualizarCuerpo(d, activo, cambios, tramo) === d) {
+                  avisarNoCabe(d, nombreTipo(v, d.plantilla), fijo, unidad, tramo);
+                  return;
+                }
+                act(cambios);
+              }}
             />
           )}
           <CampoMedida
-            etiqueta={anchoFijo(d.plantilla, c) != null ? 'Ancho del módulo (fijo)' : 'Ancho del módulo'}
+            etiqueta={anchoBloqueado ? 'Ancho del módulo (fijo)' : 'Ancho del módulo'}
             compacto
             valor={c.ancho}
             unidad={unidad}
             min={c.tipo === 'hueco' ? ANCHO_MIN_HUECO : ANCHO_MIN_CUERPO}
             max={1500}
-            deshabilitado={anchoFijo(d.plantilla, c) != null}
+            deshabilitado={anchoBloqueado}
             onCambio={(mm) => act({ ancho: mm }, `ancho-cuerpo-${c.id}`)}
           />
           {c.tipo === 'escritorio' && (
@@ -698,97 +810,6 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
               { valor: '18', texto: '18 mm' },
             ]}
           />
-        </div>
-      )}
-      {tramo === 'retorno' && d.retorno && (
-        <div className="opciones-globales espacios">
-          <CampoMedida
-            etiqueta="Largo de la L (desde el muro)"
-            compacto
-            valor={d.retorno.largo}
-            unidad={unidad}
-            min={Math.max(LIMITES_RETORNO.largo[0], d.profundidad + 150)}
-            max={LIMITES_RETORNO.largo[1]}
-            onCambio={(mm) => cambiar((x) => fijarRetorno(x, { largo: mm }), 'largo-l')}
-          />
-          <CampoMedida
-            etiqueta="Fondo de la L"
-            compacto
-            valor={d.retorno.profundidad}
-            unidad={unidad}
-            min={LIMITES_RETORNO.profundidad[0]}
-            max={LIMITES_RETORNO.profundidad[1]}
-            onCambio={(mm) => cambiar((x) => fijarRetorno(x, { profundidad: mm }), 'fondo-l')}
-          />
-          <p className="ayuda">
-            Largo total del tramo principal con la esquina: {formatear(d.ancho + d.retorno.profundidad, unidad)}.
-          </p>
-        </div>
-      )}
-      {tramo === 'aereos' && (
-        <div className="opciones-globales espacios">
-          {d.plantilla === 'compacto' ? (
-            <CampoMedida
-              etiqueta="Alto del mueble base"
-              compacto
-              valor={d.aereos.elevacion}
-              unidad={unidad}
-              min={LIMITES_AEREOS.base[0]}
-              max={LIMITES_AEREOS.base[1]}
-              onCambio={(mm) => cambiar((x) => fijarAereos(x, { elevacion: mm }), 'base-compacto')}
-            />
-          ) : (
-            <CampoMedida
-              etiqueta="Altura desde el piso"
-              compacto
-              valor={d.aereos.elevacion}
-              unidad={unidad}
-              min={LIMITES_AEREOS.elevacion[0]}
-              max={LIMITES_AEREOS.elevacion[1]}
-              onCambio={(mm) => cambiar((x) => fijarAereos(x, { elevacion: mm }), 'elevacion')}
-            />
-          )}
-          <CampoMedida
-            etiqueta={d.plantilla === 'compacto' ? 'Alto del mueble superior' : 'Alto de los aéreos'}
-            compacto
-            valor={d.aereos.alto}
-            unidad={unidad}
-            min={LIMITES_AEREOS.alto[0]}
-            max={d.plantilla === 'compacto' ? d.alto - d.aereos.elevacion - 300 : LIMITES_AEREOS.alto[1]}
-            onCambio={(mm) => cambiar((x) => fijarAereos(x, { alto: mm }), 'alto-aereos')}
-          />
-          <CampoMedida
-            etiqueta="Fondo"
-            compacto
-            valor={d.aereos.profundidad}
-            unidad={unidad}
-            min={LIMITES_AEREOS.profundidad[0]}
-            max={d.plantilla === 'compacto' ? Math.min(LIMITES_AEREOS.profundidad[1], d.profundidad) : LIMITES_AEREOS.profundidad[1]}
-            onCambio={(mm) => cambiar((x) => fijarAereos(x, { profundidad: mm }), 'fondo-aereos')}
-          />
-          {d.plantilla !== 'compacto' && (
-            <>
-              <CampoMedida
-                etiqueta="Largo de los aéreos"
-                compacto
-                valor={largoTramo(d, 'aereos')}
-                unidad={unidad}
-                min={LIMITES_AEREOS.ancho[0]}
-                max={LIMITES_AEREOS.ancho[1]}
-                onCambio={(mm) => cambiar((x) => fijarAnchoAereos(x, mm), 'largo-aereos')}
-              />
-              <Segmentado
-                etiqueta="Alineación"
-                valor={d.aereos.alineacion}
-                onCambio={(v) => cambiar((x) => fijarAereos(x, { alineacion: v }))}
-                opciones={[
-                  { valor: 'izq', texto: 'Izquierda' },
-                  { valor: 'centro', texto: 'Centro' },
-                  { valor: 'der', texto: 'Derecha' },
-                ]}
-              />
-            </>
-          )}
         </div>
       )}
     </div>

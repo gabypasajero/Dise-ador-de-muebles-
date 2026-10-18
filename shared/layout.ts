@@ -255,9 +255,11 @@ export function calcularLayout(d0: Diseno): Layout {
     const filas = Math.ceil(c.cajones / cols);
     let topeCajones = fy0;
     if (c.cajonesArriba && c.cajones > 0 && c.puertas > 0) {
-      // Cajones arriba (numerados de arriba hacia abajo) y puertas abajo.
-      const fijo = c.altoCajon > 0 ? c.altoCajon : altoCajonDefecto(d);
-      const maxFilas = Math.max(1, Math.floor((fy1 - fy0 - 200 + luz) / (fijo + luz)));
+      // Cajones arriba (numerados de arriba hacia abajo) y puertas abajo. El cajón se acota
+      // para dejar al menos 20 cm de puerta (y nunca pasa del alto del módulo).
+      const libre = fy1 - fy0;
+      const fijo = Math.min(c.altoCajon > 0 ? c.altoCajon : altoCajonDefecto(d), Math.max(90, libre - luz - 200), libre);
+      const maxFilas = Math.max(1, Math.floor((libre - 200 + luz) / (fijo + luz)));
       const k = Math.min(filas, maxFilas);
       const xs = tramos(fx0, fx1, cols, luz);
       let indice = 0;
@@ -271,10 +273,12 @@ export function calcularLayout(d0: Diseno): Layout {
       }
       lc.zonaCajones = { x0: fx0, x1: fx1, y0: piso, y1: fy1 };
       const py1 = piso - luz;
-      lc.zonaPuertas = { x0: fx0, x1: fx1, y0: fy0, y1: py1 };
-      tramos(fx0, fx1, c.puertas, luz).forEach(([a, b], q) => {
-        frentes.push({ tipo: 'puerta', cuerpo: i, indice: q, bisagra: bisagraDe(c, q), rect: { x0: a, x1: b, y0: fy0, y1: py1 } });
-      });
+      if (py1 - fy0 > 80) {
+        lc.zonaPuertas = { x0: fx0, x1: fx1, y0: fy0, y1: py1 };
+        tramos(fx0, fx1, c.puertas, luz).forEach(([a, b], q) => {
+          frentes.push({ tipo: 'puerta', cuerpo: i, indice: q, bisagra: bisagraDe(c, q), rect: { x0: a, x1: b, y0: fy0, y1: py1 } });
+        });
+      }
       return;
     }
     if (c.cajones > 0) {

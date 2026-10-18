@@ -349,7 +349,7 @@ export const useApp = create<Estado>((set, get) => ({
 export function escenarioActual(e: Escenario | 'auto', producto: ProductoCatalogo | null, d: Diseno): Escenario {
   if (e !== 'auto') return e;
   if (producto) return producto.escenario;
-  if (d.plantilla === 'cocina') return 'cocina';
+  if (d.plantilla === 'cocina' || d.plantilla === 'compacto') return 'cocina';
   if (d.plantilla === 'cocina-infantil' || d.plantilla === 'escritorio') return 'infantil';
   return 'dormitorio';
 }

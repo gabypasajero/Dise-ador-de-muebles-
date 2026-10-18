@@ -1,7 +1,7 @@
 // Reglas de negocio: límites de medidas, unidades, operaciones sobre el diseño,
 // advertencias de fabricación y precio referencial.
 import { cuerpo as nuevoCuerpo, repartir } from './catalogo';
-import { calcularLayout, calcularLayoutAereos, calcularLayoutTocador, centroCuerpo, disenoRetorno, esCocina, extremosPrincipal } from './layout';
+import { calcularLayout, calcularLayoutAereos, calcularLayoutTocador, centroCuerpo, disenoRetorno, esCocina, esCocinaAdulta, extremosPrincipal } from './layout';
 import type { Cuerpo, Diseno, Plantilla, ProductoCatalogo, Unidad } from './tipos';
 
 export interface Limites {
@@ -118,6 +118,26 @@ export function maximoTramo(d: Diseno, tramo: Tramo): number {
   return LIMITES[d.plantilla].ancho[1];
 }
 
+/** Compacto: suma de los mínimos del mueble superior (el base no puede quedar más angosto). */
+function minimoSuperior(d: Diseno): number {
+  return d.plantilla === 'compacto' ? d.aereos.cuerpos.reduce((s, c) => s + minCuerpo(c), 0) : 0;
+}
+
+/** Largo mínimo de los módulos del tramo: el ancho mínimo del mueble o el largo mínimo de la L. */
+function minimoTramo(d: Diseno, tramo: Tramo): number {
+  if (tramo === 'retorno') return LIMITES_RETORNO.largo[0] - d.profundidad;
+  if (tramo === 'aereos') return 0;
+  return Math.max(LIMITES[d.plantilla].ancho[0], minimoSuperior(d));
+}
+
+/** Si el módulo `indice` del tramo puede pasar a ser horno empotrado (60 cm) sin pasar el largo máximo del tramo. */
+export function cabeHorno(d: Diseno, indice: number, tramo: Tramo = 'base'): boolean {
+  const c = cuerposDe(d, tramo)[indice];
+  if (!c) return false;
+  const fijo = anchoFijo(d.plantilla, { ...c, tipo: 'horno' });
+  return fijo == null || largoTramo(d, tramo) - c.ancho + fijo <= maximoTramo(d, tramo);
+}
+
 /** Vuelve a calcular los totales del tramo después de cambiar sus módulos. */
 function recalcular(out: Diseno, tramo: Tramo) {
   if (tramo === 'base') out.ancho = largoTramo(out, 'base');
@@ -138,13 +158,17 @@ function repartirModulos(cs: Cuerpo[], total: number, p?: Plantilla) {
   const resto = total - fijos.reduce((s, c) => s + c.ancho, 0);
   const partes = repartir(resto, libres.map((c) => c.ancho));
   libres.forEach((c, i) => (c.ancho = partes[i]));
-  for (const c of libres) {
-    const falta = minCuerpo(c) - c.ancho;
-    if (falta > 0) {
-      const mayor = libres.reduce((a, b) => (b.ancho > a.ancho ? b : a));
-      mayor.ancho -= falta;
-      c.ancho += falta;
-    }
+  // Los que quedan bajo el mínimo toman ancho del que tiene más holgura. Cada vuelta completa
+  // un módulo o deja un donante en su mínimo, así que el bucle termina.
+  for (;;) {
+    const corto = libres.find((c) => c.ancho < minCuerpo(c));
+    if (!corto) break;
+    const holgura = (c: Cuerpo) => c.ancho - minCuerpo(c);
+    const donante = libres.reduce<Cuerpo | null>((a, b) => (holgura(b) > 0 && (!a || holgura(b) > holgura(a)) ? b : a), null);
+    if (!donante) break;
+    const mover = Math.min(minCuerpo(corto) - corto.ancho, holgura(donante));
+    donante.ancho -= mover;
+    corto.ancho += mover;
   }
 }
 
@@ -152,6 +176,13 @@ function repartirModulos(cs: Cuerpo[], total: number, p?: Plantilla) {
 function ajustarSuperiorCompacto(out: Diseno) {
   if (out.plantilla !== 'compacto' || !out.aereos.cuerpos.length) return;
   if (largoTramo(out, 'aereos') !== out.ancho) repartirModulos(out.aereos.cuerpos, out.ancho);
+}
+
+/** En la L los aéreos no pasan el muro lateral: si el tramo principal o la esquina se acortan, sus módulos también. */
+function ajustarAereosAlMuro(out: Diseno) {
+  if (!out.retorno || !out.aereos.cuerpos.length) return;
+  const maximo = maximoTramo(out, 'aereos');
+  if (largoTramo(out, 'aereos') > maximo) repartirModulos(out.aereos.cuerpos, maximo);
 }
 
 /** El tramo en L conserva su largo exterior: si cambia el fondo del principal se reparten sus módulos. */
@@ -169,15 +200,18 @@ export function fijarAncho(d: Diseno, ancho: number): Diseno {
   const out = clonar(d);
   const n = out.cuerpos.length;
   const p = out.plantilla;
-  const minimo = out.cuerpos.reduce((s, c) => s + minCuerpo(c, p), 0) + out.separacionCuerpos * Math.max(0, n - 1);
+  const minimoModulos = out.cuerpos.reduce((s, c) => s + minCuerpo(c, p), 0) + out.separacionCuerpos * Math.max(0, n - 1);
+  // En el compacto el base tampoco queda más angosto que lo mínimo del mueble superior.
+  const minimo = Math.max(minimoModulos, minimoSuperior(out));
   let objetivo = Math.max(limitar(Math.round(ancho), LIMITES[d.plantilla].ancho), minimo);
   // Si todos los módulos son de medida fija (solo hornos), el ancho no puede cambiar.
-  if (n > 0 && out.cuerpos.every((c) => anchoFijo(p, c) != null)) objetivo = minimo;
+  if (n > 0 && out.cuerpos.every((c) => anchoFijo(p, c) != null)) objetivo = minimoModulos;
   out.ancho = objetivo;
   if (n === 0) return out;
   repartirModulos(out.cuerpos, objetivo - out.separacionCuerpos * (n - 1), p);
   out.ancho = largoTramo(out, 'base');
   ajustarSuperiorCompacto(out);
+  ajustarAereosAlMuro(out);
   return out;
 }
 
@@ -212,6 +246,11 @@ export function fijarAnchoCuerpo(d: Diseno, indice: number, ancho: number, tramo
   if (!c) return out;
   if (tramo === 'aereos' && out.plantilla === 'compacto') {
     const otros = cs.filter((x) => x !== c);
+    // Un superior único mide siempre lo mismo que el base.
+    if (!otros.length) {
+      c.ancho = out.ancho;
+      return out;
+    }
     const minOtros = otros.reduce((s, x) => s + minCuerpo(x), 0);
     c.ancho = limitar(Math.round(ancho), [minCuerpo(c), Math.max(minCuerpo(c), out.ancho - minOtros)]);
     repartirModulos(otros, out.ancho - c.ancho);
@@ -219,9 +258,15 @@ export function fijarAnchoCuerpo(d: Diseno, indice: number, ancho: number, tramo
   }
   const resto = largoTramo(out, tramo) - c.ancho;
   const fijo = anchoFijo(out.plantilla, c);
-  c.ancho = fijo ?? Math.max(minCuerpo(c), Math.min(Math.round(ancho), maximoTramo(out, tramo) - resto));
+  // El horno de medida fija no se cambia si no cabe en el tramo.
+  if (fijo != null && resto + fijo > maximoTramo(out, tramo)) return out;
+  // El tramo no baja de su mínimo (ancho mínimo del mueble, largo mínimo de la L) ni pasa su máximo.
+  c.ancho = fijo ?? Math.max(minCuerpo(c), minimoTramo(out, tramo) - resto, Math.min(Math.round(ancho), maximoTramo(out, tramo) - resto));
   recalcular(out, tramo);
-  if (tramo === 'base') ajustarSuperiorCompacto(out);
+  if (tramo === 'base') {
+    ajustarSuperiorCompacto(out);
+    ajustarAereosAlMuro(out);
+  }
   return out;
 }
 
@@ -232,7 +277,9 @@ export function fijarSeparacion(d: Diseno, separacion: number): Diseno {
   out.separacionCuerpos = sep;
   out.ancho = out.cuerpos.reduce((s, c) => s + c.ancho, 0) + sep * Math.max(0, n - 1);
   if (out.ancho > LIMITES[d.plantilla].ancho[1]) return fijarAncho(out, LIMITES[d.plantilla].ancho[1]);
+  if (out.ancho < minimoTramo(out, 'base')) return fijarAncho(out, minimoTramo(out, 'base'));
   ajustarSuperiorCompacto(out);
+  ajustarAereosAlMuro(out);
   return out;
 }
 
@@ -257,8 +304,10 @@ export function actualizarCuerpo(d: Diseno, indice: number, cambios: Partial<Cue
     c.cajones = 0;
   }
   if (tramo === 'aereos') c.cajones = 0;
-  if (typeof ancho === 'number') return fijarAnchoCuerpo(out, indice, ancho, tramo);
   const fijo = anchoFijo(out.plantilla, c);
+  // Un módulo que pasa a ser horno toma sus 60 cm; si no caben en el tramo, el cambio no se hace.
+  if (fijo != null && c.ancho !== fijo && !cabeHorno(out, indice, tramo)) return d;
+  if (typeof ancho === 'number') return fijarAnchoCuerpo(out, indice, ancho, tramo);
   if (fijo != null && c.ancho !== fijo) return fijarAnchoCuerpo(out, indice, fijo, tramo);
   return out;
 }
@@ -468,8 +517,9 @@ export function quitarCuerpo(d: Diseno, indice: number, tramo: Tramo = 'base'): 
   out.cocina.encimeraCuerpo = e;
   out.cocina.lavaplatosCuerpo = w;
   out.ancho = out.cuerpos.reduce((s, c) => s + c.ancho, 0) + out.separacionCuerpos * (n - 1);
-  if (out.ancho < LIMITES[d.plantilla].ancho[0]) return fijarAncho(out, LIMITES[d.plantilla].ancho[0]);
+  if (out.ancho < minimoTramo(out, 'base')) return fijarAncho(out, minimoTramo(out, 'base'));
   ajustarSuperiorCompacto(out);
+  ajustarAereosAlMuro(out);
   return out;
 }
 
@@ -564,6 +614,58 @@ export function retornoPorDefecto(d: Diseno, lado: 'izq' | 'der'): NonNullable<D
   return { lado, largo, profundidad: d.profundidad, cuerpos };
 }
 
+/** Posición de los aéreos aunque estén apagados. */
+function layoutAereos(d: Diseno) {
+  return calcularLayoutAereos({ ...d, aereos: { ...d.aereos, activo: true } });
+}
+
+/**
+ * Al cambiar la esquina de la L los aéreos se anclan a otros extremos y se correrían. Se prueba
+ * dejarlos como están, cada alineación, pasar a la otra punta los módulos de la esquina que ya no
+ * está y un espacio libre en una punta (todo ya recortado al muro), y se queda lo que deja la
+ * campana (o el primer módulo) más cerca de donde estaba, para que siga sobre la encimera.
+ */
+function conservarAereos(antes: Diseno, out: Diseno) {
+  const la = layoutAereos(antes);
+  const ref = la?.cuerpos.find((c) => c.cuerpo.tipo === 'campana') ?? la?.cuerpos.find((c) => c.cuerpo.tipo !== 'hueco');
+  if (!la || !ref) return ajustarAereosAlMuro(out);
+  const centro = (ref.x0 + ref.x1) / 2;
+  const [s0, s1] = extremosPrincipal(out);
+  // Módulos sin los espacios libres de las puntas, que se vuelven a calcular.
+  const cs = out.aereos.cuerpos;
+  const i0 = cs[0].tipo === 'hueco' ? 1 : 0;
+  const i1 = cs[cs.length - 1].tipo === 'hueco' ? cs.length - 1 : cs.length;
+  const contenido = cs.slice(i0, i1);
+  const c0 = la.cuerpos[i0].x0;
+  const c1 = la.cuerpos[i1 - 1].x1;
+  // Los módulos que quedaban fuera de los nuevos extremos (sobre la esquina que se fue) pasan a la otra punta.
+  const medio = (i: number) => (la.cuerpos[i].x0 + la.cuerpos[i].x1) / 2;
+  let a = i0;
+  while (a < i1 && medio(a) < s0) a++;
+  let b = i1;
+  while (b > a && medio(b - 1) > s1) b--;
+  const girado = [...cs.slice(b, i1), ...cs.slice(a, b), ...cs.slice(i0, a)];
+  const espacio = (ancho: number) => nuevoCuerpo({ tipo: 'hueco', ancho: Math.round(ancho) });
+  const opciones: [Diseno['aereos']['alineacion'], Cuerpo[], boolean][] = [[out.aereos.alineacion, cs, false]];
+  for (const alineacion of ['izq', 'der', 'centro'] as const) {
+    opciones.push([alineacion, contenido, false]);
+    if (a > i0 || b < i1) opciones.push([alineacion, girado, false]);
+  }
+  if (c0 - s0 >= ANCHO_MIN_HUECO) opciones.push(['izq', [espacio(c0 - s0), ...contenido], true]);
+  if (s1 - c1 >= ANCHO_MIN_HUECO) opciones.push(['der', [...contenido, espacio(s1 - c1)], true]);
+  let mejor: { aereos: Diseno['aereos']; desvio: number } | null = null;
+  for (const [alineacion, cuerpos, conEspacio] of opciones) {
+    const prueba = { ...out, aereos: { ...out.aereos, alineacion, cuerpos: cuerpos.map((c) => ({ ...c })) } };
+    ajustarAereosAlMuro(prueba);
+    const r = layoutAereos(prueba)!.cuerpos.find((c) => c.cuerpo.id === ref.cuerpo.id)!;
+    // Un espacio libre nuevo solo se agrega si la campana sigue sobre el mismo punto.
+    if (conEspacio && !(r.x0 <= centro && centro <= r.x1)) continue;
+    const desvio = Math.abs((r.x0 + r.x1) / 2 - centro);
+    if (!mejor || desvio < mejor.desvio - 0.5) mejor = { aereos: prueba.aereos, desvio };
+  }
+  out.aereos = mejor!.aereos;
+}
+
 /** Cambia la forma de la cocina: lineal (null) o en L hacia un lado. */
 export function fijarForma(d: Diseno, lado: 'izq' | 'der' | null): Diseno {
   if (d.plantilla !== 'cocina') return d;
@@ -571,9 +673,7 @@ export function fijarForma(d: Diseno, lado: 'izq' | 'der' | null): Diseno {
   if (!lado) out.retorno = null;
   else if (out.retorno) out.retorno.lado = lado;
   else out.retorno = retornoPorDefecto(out, lado);
-  if (out.retorno && out.aereos.cuerpos.length && largoTramo(out, 'aereos') > maximoTramo(out, 'aereos')) {
-    repartirModulos(out.aereos.cuerpos, maximoTramo(out, 'aereos'));
-  }
+  conservarAereos(d, out);
   return out;
 }
 
@@ -584,6 +684,8 @@ export function fijarRetorno(d: Diseno, cambios: Partial<Pick<NonNullable<Diseno
   if (cambios.profundidad != null) r.profundidad = limitar(Math.round(cambios.profundidad), LIMITES_RETORNO.profundidad);
   if (cambios.largo != null) r.largo = Math.round(cambios.largo);
   ajustarRetorno(out);
+  // El fondo de la L mueve la esquina: los aéreos se mantienen en su lugar y no pasan el muro.
+  conservarAereos(d, out);
   return out;
 }
 
@@ -604,7 +706,7 @@ export function normalizar(d: Diseno): Diseno {
     if (fijo != null) c.ancho = fijo;
   }
   const suma = out.cuerpos.reduce((s, c) => s + c.ancho, 0) + out.separacionCuerpos * Math.max(0, n - 1);
-  if (suma !== out.ancho) out = fijarAncho(out, out.ancho);
+  if (suma !== out.ancho || out.ancho < minimoSuperior(out)) out = fijarAncho(out, out.ancho);
   out.cocina.encimeraCuerpo = limitar(out.cocina.encimeraCuerpo, [0, Math.max(0, n - 1)]);
   out.cocina.lavaplatosCuerpo = limitar(out.cocina.lavaplatosCuerpo, [0, Math.max(0, n - 1)]);
   if (out.plantilla !== 'cocina') out.retorno = null;
@@ -676,7 +778,7 @@ export function advertencias(d: Diseno, unidad: Unidad = 'cm'): Advertencia[] {
       if (lav.ancho < necesita) out.push({ nivel: 'aviso', texto: `El lavaplatos ${d.cocina.lavaplatos} necesita un módulo de al menos ${f(necesita)}.` });
     }
     const enc = d.cuerpos[d.cocina.encimeraCuerpo];
-    if (d.cocina.encimera !== 'ninguna' && enc && enc.ancho < (d.cocina.encimera === '4' ? 580 : d.plantilla === 'cocina' ? 400 : 250)) {
+    if (d.cocina.encimera !== 'ninguna' && enc && enc.ancho < (d.cocina.encimera === '4' ? 580 : esCocinaAdulta(d) ? 400 : 250)) {
       out.push({ nivel: 'info', texto: `La encimera sobresale del módulo ${d.cocina.encimeraCuerpo + 1}; la cubierta igual la soporta.` });
     }
     if (
@@ -696,12 +798,35 @@ export function advertencias(d: Diseno, unidad: Unidad = 'cm'): Advertencia[] {
   if (la && la.montaje === 'mural') {
     const libre = la.y0 - d.alto;
     if (libre < 450) out.push({ nivel: 'aviso', texto: `Entre la cubierta y los aéreos quedan ${f(libre)}: se recomiendan al menos ${f(550)}.` });
-    if (d.cocina.encimera !== 'ninguna' && !d.aereos.cuerpos.some((c) => c.tipo === 'campana' || c.tipo === 'hueco')) {
-      out.push({ nivel: 'info', texto: 'Sobre la encimera conviene un módulo de campana o un espacio libre en los aéreos.' });
+    // La campana (o el espacio libre) tiene que quedar justo sobre la encimera.
+    const xEnc = centroCuerpo(l, d.cocina.encimeraCuerpo);
+    const sobreEncimera = la.cuerpos.some((c) => (c.cuerpo.tipo === 'campana' || c.cuerpo.tipo === 'hueco') && c.x0 <= xEnc && xEnc <= c.x1);
+    if (d.cocina.encimera !== 'ninguna' && !sobreEncimera) {
+      out.push(
+        la.cuerpos.some((c) => c.cuerpo.tipo === 'campana')
+          ? { nivel: 'aviso', texto: `La campana de los aéreos no queda sobre la encimera (módulo ${d.cocina.encimeraCuerpo + 1}): mueve el módulo de campana o cambia la encimera de módulo.` }
+          : { nivel: 'info', texto: 'Sobre la encimera conviene un módulo de campana o un espacio libre en los aéreos.' },
+      );
+    }
+  }
+  if (la) {
+    // Un microondas chico mide unos 26 cm de alto.
+    const nombre = d.plantilla === 'compacto' ? 'mueble superior' : 'aéreo';
+    for (const lc of la.cuerpos) {
+      if (lc.nicho && lc.nicho.y1 - lc.nicho.y0 < 260) {
+        out.push({
+          nivel: 'aviso',
+          texto: `El nicho del ${nombre} ${lc.indice + 1} queda de ${f(lc.nicho.y1 - lc.nicho.y0)} de alto: un microondas necesita unos ${f(260)}; sube el alto ${d.plantilla === 'compacto' ? 'del mueble superior' : 'de los aéreos'}.`,
+        });
+      }
     }
   }
   if (la && la.montaje === 'apoyado' && la.y0 - la.yCubierta < 350) {
     out.push({ nivel: 'info', texto: `Entre la cubierta y el mueble superior quedan ${f(la.y0 - la.yCubierta)}: es poco para un hervidor o una cafetera (ideal ${f(400)}).` });
+  }
+  if (la && la.montaje === 'apoyado' && esCocina(d) && d.cocina.encimera !== 'ninguna') {
+    // El mueble superior del compacto cubre todo el ancho y no lleva campana.
+    out.push({ nivel: 'aviso', texto: `La encimera a gas queda ${f(la.y0 - la.yCubierta)} bajo el mueble superior y sin campana: no se recomienda cocinar a gas bajo un mueble cerrado.` });
   }
   if (d.plantilla === 'closet' && d.profundidad < 500 && d.cuerpos.some((c) => c.colgador)) {
     out.push({ nivel: 'info', texto: `Con ${f(d.profundidad)} de fondo los ganchos quedan algo justos (ideal ${f(550)}).` });
