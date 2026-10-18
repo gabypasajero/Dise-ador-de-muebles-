@@ -858,6 +858,32 @@
     "orden": 5
   },
   {
+    "id": 153,
+    "nombre": "Mueble de cocina compacto 3C · Calacatta Verde Salvia",
+    "categoria": "cocina",
+    "descripcion": "Mueble superior con 2 puertas, puerta abatible y nicho para microondas con repisa postformada. Mueble base con 3 puertas y 1 cajón. Melamina 15 mm, cubierta MDF postformada.",
+    "medidas": "40 × 110 × 192 cm",
+    "precio": 129990,
+    "precio_oferta": null,
+    "imagen_url": "https://cdn.jsdelivr.net/gh/gabypasajero/Dise-ador-de-muebles-@54eb3b458ac0f2d078609318515715aa6c318855/public/productos/compacto-3c-verde-salvia.jpg",
+    "personalizable": false,
+    "destacado": false,
+    "orden": 5
+  },
+  {
+    "id": 154,
+    "nombre": "Mueble de cocina compacto 5C · Clasic Pino Nebraska",
+    "categoria": "cocina",
+    "descripcion": "Mueble superior con 3 puertas, puerta abatible y nicho para microondas con repisa postformada. Mueble base con 4 puertas y 3 cajones. Melamina 15 mm, cubierta MDF postformada.",
+    "medidas": "40 × 180 × 190 cm",
+    "precio": 190000,
+    "precio_oferta": null,
+    "imagen_url": "https://cdn.jsdelivr.net/gh/gabypasajero/Dise-ador-de-muebles-@54eb3b458ac0f2d078609318515715aa6c318855/public/productos/compacto-5c-pino-nebraska.jpg",
+    "personalizable": false,
+    "destacado": false,
+    "orden": 5
+  },
+  {
     "id": 55,
     "nombre": "Tocador 7 cajones foco embutido",
     "categoria": "tocadores",
@@ -1021,7 +1047,7 @@
     "medidas": "37 × 70 × 113 cm",
     "precio": 79990,
     "precio_oferta": null,
-    "imagen_url": null,
+    "imagen_url": "https://mueblesyhogarmolina.cl/wp-content/uploads/2024/10/comoda-7-cajones-custom.jpg",
     "personalizable": true,
     "destacado": false,
     "orden": 8
