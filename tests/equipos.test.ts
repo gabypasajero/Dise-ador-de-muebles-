@@ -209,7 +209,8 @@ describe('la campana queda siempre sobre la encimera', () => {
       (x) => quitarCuerpo(x, x.aereos.cuerpos.length - 1, 'aereos'),
       (x) => fijarAncho(x, 3000),
       (x) => fijarAereos(x, { profundidad: 350 }),
-      (x) => moverEquipo(x, encimera(x).id, 'base', x.cuerpos.length - 1),
+      // El último módulo tiene el lavaplatos (no caben juntos): la encimera va al penúltimo.
+      (x) => moverEquipo(x, encimera(x).id, 'base', x.cuerpos.length - 2),
     ];
     for (const paso of pasos) {
       const antes = d;

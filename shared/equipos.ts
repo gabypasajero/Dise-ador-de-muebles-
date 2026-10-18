@@ -4,18 +4,24 @@
 import { cuerpo as nuevoCuerpo } from './catalogo';
 import {
   centroEncimera,
+  centroLavaplatos,
   disenoBase,
   esTramoAereo,
+  extremosPrincipal,
+  inicioAereoPrincipal,
   ladoAereoActivo,
+  largoEje,
   ladoDeTramo,
   MARGEN_MIN_LAVAPLATOS,
   MEDIDAS_EQUIPO,
+  MODULO_MIN_LAVAPLATOS,
   posEnMundo,
   posEnTramo,
+  posicionesModulos,
   tramoAereoDe,
 } from './layout';
 import { repartirConLimites, type Limite } from './reparto';
-import { ANCHO_CAMPANA, ANCHO_MIN_CUERPO, ANCHO_MIN_HUECO, cuerposDe, ladoDe, limitesModulo, resolverTramo, TRAMOS_AEREOS, TRAMOS_BASE } from './tramos';
+import { ANCHO_CAMPANA, ANCHO_MIN_CUERPO, ANCHO_MIN_HUECO, cuerposDe, esCajonera, ladoDe, LIMITES_AEREOS, limitesModulo, resolverTramo, TRAMOS_AEREOS, TRAMOS_BASE } from './tramos';
 import type { Cuerpo, Diseno, Encimera, Equipo, Lavaplatos, Plantilla, TramoAereo, TramoBase, TramoId } from './tipos';
 
 /** Mensajes informativos que juntan las operaciones (se devuelven en Resultado.avisos). */
@@ -82,6 +88,21 @@ export function puedeLlevar(d: Diseno, tipo: TipoEquipo, t: TramoBase, c: Cuerpo
   return tipo === 'encimera' ? c.tipo === 'frentes' || c.tipo === 'horno' : c.tipo === 'frentes';
 }
 
+/**
+ * Si la encimera de una cocina adulta cabe sobre el módulo sin salirse de la cubierta: su
+ * centro va sobre el módulo y a no menos de 30 cm de cada punta (lo que pide la campana).
+ * Un módulo muy angosto en la punta del tramo no la puede llevar.
+ */
+export function cabeEncimera(d: Diseno, t: TramoBase, i: number): boolean {
+  if (!esAdulta(d.plantilla)) return true;
+  const db = disenoBase(d);
+  const pos = posicionesModulos(db, t)[i];
+  if (!pos) return false;
+  const L = largoEje(db, t);
+  const media = Math.max(MEDIDAS_EQUIPO.encimera['4'].ancho, MEDIDAS_EQUIPO.campana.ancho) / 2;
+  return Math.max(pos.s0, media) <= Math.min(pos.s1, L - media) + 0.5;
+}
+
 /** Equipo del mismo tipo que ya ocupa ese módulo (sin contar `excepto`). */
 function ocupado(d: Diseno, tipo: TipoEquipo, t: TramoBase, modulo: string, excepto?: string): boolean {
   return (d.equipos ?? []).some((e) => e.tipo === tipo && e.tramo === t && e.modulo === modulo && e.id !== excepto);
@@ -93,6 +114,9 @@ export function motivoNoPuedeIr(d: Diseno, tipo: TipoEquipo, t: TramoBase, i: nu
   if (!c) return 'Ese módulo no existe.';
   const nombre = nombreModuloEn(d, t, i);
   if (d.plantilla === 'cocina-infantil' && t === 'base' && i === 0) return 'La despensa alta no lleva cubierta.';
+  if (tipo === 'encimera' && (c.tipo === 'frentes' || c.tipo === 'horno') && !cabeEncimera(d, t, i)) {
+    return `La encimera no cabe en el ${nombre} (${Math.round(c.ancho / 10)} cm): está en la punta y se saldría de la cubierta, que necesita 30 cm desde el borde. Elige un módulo más ancho o más adentro.`;
+  }
   if (!puedeLlevar(d, tipo, t, c, i)) {
     const que = tipo === 'encimera' ? 'La encimera' : 'El lavaplatos';
     const donde = tipo === 'encimera' ? 'un módulo de puertas, cajones u horno' : 'un módulo de puertas o cajones';
@@ -113,9 +137,11 @@ export function elegirAnfitrion(
   tramos: TramoBase[],
   cerca: { tramo: TramoBase; indice: number } | null,
   excepto?: string,
+  modelo: Lavaplatos['modelo'] = 'simple',
 ): { tramo: TramoBase; modulo: string; indice: number } | null {
   let mejor: { tramo: TramoBase; modulo: string; indice: number; puntaje: number } | null = null;
   const otro: TipoEquipo = tipo === 'encimera' ? 'lavaplatos' : 'encimera';
+  const adulta = esAdulta(d.plantilla);
   tramos.forEach((t, orden) => {
     if (!resolverTramo(d, t)) return;
     const cs = cuerposDe(d, t);
@@ -125,6 +151,12 @@ export function elegirAnfitrion(
       if (cerca) puntaje += cerca.tramo === t ? Math.abs(i - cerca.indice) : 500;
       else puntaje -= c.ancho / 100;
       if (tipo === 'encimera' && c.tipo !== 'horno') puntaje += 100;
+      // Se prefieren módulos donde el equipo cabe: el lavaplatos sobre puertas (no sobre
+      // cajones) y con el ancho que pide su cubeta; la encimera sobre un módulo de su ancho.
+      if (adulta && tipo === 'lavaplatos' && c.ancho < MODULO_MIN_LAVAPLATOS[modelo]) puntaje += 200;
+      if (tipo === 'lavaplatos' && esCajonera(c)) puntaje += 40;
+      if (adulta && tipo === 'encimera' && c.tipo !== 'horno' && c.ancho < MEDIDAS_EQUIPO.encimera['4'].ancho) puntaje += 60;
+      if (tipo === 'encimera' && !cabeEncimera(d, t, i)) puntaje += 400;
       if (ocupado(d, otro, t, c.id)) puntaje += 300;
       if (!cerca && tipo === 'lavaplatos') {
         // Sin preferencia: lejos de la encimera del mismo tramo.
@@ -143,6 +175,27 @@ export function elegirAnfitrion(
 /** Margen máximo (mm) del lavaplatos pegado a un borde dentro de su módulo. */
 export function margenMaximo(c: Cuerpo, l: Lavaplatos): number {
   return Math.max(MARGEN_MIN_LAVAPLATOS, c.ancho - MEDIDAS_EQUIPO.lavaplatos[l.modelo].ancho - 15);
+}
+
+/**
+ * Si un equipo choca con el otro equipo de su mismo módulo (encimera y lavaplatos juntos en
+ * un módulo que no da para los dos), el motivo; null si caben o está solo.
+ */
+export function choqueEnModulo(d: Diseno, e: Equipo): string | null {
+  const otro = (d.equipos ?? []).find((x) => x.id !== e.id && x.tipo !== e.tipo && x.tramo === e.tramo && x.modulo === e.modulo);
+  if (!otro) return null;
+  const db = disenoBase(d);
+  const tramo = (x: Equipo) => {
+    const s = x.tipo === 'encimera' ? centroEncimera(db, x) : centroLavaplatos(db, x);
+    const w = x.tipo === 'encimera' ? MEDIDAS_EQUIPO.encimera[x.platos].ancho : MEDIDAS_EQUIPO.lavaplatos[x.modelo].ancho;
+    return s == null ? null : [s - w / 2, s + w / 2];
+  };
+  const a = tramo(e);
+  const b = tramo(otro);
+  if (!a || !b || a[1] <= b[0] || b[1] <= a[0]) return null;
+  const cs = cuerposDe(d, e.tramo);
+  const i = cs.findIndex((c) => c.id === e.modulo);
+  return `La encimera y el lavaplatos no caben juntos en el ${nombreModuloEn(d, e.tramo, i)} (${Math.round(cs[i].ancho / 10)} cm): se toparían. Elige otro módulo o pega el lavaplatos a un borde de un módulo más ancho.`;
 }
 
 function nombreEquipo(e: Equipo): string {
@@ -184,7 +237,7 @@ export function repararEquipos(d: Diseno, ctx: Ctx, cerca: Map<string, { tramo: 
     if (!valido) {
       const ref = cerca.get(e.id) ?? (t && i >= 0 ? { tramo: t, indice: i } : { tramo: t ?? 'base', indice: 0 });
       const tramos: TramoBase[] = [ref.tramo, ...TRAMOS_BASE.filter((x) => x !== ref.tramo)];
-      const nuevo = elegirAnfitrion(d, e.tipo, tramos, ref, e.id);
+      const nuevo = elegirAnfitrion(d, e.tipo, tramos, ref, e.id, e.tipo === 'lavaplatos' ? e.modelo : 'simple');
       if (!nuevo) {
         ctx.avisos.push(`${nombreEquipo(e)} se quitó: no queda un módulo donde ponerlo.`);
         continue;
@@ -303,13 +356,15 @@ function acomodarConPines(d: Diseno, t: TramoAereo, cs: Cuerpo[], L: number, obj
   // Si las campanas no caben todas, las que sobran se informan como conflicto.
   while (pines.reduce((s, p) => s + p.w, 0) > L && pines.length) conflictos.add(pines.pop()!.c.id);
   for (const p of pines) p.x0 = Math.round(Math.max(0, Math.min(L - p.w, p.t - p.w / 2)));
+  const ideal = new Map(pines.map((p) => [p, p.x0]));
   for (let j = 1; j < pines.length; j++) pines[j].x0 = Math.max(pines[j].x0, pines[j - 1].x0 + pines[j - 1].w);
   for (let j = pines.length - 1; j >= 0; j--) {
     const tope = j === pines.length - 1 ? L : pines[j + 1].x0;
     if (pines[j].x0 + pines[j].w > tope) pines[j].x0 = tope - pines[j].w;
   }
-  // Dos campanas que se topan no pueden quedar las dos sobre su encimera.
-  for (const p of pines) if (p.t < p.x0 - 0.5 || p.t > p.x0 + p.w + 0.5) conflictos.add(p.c.id);
+  // Dos campanas que se topan no pueden quedar las dos centradas sobre su encimera: si una
+  // tuvo que correrse por la otra, hay conflicto.
+  for (const p of pines) if (Math.abs(p.x0 - ideal.get(p)!) > 0.5) conflictos.add(p.c.id);
   const libres = cs.filter((c) => !pines.some((p) => p.c === c));
   const huecos = () => {
     const out: { a: number; b: number }[] = [];
@@ -385,6 +440,135 @@ function acomodarConPines(d: Diseno, t: TramoAereo, cs: Cuerpo[], L: number, obj
   return out;
 }
 
+/** Centro (s, a lo largo del tramo aéreo `ta`) que le corresponde a la campana de una encimera. */
+export function centroCampanaEn(d: Diseno, ta: TramoAereo, e: Encimera): number | null {
+  const db = disenoBase(d);
+  const sb = centroEncimera(db, e);
+  return sb == null ? null : posEnTramo(d, ta, posEnMundo(db, e.tramo, sb));
+}
+
+/**
+ * Cómo queda la campana respecto del aéreo de su lado: dentro (va alojada en un módulo de
+ * campana), fuera (mural, sin tocar el aéreo) o parcial (el aéreo termina justo sobre ella).
+ */
+export function coberturaCampana(d: Diseno, ta: TramoAereo, e: Encimera): { s: number; L: number; estado: 'dentro' | 'fuera' | 'parcial' } | null {
+  if (!aereoVisible(d, ta)) return null;
+  const s = centroCampanaEn(d, ta, e);
+  if (s == null) return null;
+  const L = cuerposDe(d, ta).reduce((x, c) => x + c.ancho, 0);
+  const h = ANCHO_CAMPANA / 2;
+  if (s + h <= TOL_CAMPANA || s - h >= L - TOL_CAMPANA) return { s, L, estado: 'fuera' };
+  if (s - h >= -TOL_CAMPANA && s + h <= L + TOL_CAMPANA) return { s, L, estado: 'dentro' };
+  return { s, L, estado: 'parcial' };
+}
+
+/** Holgura (mm) con que se compara la campana con los bordes del aéreo. */
+const TOL_CAMPANA = 1;
+
+/**
+ * Si un aéreo hecho a medida (no cuadrado) termina justo sobre una campana, se alarga hasta
+ * cubrirla entera: así la campana queda alojada y centrada sobre su encimera en vez de
+ * desplazada o chocando con el último módulo.
+ */
+function alargarSobreCampanas(d: Diseno, ta: TramoAereo, encimeras: Encimera[], ctx: Ctx) {
+  // Los aéreos cuadrados siguen al base (y la encimera nunca se sale de la cubierta): no hace falta.
+  if (d.plantilla !== 'cocina' || d.aereos.cuadrado) return;
+  const h = ANCHO_CAMPANA / 2;
+  for (let vuelta = 0; vuelta < 4; vuelta++) {
+    let cambio = false;
+    for (const e of encimeras) {
+      if (!e.campana || tramoAereoDe(e.tramo) !== ta) continue;
+      const cob = coberturaCampana(d, ta, e);
+      if (!cob || cob.estado !== 'parcial') continue;
+      const cs = cuerposDe(d, ta);
+      const { s, L } = cob;
+      let extra = 0;
+      let alPrincipio = false;
+      if (ta === 'aereos') {
+        // El aéreo principal crece hacia el lado de la campana según su alineación.
+        const [sx0, sx1] = extremosPrincipal(d);
+        const x0 = inicioAereoPrincipal(d);
+        const xa = x0 + s - h;
+        const xb = x0 + s + h;
+        const a = d.aereos;
+        const alineacion = a.lados?.izq ? 'izq' : a.lados?.der ? 'der' : a.alineacion;
+        const muros = !!(d.lados?.izq || d.lados?.der || a.lados?.izq || a.lados?.der);
+        const maximo = muros ? Math.round(sx1 - sx0) : LIMITES_AEREOS.ancho[1];
+        let nuevo = L;
+        if (alineacion === 'izq') nuevo = xb - x0;
+        else if (alineacion === 'der') nuevo = x0 + L - xa;
+        else {
+          const c = (sx0 + sx1) / 2;
+          nuevo = Math.max(2 * (xb - c), 2 * (c - xa));
+        }
+        extra = Math.min(maximo, Math.ceil(nuevo)) - L;
+        alPrincipio = alineacion === 'der' || (alineacion === 'centro' && s - h < 0);
+      } else {
+        // Un lado del aéreo crece hacia su punta abierta (s = 0 en el izquierdo, s = L en el derecho).
+        const r = ladoDe(d, ta)!;
+        const izq = ta === 'aereos-izq';
+        extra = Math.min(LIMITES_AEREOS.ladoLargo[1] - r.largo, Math.ceil(izq ? h - s : s + h - L));
+        if (extra > 0) r.largo += extra;
+        alPrincipio = izq;
+      }
+      if (extra <= 0) continue;
+      cs[alPrincipio ? 0 : cs.length - 1].ancho += extra;
+      cambio = true;
+      ctx.avisos.push(`${ta === 'aereos' ? 'El aéreo' : `El aéreo del ${NOMBRE_TRAMO[tramoBaseDeAereo(ta)]}`} se alargó ${Math.round(extra / 10)} cm para que la campana quede entera y centrada sobre la encimera.`);
+    }
+    if (!cambio) break;
+  }
+}
+
+/**
+ * Largo más cercano al pedido con el que ninguna campana del tramo aéreo queda a medias:
+ * o el aéreo la cubre entera (va alojada) o termina antes (queda mural). En los lados es el
+ * largo exterior (desde el muro principal); en el principal, la suma de sus módulos. Devuelve
+ * también las encimeras cuya campana queda fuera del aéreo con ese largo.
+ */
+export function largoAereoSinCortarCampanas(d: Diseno, ta: TramoAereo, pedido: number, [min, max]: [number, number]): { largo: number; fuera: string[] } {
+  const db = disenoBase(d);
+  const h = ANCHO_CAMPANA / 2;
+  const prohibidos: { id: string; hasta: number; desde: number }[] = [];
+  for (const e of d.equipos ?? []) {
+    if (e.tipo !== 'encimera' || !e.campana || tramoAereoDe(e.tramo) !== ta) continue;
+    const sb = centroEncimera(db, e);
+    if (sb == null) continue;
+    const p = posEnMundo(db, e.tramo, sb);
+    if (ta !== 'aereos') {
+      prohibidos.push({ id: e.id, hasta: p.z - h, desde: p.z + h });
+      continue;
+    }
+    const [sx0, sx1] = extremosPrincipal(d);
+    const a = d.aereos;
+    const alineacion = a.lados?.izq ? 'izq' : a.lados?.der ? 'der' : a.alineacion;
+    if (alineacion === 'izq') prohibidos.push({ id: e.id, hasta: p.x - h - sx0, desde: p.x + h - sx0 });
+    else if (alineacion === 'der') prohibidos.push({ id: e.id, hasta: sx1 - p.x - h, desde: sx1 - p.x + h });
+    else {
+      const dist = Math.abs(p.x - (sx0 + sx1) / 2);
+      prohibidos.push({ id: e.id, hasta: 2 * (dist - h), desde: 2 * (dist + h) });
+    }
+  }
+  let largo = Math.max(min, Math.min(max, Math.round(pedido)));
+  for (let vuelta = 0; vuelta <= prohibidos.length; vuelta++) {
+    const p = prohibidos.find((x) => largo > x.hasta + TOL_CAMPANA && largo < x.desde - TOL_CAMPANA);
+    if (!p) break;
+    const opciones = [Math.floor(p.hasta), Math.ceil(p.desde)].filter((x) => x >= min && x <= max);
+    if (!opciones.length) break;
+    largo = opciones.reduce((m, x) => (Math.abs(x - pedido) < Math.abs(m - pedido) ? x : m));
+  }
+  return { largo, fuera: prohibidos.filter((x) => largo <= x.hasta + TOL_CAMPANA).map((x) => x.id) };
+}
+
+/** Los módulos de campana de esas encimeras en el tramo pasan a ser de puertas (la campana queda mural). */
+export function soltarCampanas(d: Diseno, ta: TramoAereo, encimeras: string[]) {
+  for (const c of cuerposDe(d, ta)) if (c.tipo === 'campana' && c.campanaDe && encimeras.includes(c.campanaDe)) moduloPuertas(c);
+}
+
+function tramoBaseDeAereo(t: TramoAereo): TramoBase {
+  return t === 'aereos' ? 'base' : t === 'aereos-izq' ? 'izq' : 'der';
+}
+
 /**
  * Función central de la campana: deja cada campana sobre su encimera en el tramo aéreo
  * de su mismo lado (crea, mueve o convierte módulos de campana) y llena el resto del
@@ -395,9 +579,9 @@ export function alinearCampanas(d: Diseno, ctx: Ctx): string[] {
   const conflictos = new Set<string>();
   const encimeras = (d.equipos ?? []).filter((e): e is Encimera => e.tipo === 'encimera');
   if (!esAdulta(d.plantilla)) encimeras.forEach((e) => (e.campana = false));
-  const db = disenoBase(d);
   for (const ta of TRAMOS_AEREOS) {
     if (!aereoVisible(d, ta)) continue;
+    alargarSobreCampanas(d, ta, encimeras, ctx);
     const lado = ladoDeTramo(ta);
     const cs = ta === 'aereos' ? d.aereos.cuerpos : ladoDe(d, ta)!.cuerpos;
     const L = cs.reduce((s, c) => s + c.ancho, 0);
@@ -405,10 +589,9 @@ export function alinearCampanas(d: Diseno, ctx: Ctx): string[] {
     const objetivoEnc = new Map<string, number>();
     for (const e of encimeras) {
       if (!e.campana || tramoAereoDe(e.tramo) !== ta) continue;
-      const sb = centroEncimera(db, e);
-      if (sb == null) continue;
-      const sa = posEnTramo(d, ta, posEnMundo(db, e.tramo, sb));
-      if (sa >= 0 && sa <= L) objetivoEnc.set(e.id, sa);
+      // Fuera del aéreo es mural; dentro (o, si no se pudo alargar, en parte) va alojada.
+      const cob = coberturaCampana(d, ta, e);
+      if (cob && cob.estado !== 'fuera') objetivoEnc.set(e.id, cob.s);
     }
     // Módulos de campana: cada encimera conserva el suyo; los demás se vinculan o pasan a ser de puertas.
     const vinculado = new Map<string, Cuerpo>();
@@ -453,6 +636,16 @@ export function alinearCampanas(d: Diseno, ctx: Ctx): string[] {
     const nuevos = acomodarConPines(d, ta, cs, L, objetivos, ctx, pinesEnConflicto);
     cs.splice(0, cs.length, ...nuevos);
     for (const [id, c] of vinculado) if (pinesEnConflicto.has(c.id)) conflictos.add(id);
+  }
+  // Campanas murales (sin aéreo encima) del mismo tramo: también necesitan 60 cm cada una.
+  const db = disenoBase(d);
+  for (const t of TRAMOS_BASE) {
+    const murales = encimeras
+      .filter((e) => e.campana && e.tramo === t && !moduloCampana(d, e.id))
+      .map((e) => ({ id: e.id, s: centroEncimera(db, e) }))
+      .filter((x): x is { id: string; s: number } => x.s != null)
+      .sort((a, b) => a.s - b.s);
+    for (let k = 1; k < murales.length; k++) if (murales[k].s - murales[k - 1].s < ANCHO_CAMPANA - TOL_CAMPANA) conflictos.add(murales[k].id);
   }
   return [...conflictos];
 }

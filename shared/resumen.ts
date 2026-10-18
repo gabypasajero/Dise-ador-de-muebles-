@@ -15,13 +15,14 @@ import {
   ladoAereoActivo,
   largoUtilLado,
   largoUtilLadoAereo,
+  posEnMundo,
   ubicarEquipos,
   type Frente,
   type LayoutAereos,
 } from './layout';
 import { advertencias, formatear, formatoPrecio } from './reglas';
 import { precioCocina } from './tarifas';
-import { cuerposDe } from './tramos';
+import { cuerposDe, tramosDe } from './tramos';
 import type { CatalogoMateriales, Cotizacion, Cuerpo, Diseno, Encimera, LineaDetalle, ProductoCatalogo, TramoId, Unidad } from './tipos';
 
 function nombreMaterial(lista: { id: string; nombre: string }[] | undefined, id: string) {
@@ -180,11 +181,14 @@ export function detalleCotizacion(
     etiqueta: 'Modelo base',
     valor: producto ? `${producto.nombre} (código ${producto.id})` : d.nombreModelo || 'Diseño a medida',
   });
+  const forma = textoForma(d, unidad);
+  const [mx0, mx1] = extremosPrincipal(d);
   lineas.push({
     etiqueta: 'Medidas',
-    valor: `${formatear(d.ancho, unidad, false)} × ${formatear(d.alto, unidad, false)} × ${formatear(d.profundidad, unidad)} (ancho × alto × profundidad)`,
+    valor: forma
+      ? `${formatear(mx1 - mx0, unidad, false)} × ${formatear(d.alto, unidad, false)} × ${formatear(d.profundidad, unidad)} (tramo principal con ${d.lados.izq && d.lados.der ? 'las esquinas' : 'la esquina'} × alto × profundidad)`
+      : `${formatear(d.ancho, unidad, false)} × ${formatear(d.alto, unidad, false)} × ${formatear(d.profundidad, unidad)} (ancho × alto × profundidad)`,
   });
-  const forma = textoForma(d, unidad);
   if (forma) lineas.push({ etiqueta: 'Forma', valor: forma });
   const conLados = !!forma;
   lineas.push({
@@ -271,40 +275,62 @@ export interface FichaFabricacion {
   secciones: SeccionFicha[];
 }
 
+/** Qué es un módulo, en una frase para el maestro ("Cajonera de 3 cajones", "2 puertas y 1 cajón arriba"…). */
+function queEsModulo(d: Diseno, c: Cuerpo, f: (mm: number) => string): string {
+  const n = (k: number, uno: string, varios: string) => `${k} ${k === 1 ? uno : varios}`;
+  switch (c.tipo) {
+    case 'horno':
+      return d.plantilla === 'cocina-infantil' ? 'Horno de juguete' : 'Horno eléctrico 58 L empotrado (hueco de 59,5 cm de alto, faja de melamina arriba)';
+    case 'hueco':
+      return 'Espacio libre (sin casco; la cubierta pasa por encima)';
+    case 'escritorio':
+      return `Escritorio de ${f(c.alto || 750)} de alto`;
+    case 'especiero':
+      return `Especiero: cajón extraíble de ${f(c.ancho)} y alto completo, con ${c.pisos ?? 2} pisos interiores`;
+    case 'campana':
+      return 'Mueble de campana (puertas arriba, campana abajo)';
+    case 'nicho':
+      return 'Nicho para microondas con repisa y puerta abatible arriba';
+  }
+  if (c.abatible) return 'Puerta abatible';
+  if (c.puertas && c.cajones) return `${n(c.puertas, 'puerta', 'puertas')} y ${n(c.cajones, 'cajón', 'cajones')} ${c.cajonesArriba ? 'arriba' : 'abajo'}`;
+  if (c.cajones) return `Cajonera de ${n(c.cajones, 'cajón', 'cajones')}`;
+  if (c.puertas) return n(c.puertas, 'puerta', 'puertas');
+  return `Abierto con ${n(c.repisas, 'repisa', 'repisas')}`;
+}
+
+/** Desde dónde se miden las cotas de un tramo en la ficha. */
+function referenciaTramo(d: Diseno, t: TramoId): string {
+  if (t === 'base' || t === 'aereos') return d.lados?.izq ? 'del muro izquierdo' : 'del extremo izquierdo del mueble';
+  return 'del muro principal';
+}
+
+/** Cota (mm) de la posición s de un tramo: desde el extremo izquierdo (principal) o desde el muro principal (lados). */
+function cota(d: Diseno, t: TramoId, s: number): number {
+  const db = t === 'base' || t === 'izq' || t === 'der' ? disenoBase(d) : d;
+  const p = posEnMundo(db, t, s);
+  return t === 'base' || t === 'aereos' ? p.x - extremosPrincipal(d)[0] : p.z;
+}
+
+/** «de 60 a 120 cm del muro izquierdo» */
+function entreCotas(d: Diseno, t: TramoId, s0: number, s1: number, f: (mm: number, conU?: boolean) => string): string {
+  const a = cota(d, t, s0);
+  const b = cota(d, t, s1);
+  return `de ${f(Math.min(a, b), false)} a ${f(Math.max(a, b))} ${referenciaTramo(d, t)}`;
+}
+
 function detalleModulo(d: Diseno, t: TramoId, i: number, frentes: Frente[], unidad: Unidad, s0: number): LineaDetalle {
   const c = cuerposDe(d, t)[i];
   const f = (mm: number, conU = true) => formatear(mm, unidad, conU);
   const etiqueta = `${prefijoModulo(d, t)} ${i + 1} · ${f(c.ancho)}`;
-  const sub: string[] = [`desde ${f(s0)} hasta ${f(s0 + c.ancho)} del comienzo del tramo`];
-  let valor: string;
+  const sub: string[] = [entreCotas(d, t, s0, s0 + c.ancho, f)];
   const propios = frentes.filter((fr) => fr.cuerpo === i);
   const puertas = propios.filter((fr) => fr.tipo === 'puerta');
   const cajones = propios.filter((fr) => fr.tipo === 'cajon');
-  switch (c.tipo) {
-    case 'horno':
-      valor = d.plantilla === 'cocina-infantil' ? 'Horno de juguete' : 'Horno eléctrico 58 L empotrado (hueco de 59,5 cm de alto, faja de melamina arriba)';
-      break;
-    case 'hueco':
-      valor = 'Espacio libre (sin casco; la cubierta pasa por encima)';
-      break;
-    case 'escritorio':
-      valor = `Escritorio de ${f(c.alto || 750)} de alto`;
-      break;
-    case 'especiero':
-      valor = `Especiero: cajón extraíble de alto completo con ${c.pisos ?? 2} pisos interiores`;
-      if (cajones[0]) sub.push(`frente de ${f(cajones[0].rect.x1 - cajones[0].rect.x0, false)} × ${f(cajones[0].rect.y1 - cajones[0].rect.y0)}`);
-      break;
-    case 'campana':
-      valor = 'Mueble de campana (puertas arriba, campana abajo)';
-      break;
-    case 'nicho':
-      valor = 'Nicho para microondas con repisa y puerta abatible arriba';
-      break;
-    default:
-      valor = c.abatible ? 'Puerta abatible' : `${c.puertas} ${c.puertas === 1 ? 'puerta' : 'puertas'}${c.cajones ? ` y ${c.cajones} ${c.cajones === 1 ? 'cajón' : 'cajones'}${c.cajonesArriba ? ' arriba' : ' abajo'}` : ''}`;
-      if (!c.puertas && !c.cajones && !c.abatible) valor = `Abierto con ${c.repisas} repisas`;
-  }
-  if (c.tipo !== 'especiero') {
+  const valor = queEsModulo(d, c, f);
+  if (c.tipo === 'especiero') {
+    if (cajones[0]) sub.push(`frente de ${f(cajones[0].rect.x1 - cajones[0].rect.x0, false)} × ${f(cajones[0].rect.y1 - cajones[0].rect.y0)}`);
+  } else {
     puertas.forEach((fr, k) => {
       if (fr.tipo !== 'puerta') return;
       const ap = fr.bisagra === 'arriba' ? 'abatible (bisagras arriba)' : `bisagras a la ${fr.bisagra === 'izq' ? 'izquierda' : 'derecha'}`;
@@ -342,7 +368,8 @@ function seccionTramo(d: Diseno, t: TramoId, unidad: Unidad): SeccionFicha | nul
   } else if (t === 'aereos-izq' || t === 'aereos-der') {
     const lado = t === 'aereos-izq' ? 'izq' : 'der';
     const r = d.aereos.lados[lado]!;
-    lineas.push({ etiqueta: 'Medidas', valor: `largo desde el muro ${f(r.largo)} (con la esquina), módulos ${f(largoUtilLadoAereo(d, lado))}, fondo ${f(r.profundidad)}` });
+    lineas.push({ etiqueta: 'Medidas', valor: `largo desde el muro ${f(r.largo)} (con la esquina del aéreo principal), módulos ${f(largoUtilLadoAereo(d, lado))}, fondo ${f(r.profundidad)}` });
+    lineas.push({ etiqueta: 'Orden', valor: lado === 'izq' ? 'cuelga del muro izquierdo; el aéreo 1 queda en la punta abierta y el último junto a la esquina' : 'cuelga del muro derecho; el aéreo 1 queda junto a la esquina' });
   } else {
     const la = calcularLayoutAereos(d);
     if (la) lineas.push({ etiqueta: 'Medidas', valor: `largo ${f(la.x1 - la.x0)}, alto ${f(d.aereos.alto)}, fondo ${f(d.aereos.profundidad)}` });
@@ -357,10 +384,31 @@ function seccionTramo(d: Diseno, t: TramoId, unidad: Unidad): SeccionFicha | nul
   return { titulo: nombreTramo(d, t), lineas };
 }
 
+/** Conteo de frentes de todo el conjunto (para el maestro). */
+function resumenFrentes(d: Diseno): string {
+  let puertas = 0;
+  let abatibles = 0;
+  let cajones = 0;
+  let especieros = 0;
+  for (const t of tramosDe(d)) {
+    for (const fr of frentesTramo(d, t)) {
+      if (fr.tipo === 'puerta') fr.bisagra === 'arriba' ? abatibles++ : puertas++;
+      else if (fr.tipo === 'cajon') fr.especiero ? especieros++ : cajones++;
+    }
+  }
+  const n = (k: number, uno: string, varios: string) => `${k} ${k === 1 ? uno : varios}`;
+  const partes = [n(puertas, 'puerta', 'puertas')];
+  if (abatibles) partes.push(n(abatibles, 'puerta abatible', 'puertas abatibles'));
+  partes.push(n(cajones, 'cajón', 'cajones'));
+  if (especieros) partes.push(n(especieros, 'especiero', 'especieros'));
+  return partes.join(', ');
+}
+
 /**
  * Ficha de fabricación completa para el maestro: medidas generales, cada lado con sus
- * módulos en orden, puertas con su apertura, cajones con sus altos, especiero,
- * equipamiento con su módulo y posición, materiales, cubierta, aéreos, campana y notas.
+ * módulos en orden y acotados, puertas con su apertura, cajones con sus altos, especiero,
+ * piezas y cortes de la cubierta, equipamiento con su módulo y posición, aéreos, campana,
+ * materiales y notas.
  */
 export function fichaFabricacion(
   d: Diseno,
@@ -369,22 +417,29 @@ export function fichaFabricacion(
   materiales: CatalogoMateriales | null,
   opciones: { numero?: string; cliente?: string } = {},
 ): FichaFabricacion {
-  const f = (mm: number) => formatear(mm, unidad);
+  const f = (mm: number, conU = true) => formatear(mm, unidad, conU);
   const m = d.materiales;
   const cocina = esCocinaD(d);
+  const adulta = cocina && d.plantilla !== 'cocina-infantil';
   const secciones: SeccionFicha[] = [];
   const [x0, x1] = extremosPrincipal(d);
   const forma = textoForma(d, unidad);
+  const ubic = ubicarEquipos(d);
   const generales: LineaDetalle[] = [
     { etiqueta: 'Mueble', valor: producto ? `${producto.nombre} (código ${producto.id})` : d.nombreModelo || 'Diseño a medida' },
     { etiqueta: 'Forma', valor: forma ?? 'lineal' },
-    { etiqueta: 'Medidas generales', valor: `${f(x1 - x0)} de largo × ${f(d.alto)} de alto × ${f(d.profundidad)} de fondo` },
+    { etiqueta: 'Medidas generales', valor: `${f(x1 - x0)} de largo${forma ? ' (tramo principal con las esquinas)' : ''} × ${f(d.alto)} de alto × ${f(d.profundidad)} de fondo` },
     { etiqueta: 'Zócalo', valor: f(d.zocalo) },
-    { etiqueta: 'Espesores', valor: `melamina ${d.espesor} mm${cocina && d.plantilla !== 'cocina-infantil' ? `, cubierta ${d.cocina.espesorCubierta} mm` : ''}` },
+    { etiqueta: 'Espesores', valor: `melamina ${d.espesor} mm${adulta ? `, cubierta ${d.cocina.espesorCubierta} mm` : ''}` },
     { etiqueta: 'Luz entre frentes', valor: `${d.luzFrentes} mm` },
     { etiqueta: 'Estructura', valor: d.estructura === 'modular' ? 'modular: cada módulo con sus costados' : 'casco único con divisiones' },
     { etiqueta: 'Separación entre módulos', valor: f(d.separacionCuerpos) },
   ];
+  if (d.plantilla !== 'tocador') {
+    const tramos = tramosDe(d).filter((t) => cuerposDe(d, t).length);
+    const modulos = tramos.reduce((x, t) => x + cuerposDe(d, t).length, 0);
+    generales.push({ etiqueta: 'Frentes', valor: `${modulos} ${modulos === 1 ? 'módulo' : 'módulos'}: ${resumenFrentes(d)}` });
+  }
   if (d.plantilla === 'compacto') generales.push({ etiqueta: 'Mueble base', valor: `${f(d.aereos.elevacion)} de alto hasta la cubierta` });
   secciones.push({ titulo: 'Datos generales', lineas: generales });
   if (d.plantilla === 'tocador') {
@@ -395,32 +450,45 @@ export function fichaFabricacion(
       if (sec) secciones.push(sec);
     }
   }
-  if (cocina && d.plantilla !== 'cocina-infantil') {
+  const donde = (u: { tramo: TramoId; s: number }) => `centro a ${f(cota(d, u.tramo, u.s))} ${referenciaTramo(d, u.tramo)}`;
+  if (adulta) {
     const k = d.cocina;
-    const cortes = ubicarEquipos(d)
+    const piezas: string[] = [`tramo principal: ${f(x1 - x0, false)} × ${f(d.profundidad)}${forma ? ' (cubre las esquinas)' : ''}`];
+    for (const lado of LADOS) {
+      const r = d.lados?.[lado];
+      if (r) piezas.push(`lado ${lado === 'izq' ? 'izquierdo' : 'derecho'}: ${f(largoUtilLado(d, lado), false)} × ${f(r.profundidad)} (desde el borde de la cubierta principal hasta la punta)`);
+    }
+    const cortes = ubic
       .filter((u) => u.tipo === 'encimera' || u.tipo === 'lavaplatos')
-      .map((u) => `${u.tipo === 'encimera' ? 'encimera' : 'lavaplatos'} de ${f(u.ancho)}: centro a ${f(u.s)} del comienzo del ${nombreTramo(d, u.tramo).toLowerCase()}`);
+      .map((u) => {
+        const e = d.equipos.find((x) => x.id === u.id)!;
+        const que = e.tipo === 'encimera' ? `encimera ${e.platos} platos` : `lavaplatos ${e.modelo}`;
+        const borde = e.tipo === 'lavaplatos' && e.posicion !== 'centro' ? `, a ${f(e.margen)} del borde ${e.posicion === 'izq' ? 'izquierdo' : 'derecho'} de su módulo` : '';
+        return `${que}: ${f(u.ancho, false)} × ${f(u.fondo)} (${nombreModuloEn(d, u.tramo, u.indice)}), ${donde(u)}${borde}`;
+      });
     secciones.push({
       titulo: 'Cubierta',
       lineas: [
         { etiqueta: 'Material', valor: `postformada ${nombreMaterial(materiales?.cubiertas, m.cubierta)}` },
         { etiqueta: 'Espesor y vuelo', valor: `${k.espesorCubierta} mm, vuelo frontal ${k.vueloCubierta} mm` },
         { etiqueta: 'Copete', valor: k.copete ? 'sí, en todo el borde contra los muros' : 'no' },
+        { etiqueta: 'Piezas', valor: `${piezas.length} ${piezas.length === 1 ? 'pieza' : 'piezas'} (largo × fondo)`, sub: piezas },
         ...(forma ? [{ etiqueta: 'Esquinas', valor: 'la cubierta del tramo principal cubre las esquinas; los lados parten del borde de esa cubierta' }] : []),
-        ...(cortes.length ? [{ etiqueta: 'Cortes', valor: `${cortes.length} ${cortes.length === 1 ? 'corte' : 'cortes'}`, sub: cortes }] : []),
+        ...(cortes.length ? [{ etiqueta: 'Cortes', valor: `${cortes.length} ${cortes.length === 1 ? 'corte' : 'cortes'} (ancho × fondo nominal; confirmar con el equipo)`, sub: cortes }] : []),
       ],
     });
   }
   if (cocina) {
     const items = listarEquipamiento(d);
-    const ubic = ubicarEquipos(d);
     if (items.length) {
+      const grifo = d.cocina.grifo === 'negro' ? 'negro mate' : 'cromada';
       secciones.push({
         titulo: 'Equipamiento',
         lineas: items.map((it) => {
           const u = ubic.find((x) => x.id === it.id);
-          const pos = u ? `; centro a ${f(u.s)} del comienzo del tramo` : '';
-          return { etiqueta: it.nombre, valor: `${it.donde} (${nombreTramo(d, it.tramo).toLowerCase()}): ${it.detalle}${pos}` };
+          const pos = u ? `; ${donde(u)}` : '';
+          const nombre = it.tipo === 'llave' ? `Llave ${grifo}` : it.nombre;
+          return { etiqueta: nombre, valor: `${it.donde} (${nombreTramo(d, it.tramo).toLowerCase()}): ${it.detalle}${pos}` };
         }),
       });
     }
@@ -429,6 +497,7 @@ export function fichaFabricacion(
   if (la) {
     const a = d.aereos;
     const formaA = formaDe({ izq: ladoAereoActivo(d, 'izq'), der: ladoAereoActivo(d, 'der') });
+    const desde = la.x0 - x0;
     secciones.push({
       titulo: d.plantilla === 'compacto' ? 'Mueble superior' : 'Muebles aéreos',
       lineas: [
@@ -439,6 +508,7 @@ export function fichaFabricacion(
               ? `apoyado sobre la cubierta con costados y respaldo, alto ${f(a.alto)}, fondo ${f(a.profundidad)}`
               : `${FORMA[formaA]}, alto ${f(a.alto)}, fondo ${f(a.profundidad)}, borde inferior a ${f(a.elevacion)} del piso${a.cuadrado ? ', cuadrados con el mueble base' : ''}`,
         },
+        ...(Math.abs(desde) > 0.5 ? [{ etiqueta: 'Ubicación', valor: `el aéreo principal comienza a ${f(desde)} ${referenciaTramo(d, 'aereos')}` }] : []),
       ],
     });
     for (const t of ['aereos-izq', 'aereos', 'aereos-der'] as TramoId[]) {
@@ -446,19 +516,20 @@ export function fichaFabricacion(
       const sec = seccionTramo(d, t, unidad);
       if (sec) secciones.push({ ...sec, titulo: t === 'aereos' ? (d.plantilla === 'compacto' ? 'Mueble superior · módulos' : 'Aéreo principal') : sec.titulo });
     }
-    const campanas = ubicarEquipos(d).filter((u) => u.tipo === 'campana');
-    if (campanas.length) {
-      secciones.push({
-        titulo: 'Campana',
-        lineas: campanas.map((u) => ({
-          etiqueta: 'Campana',
-          valor: u.montaje === 'aereo' ? `en el ${nombreModuloEn(d, u.tramo, u.indice)}, centrada sobre la encimera (a ${f(u.s)} del comienzo del tramo)` : 'mural, sobre la encimera',
-        })),
-      });
-    }
-  } else if (cocina) {
-    const campanas = ubicarEquipos(d).filter((u) => u.tipo === 'campana');
-    if (campanas.length) secciones.push({ titulo: 'Campana', lineas: campanas.map(() => ({ etiqueta: 'Campana', valor: 'mural, sobre la encimera' })) });
+  }
+  const campanas = ubic.filter((u) => u.tipo === 'campana');
+  if (campanas.length) {
+    secciones.push({
+      titulo: 'Campana',
+      lineas: campanas.map((u) => {
+        const e = ubic.find((x) => x.id === u.encimera);
+        const sobre = e ? `sobre la encimera del ${nombreModuloEn(d, e.tramo, e.indice)}` : 'sobre la encimera';
+        return {
+          etiqueta: `Campana ${f(u.ancho)}`,
+          valor: u.montaje === 'aereo' ? `alojada en el ${nombreModuloEn(d, u.tramo, u.indice)}, centrada ${sobre}; ${donde(u)}` : `mural, ${sobre}; ${donde(u)}`,
+        };
+      }),
+    });
   }
   secciones.push({
     titulo: 'Materiales',
@@ -472,6 +543,7 @@ export function fichaFabricacion(
   });
   const notas: string[] = [
     `Medidas en ${unidad === 'cm' ? 'centímetros' : 'milímetros'}. Los módulos van numerados de izquierda a derecha mirando de frente cada tramo.`,
+    `Cotas: el tramo principal y los aéreos se miden desde el ${referenciaTramo(d, 'base').replace(/^del /, '')}; los lados, desde el muro principal.`,
   ];
   if (forma) notas.push('En la L y la U cada lado se mide completo desde el muro principal, con la esquina.');
   for (const a of advertencias(d, unidad)) notas.push(a.texto);

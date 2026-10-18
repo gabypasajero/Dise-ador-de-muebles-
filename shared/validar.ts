@@ -1,6 +1,6 @@
 // Invariantes de un diseño válido. Las operaciones de reglas.ts los mantienen; esta
 // función los revisa (pruebas, depuración y diseños que llegan de afuera).
-import { esAdulta, llevaEquipamiento, moduloCampana, puedeLlevar } from './equipos';
+import { coberturaCampana, esAdulta, llevaEquipamiento, moduloCampana, puedeLlevar } from './equipos';
 import {
   centroEncimera,
   disenoBase,
@@ -14,6 +14,7 @@ import {
   posEnTramo,
   posicionesModulos,
   tramoAereoDe,
+  ubicarEquipos,
 } from './layout';
 import {
   ANCHO_ESPECIERO,
@@ -141,6 +142,27 @@ export function validarDiseno(d: Diseno): string[] {
     const L = cuerposDe(d, ta).reduce((s, c) => s + c.ancho, 0);
     const s = sb == null ? NaN : posEnTramo(d, ta, posEnMundo(db, e.tramo, sb));
     if (s >= 0 && s <= L && !moduloCampana(d, e.id)) out.push(`${e.id}: campana sin módulo en los aéreos que la cubren`);
+  }
+  // La campana queda centrada sobre su encimera (alojada) o fuera del aéreo sin tocarlo (mural),
+  // y dos campanas del mismo tramo no se topan.
+  const ubic = ubicarEquipos(d);
+  const porTramo = new Map<string, number[]>();
+  for (const c of ubic.filter((u) => u.tipo === 'campana')) porTramo.set(c.tramo, [...(porTramo.get(c.tramo) ?? []), c.s]);
+  for (const [t, ss] of porTramo) {
+    ss.sort((a, b) => a - b);
+    for (let k = 1; k < ss.length; k++) if (ss[k] - ss[k - 1] < 599) out.push(`${t}: dos campanas que se topan`);
+  }
+  for (const c of ubic.filter((u) => u.tipo === 'campana')) {
+    const e = equipos.find((x): x is Encimera => x.tipo === 'encimera' && x.id === c.encimera);
+    const ue = ubic.find((u) => u.id === c.encimera);
+    if (!e || !ue) continue;
+    const ta = tramoAereoDe(e.tramo);
+    const cob = coberturaCampana(d, ta, e);
+    if (c.montaje === 'mural') {
+      if (cob && cob.estado !== 'fuera') out.push(`${e.id}: campana mural que choca con ${ta}`);
+    } else if (Math.hypot(c.mundo.x - ue.mundo.x, c.mundo.z - ue.mundo.z) > 1 && cob?.estado !== 'parcial') {
+      out.push(`${e.id}: campana a ${Math.round(Math.hypot(c.mundo.x - ue.mundo.x, c.mundo.z - ue.mundo.z))} mm de su encimera`);
+    }
   }
   return out;
 }

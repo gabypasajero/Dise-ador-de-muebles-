@@ -17,6 +17,20 @@ export const ANCHO_CAMPANA = 600;
 /** Ancho base de un módulo por cada puerta al agregarlo (cocina y compacto). */
 export const ANCHO_POR_PUERTA = 350;
 
+/** Lados de la L o U del mueble base: largo exterior (desde el muro principal) y fondo. */
+export const LIMITES_LADO = { largo: [900, 3000] as [number, number], profundidad: [450, 700] as [number, number] };
+export const LIMITES_AEREOS = {
+  alto: [300, 1000] as [number, number],
+  profundidad: [250, 450] as [number, number],
+  elevacion: [1200, 1800] as [number, number],
+  /** Compacto: alto del mueble base hasta la cubierta. */
+  base: [750, 1000] as [number, number],
+  /** Largo del aéreo principal. */
+  ancho: [300, 5000] as [number, number],
+  /** Largo exterior de un lado del aéreo (desde el muro principal). */
+  ladoLargo: [500, 3000] as [number, number],
+};
+
 export const TRAMOS_BASE: TramoBase[] = ['base', 'izq', 'der'];
 export const TRAMOS_AEREOS: TramoAereo[] = ['aereos', 'aereos-izq', 'aereos-der'];
 

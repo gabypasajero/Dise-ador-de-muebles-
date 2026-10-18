@@ -87,8 +87,16 @@ describe('diseños guardados con la versión anterior', () => {
     const d = abrir('lavaplatos2m');
     expect(encimera(d)!.platos).toBe('3');
     expect(d.aereos).toMatchObject({ alineacion: 'centro', alto: 700, profundidad: 350, cuadrado: false });
-    expect(d.aereos.cuerpos.reduce((s, c) => s + c.ancho, 0)).toBe(1500);
     expect(encimera(d)!.campana).toBe(true);
+    // En la versión 1 la campana quedaba 22 cm corrida: el aéreo de 150 cm terminaba sobre ella.
+    // Ahora el aéreo (centrado) crece lo justo para alojarla entera sobre la encimera.
+    const u = ubicarEquipos(d);
+    const campana = u.find((x) => x.tipo === 'campana')!;
+    const enc = u.find((x) => x.tipo === 'encimera')!;
+    expect(campana.montaje).toBe('aereo');
+    expect(Math.abs(campana.mundo.x - enc.mundo.x)).toBeLessThan(1);
+    expect(d.aereos.cuerpos.reduce((s, c) => s + c.ancho, 0)).toBe(1933);
+    expect(validarDiseno(d)).toEqual([]);
   });
 
   it('una cajonera de más de 90 cm se divide en cajoneras iguales sin mover lo demás', () => {

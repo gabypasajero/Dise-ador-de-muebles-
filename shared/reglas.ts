@@ -31,6 +31,7 @@ import {
 } from './layout';
 import { absorberCercanos, ajustarSuma, holgura, type Limite } from './reparto';
 import {
+  ANCHO_HORNO,
   ANCHO_MIN_CUERPO,
   ANCHO_MIN_HUECO,
   ANCHO_POR_PUERTA,
@@ -39,6 +40,8 @@ import {
   esCajonera,
   largoObjetivo,
   largoTramo,
+  LIMITES_AEREOS,
+  LIMITES_LADO,
   limitesModulo,
   resolverTramo,
   rolModulo,
@@ -48,8 +51,11 @@ import {
 import {
   aereoVisible,
   alinearCampanas,
+  cabeEncimera,
+  choqueEnModulo,
   elegirAnfitrion,
   esAdulta,
+  largoAereoSinCortarCampanas,
   llevaEquipamiento,
   margenMaximo,
   motivoNoPuedeIr,
@@ -58,9 +64,11 @@ import {
   nombreTramo,
   opcionesEquipo,
   repararEquipos,
+  soltarCampanas,
   type Ctx,
 } from './equipos';
-import { precioCocina, type LineaPrecio } from './tarifas';
+import { revisarOperacion } from './operaciones';
+import { precioCocina, TARIFAS, type LineaPrecio } from './tarifas';
 import type {
   Aereos,
   Cuerpo,
@@ -98,6 +106,8 @@ export {
   esCajonera,
   largoObjetivo,
   largoTramo,
+  LIMITES_AEREOS,
+  LIMITES_LADO,
   limitesModulo,
   resolverTramo,
   rolModulo,
@@ -106,6 +116,7 @@ export {
 } from './tramos';
 export { listarEquipamiento, moduloCampana, nombreModuloEn, nombreTramo, opcionesEquipo, type ItemEquipo } from './equipos';
 export { precioCocina, TARIFAS, type LineaPrecio, type PrecioCocina } from './tarifas';
+export { describirOperaciones, OPERACIONES, revisarOperacion, type CampoOperacion, type DescripcionOperacion } from './operaciones';
 export type { Forma, LadoId, Tramo, TramoAereo, TramoBase, TramoId } from './tipos';
 
 export interface Limites {
@@ -124,21 +135,8 @@ export const LIMITES: Record<Plantilla, Limites> = {
   escritorio: { ancho: [700, 2600], alto: [500, 2400], profundidad: [350, 700] },
 };
 
-/** Lados de la L o U del mueble base: largo exterior (desde el muro principal) y fondo. */
-export const LIMITES_LADO = { largo: [900, 3000] as [number, number], profundidad: [450, 700] as [number, number] };
 /** Nombre heredado de LIMITES_LADO. */
 export const LIMITES_RETORNO = LIMITES_LADO;
-export const LIMITES_AEREOS = {
-  alto: [300, 1000] as [number, number],
-  profundidad: [250, 450] as [number, number],
-  elevacion: [1200, 1800] as [number, number],
-  /** Compacto: alto del mueble base hasta la cubierta. */
-  base: [750, 1000] as [number, number],
-  /** Largo del aéreo principal. */
-  ancho: [300, 5000] as [number, number],
-  /** Largo exterior de un lado del aéreo (desde el muro principal). */
-  ladoLargo: [500, 3000] as [number, number],
-};
 
 // ---------- Unidades ----------
 
@@ -175,6 +173,11 @@ export interface Resultado {
   avisos: string[];
   /** Id del módulo o equipo creado por la operación, si creó uno. */
   id?: string;
+  /**
+   * Si se rechazó por falta de espacio y se puede hacer agrandando o achicando el mueble, la
+   * misma operación con `ajustarLargo: true` (para ofrecerla: «¿Agregarlo agrandando el mueble?»).
+   */
+  alternativa?: Operacion;
 }
 
 interface CtxOp extends Ctx {
@@ -304,6 +307,58 @@ function ajustarTramo(d: Diseno, t: TramoId, objetivo: number, conEquipados = tr
   const resto = ajustarSuma(anchos, lims, niveles, objetivo);
   cs.forEach((c, i) => (c.ancho = anchos[i]));
   return resto;
+}
+
+/** «a, b y c» */
+function listaY(xs: string[]): string {
+  return xs.length <= 1 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} y ${xs[xs.length - 1]}`;
+}
+
+/** «el tramo principal», «el lado derecho», «los aéreos», «el mueble superior»… */
+function enTramo(d: Diseno, t: TramoId): string {
+  const n = nombreTramo(d, t).toLowerCase();
+  return t === 'aereos' && d.plantilla !== 'compacto' ? `los ${n}` : `el ${n}`;
+}
+
+/** «del tramo principal», «de los aéreos»… */
+function delTramo(d: Diseno, t: TramoId): string {
+  const e = enTramo(d, t);
+  return e.startsWith('el ') ? `del ${e.slice(3)}` : `de ${e}`;
+}
+
+/** Equipamiento que hace que un módulo conserve su ancho, en palabras. */
+function equipoDeModulo(d: Diseno, t: TramoId, c: Cuerpo): string {
+  if (esTramoAereo(t)) return 'la campana';
+  const tipos = new Set(d.equipos.filter((e) => e.tramo === t && e.modulo === c.id).map((e) => e.tipo));
+  return listaY([...(tipos.has('encimera') ? ['la encimera'] : []), ...(tipos.has('lavaplatos') ? ['el lavaplatos'] : [])]) || 'equipamiento';
+}
+
+/**
+ * Por qué los módulos de un tramo no pueden ceder (signo −1) o tomar (+1) espacio: cuáles
+ * son de medida fija, cuáles tienen equipamiento y cuánto pueden dar los demás.
+ */
+function razonesRigidez(d: Diseno, t: TramoId, signo: 1 | -1, excluir: Cuerpo[]): string {
+  const partes: string[] = [];
+  cuerposDe(d, t).forEach((c, i) => {
+    if (excluir.includes(c)) return;
+    const n = nombreModuloEn(d, t, i);
+    const rol = rolModulo(d, t, c);
+    if (rol === 'fijo') partes.push(`el ${n} es ${c.tipo === 'horno' ? 'el horno' : 'el especiero'} (${cm(c.ancho)} fijos)`);
+    else if (rol === 'equipado') partes.push(`el ${n} tiene ${equipoDeModulo(d, t, c)}`);
+    else {
+      const l = limitesModulo(d, t, c);
+      const libre = signo < 0 ? c.ancho - l.min : l.max - c.ancho;
+      if (libre <= 0) partes.push(signo < 0 ? `el ${n} ya está en su mínimo (${cm(l.min)})` : `el ${n} ya está en su máximo (${cm(l.max)}${esCajonera(c) ? ', es cajonera' : ''})`);
+      else partes.push(`el ${n} puede ${signo < 0 ? 'ceder' : 'tomar'} solo ${cm(libre)}`);
+    }
+  });
+  if (!partes.length) return 'no hay otros módulos';
+  return partes.length > 6 ? `${partes.slice(0, 5).join(', ')} y ${partes.length - 5} módulos más que no alcanzan` : listaY(partes);
+}
+
+/** Suma de los mínimos de un tramo aéreo contando los módulos de campana como módulos comunes. */
+function minimoSinCampanas(d: Diseno, t: TramoAereo): number {
+  return sumar(cuerposDe(d, t).map((c) => (c.tipo === 'campana' && c.campanaDe ? ANCHO_MIN_CUERPO : limitesModulo(d, t, c).min)));
 }
 
 /** Datos del lado (base o aéreo) de un tramo lateral, para cambiar su largo. */
@@ -792,7 +847,7 @@ function cambiarLargo(out: Diseno, t: TramoId, delta: number) {
 
 function opAgregar(out: Diseno, ctx: CtxOp, tramo: Tramo, tipo: Cuerpo['tipo'], posicion: number | undefined, o: OpcionesAgregar) {
   const t = tramoO(out, tramo);
-  if (!tiposPermitidos(out, t).includes(tipo)) rechazar(`${NOMBRE_TIPO[tipo]} no va en ${nombreTramo(out, t).toLowerCase()}.`);
+  if (!tiposPermitidos(out, t).includes(tipo)) rechazar(`${NOMBRE_TIPO[tipo]} no va en ${enTramo(out, t)}.`);
   if (esTramoAereo(t) && tipo === 'campana') {
     // La campana es equipamiento: se pone sola sobre la encimera de ese lado.
     opAgregarEquipo(out, ctx, 'campana', { tramo: tramoBaseDe(t) });
@@ -819,7 +874,7 @@ function opAgregar(out: Diseno, ctx: CtxOp, tramo: Tramo, tipo: Cuerpo['tipo'], 
   const fijoTramo = t === 'aereos' && out.plantilla === 'compacto';
   if (o.ajustarLargo && !fijoTramo) {
     const libre = maximoTramo(out, t) - largoTramo(out, t) - sep;
-    if (libre < minimo) rechazar(`No cabe «${texto}»${fijo ? ` de ${cm(fijo)}` : ''}: ${t === 'base' ? `el ancho máximo es ${cm(maximoTramo(out, t))}` : `el largo máximo de ${nombreTramo(out, t).toLowerCase()} se alcanzó`}.`);
+    if (libre < minimo) rechazar(`No cabe «${texto}»${fijo ? ` de ${cm(fijo)}` : ''}: ${t === 'base' ? `el ancho máximo es ${cm(maximoTramo(out, t))}` : `se alcanzó el largo máximo ${delTramo(out, t)}`}.`);
     nuevo.ancho = Math.min(deseado, libre);
     cs.splice(i, 0, nuevo);
     cambiarLargo(out, t, nuevo.ancho + sep);
@@ -828,7 +883,7 @@ function opAgregar(out: Diseno, ctx: CtxOp, tramo: Tramo, tipo: Cuerpo['tipo'], 
     cs.splice(0, 0, nuevo);
   } else {
     const libre = capacidad(out, t, -1) - sep;
-    const sinEspacio = `No hay espacio para «${texto}»${fijo ? ` de ${cm(fijo)}` : ''} sin agrandar el mueble: los módulos ajustables de ${nombreTramo(out, t).toLowerCase()} ya están en su mínimo (${cm(ANCHO_MIN_CUERPO)}) o los demás son de medida fija o tienen equipamiento. Achica otro módulo o cambia la medida del mueble.`;
+    const sinEspacio = `No hay espacio para «${texto}»${fijo ? ` de ${cm(fijo)}` : ''} en ${enTramo(out, t)} sin agrandar el mueble: ${razonesRigidez(out, t, -1, [])}. Achica otro módulo, cambia la medida del mueble o agrégalo agrandando el mueble.`;
     if (libre < minimo) rechazar(sinEspacio);
     nuevo.ancho = Math.min(deseado, libre);
     cs.splice(i, 0, nuevo);
@@ -866,6 +921,8 @@ function opQuitar(out: Diseno, ctx: CtxOp, tramo: Tramo, ref: RefModulo, ajustar
   }
   const sep = t === 'base' ? out.separacionCuerpos : 0;
   const libera = c.ancho + sep;
+  // Los motivos nombran los módulos con la numeración que ve el vendedor (antes de quitar).
+  const razones = razonesRigidez(out, t, 1, [c]);
   for (const e of out.equipos) if (e.tramo === t && e.modulo === c.id) ctx.cerca.set(e.id, { tramo: t as TramoBase, indice: Math.min(i, cs.length - 2) });
   cs.splice(i, 1);
   const fijoTramo = t === 'aereos' && out.plantilla === 'compacto';
@@ -884,7 +941,7 @@ function opQuitar(out: Diseno, ctx: CtxOp, tramo: Tramo, ref: RefModulo, ajustar
       libera,
       i - 0.5,
       [],
-      `No se puede quitar el ${nombre} sin achicar el mueble: los módulos que quedan tienen medida fija o equipamiento (o son cajoneras de 90 cm) y no pueden tomar sus ${cm(libera)}. Agranda otro módulo ajustable, cambia la medida del mueble o quítalo achicando el mueble.`,
+      `No se puede quitar el ${nombre} sin achicar el mueble: los módulos que quedan tienen medida fija o equipamiento o no pueden crecer más (${razones}) y nadie puede tomar sus ${cm(libera)}. Agranda otro módulo, cambia la medida del mueble o quítalo achicando el mueble.`,
     );
   }
 }
@@ -912,7 +969,7 @@ function opActualizar(out: Diseno, ctx: CtxOp, tramo: Tramo, ref: RefModulo, cam
   const antes = { ...c };
   const { ancho, id: _id, campanaDe: _campana, ...resto } = cambios;
   Object.assign(c, resto);
-  if (!tiposPermitidos(out, t).includes(c.tipo)) rechazar(`${NOMBRE_TIPO[c.tipo]} no va en ${nombreTramo(out, t).toLowerCase()}.`);
+  if (!tiposPermitidos(out, t).includes(c.tipo)) rechazar(`${NOMBRE_TIPO[c.tipo]} no va en ${enTramo(out, t)}.`);
   if (esTramoAereo(t)) {
     if (c.tipo === 'campana' && antes.tipo !== 'campana') {
       // Pasar un aéreo a campana es agregar la campana de la encimera que tiene debajo.
@@ -922,7 +979,7 @@ function opActualizar(out: Diseno, ctx: CtxOp, tramo: Tramo, ref: RefModulo, cam
       for (let k = 0; k < i; k++) cursor += cs[k].ancho;
       const s = cursor + c.ancho / 2;
       const candidatas = out.equipos.filter((e): e is Encimera => e.tipo === 'encimera' && e.tramo === tb && esAdulta(out.plantilla));
-      if (!candidatas.length) rechazar(`La campana va sobre una encimera: ${nombreTramo(out, tb).toLowerCase()} no tiene encimera.`);
+      if (!candidatas.length) rechazar(`La campana va sobre una encimera: ${enTramo(out, tb)} no tiene encimera.`);
       const distancia = (e: Encimera) => {
         const sb = centroEncimera(db, e);
         return (e.campana ? 1e6 : 0) + (sb == null ? 1e7 : Math.abs(posEnTramo(out, t, posEnMundo(db, tb, sb)) - s));
@@ -944,7 +1001,7 @@ function opActualizar(out: Diseno, ctx: CtxOp, tramo: Tramo, ref: RefModulo, cam
   const objetivo = Math.max(lim.min, Math.min(lim.max, c.ancho));
   if (objetivo !== c.ancho) {
     const que = c.tipo === 'horno' ? `los ${cm(objetivo)} del horno` : c.tipo === 'especiero' ? `los ${cm(objetivo)} del especiero` : `el módulo con ${cm(objetivo)}`;
-    absorber(out, t, -(objetivo - c.ancho), i, [c], `No caben ${que}: los demás módulos de ${nombreTramo(out, t).toLowerCase()} no tienen de dónde ceder o tomar espacio. Achica otro módulo o cambia la medida del mueble.`);
+    absorber(out, t, -(objetivo - c.ancho), i, [c], `No caben ${que}: los demás módulos ${delTramo(out, t)} no tienen de dónde ceder o tomar espacio (${razonesRigidez(out, t, objetivo > c.ancho ? -1 : 1, [c])}). Achica otro módulo o cambia la medida del mueble.`);
     if (objetivo < c.ancho && esCajonera(c)) ctx.avisos.push(`La cajonera quedó en ${cm(objetivo)}: es su ancho máximo.`);
     c.ancho = objetivo;
   }
@@ -975,8 +1032,8 @@ function opAnchoModulo(out: Diseno, ctx: Ctx, tramo: Tramo, ref: RefModulo, anch
   if (cap <= 0) {
     rechazar(
       cs.length === 1
-        ? `El ancho del ${nombre} es el largo de ${nombreTramo(out, t).toLowerCase()}: cambia la medida del mueble.`
-        : `Los demás módulos de ${nombreTramo(out, t).toLowerCase()} no pueden ${delta > 0 ? 'ceder' : 'tomar'} espacio (medida fija, equipamiento o en su ${delta > 0 ? 'mínimo' : 'máximo'}): cambia la medida del mueble o agrega un módulo ajustable.`,
+        ? `El ancho del ${nombre} es el largo ${delTramo(out, t)}: cambia la medida del mueble.`
+        : `Los demás módulos ${delTramo(out, t)} no pueden ${delta > 0 ? 'ceder' : 'tomar'} espacio (${razonesRigidez(out, t, delta > 0 ? -1 : 1, [c])}): cambia la medida del mueble o agrega un módulo sin equipamiento.`,
     );
   }
   const efectivo = Math.sign(delta) * Math.min(Math.abs(delta), cap);
@@ -1018,14 +1075,28 @@ function opAgregarEquipo(out: Diseno, ctx: CtxOp, tipo: TipoEquipoOp, o: Opcione
     if (!opc.horno) rechazar('Este mueble no lleva horno empotrado.');
     const t = tramoBaseO(out, o.tramo ?? 'base');
     if (o.modulo == null) {
-      opAgregar(out, ctx, t, 'horno', o.posicion, { texto: 'Horno empotrado' });
+      // Con espacio se agrega un módulo nuevo de 60 cm; si no lo hay, el horno va bajo la
+      // encimera de ese tramo (o en el módulo más ancho) sin cambiar el largo del mueble.
+      if (anchoDisponible(out, 'horno', ANCHO_HORNO, ANCHO_HORNO, t) != null || !cuerposDe(out, t).length) {
+        opAgregar(out, ctx, t, 'horno', o.posicion, { texto: 'Horno empotrado' });
+        return;
+      }
+      const i = moduloParaHorno(out, t);
+      if (i < 0) {
+        opAgregar(out, ctx, t, 'horno', o.posicion, { texto: 'Horno empotrado' });
+        return;
+      }
+      const c = cuerposDe(out, t)[i];
+      hacerHorno(out, ctx, t, i, { ...c });
+      ctx.avisos.push(`No había espacio para un módulo más: el horno quedó en el ${nombreModuloEn(out, t, i)}.`);
+      ctx.id = c.id;
       return;
     }
     const i = indiceO(out, t, o.modulo);
     const c = cuerposDe(out, t)[i];
     if (c.tipo === 'horno') rechazar('Ese módulo ya tiene el horno.');
     if (out.equipos.some((e) => e.tipo === 'lavaplatos' && e.tramo === t && e.modulo === c.id)) rechazar(`El ${nombreModuloEn(out, t, i)} tiene el lavaplatos: muévelo antes de poner ahí el horno.`);
-    opActualizar(out, ctx, t, i, { tipo: 'horno', puertas: 0, cajones: 0 });
+    hacerHorno(out, ctx, t, i, { ...c });
     ctx.id = c.id;
     return;
   }
@@ -1062,7 +1133,7 @@ function opAgregarEquipo(out: Diseno, ctx: CtxOp, tipo: TipoEquipoOp, o: Opcione
     anfitrion = { tramo: t, modulo: cuerposDe(out, t)[i].id };
   } else {
     const t = o.tramo ? tramoBaseO(out, o.tramo) : 'base';
-    const elegido = elegirAnfitrion(out, tipo, [t, ...TRAMOS_BASE.filter((x) => x !== t)], null);
+    const elegido = elegirAnfitrion(out, tipo, [t, ...TRAMOS_BASE.filter((x) => x !== t)], null, undefined, o.modelo ?? 'simple');
     if (!elegido) rechazar(`No hay un módulo donde poner ${tipo === 'encimera' ? 'la encimera (puertas, cajones u horno)' : 'el lavaplatos (puertas o cajones)'} que no tenga ya ${tipo === 'encimera' ? 'una' : 'uno'}.`);
     anfitrion = elegido;
   }
@@ -1072,6 +1143,8 @@ function opAgregarEquipo(out: Diseno, ctx: CtxOp, tipo: TipoEquipoOp, o: Opcione
     const e = nuevaEncimera(anfitrion.modulo, platos, anfitrion.tramo);
     out.equipos.push(e);
     ctx.id = e.id;
+    const choque = choqueEnModulo(out, e);
+    if (choque) rechazar(choque);
   } else {
     const modelo = o.modelo ?? 'simple';
     if (!opc.lavaplatos.includes(modelo)) rechazar('Este mueble lleva solo lavaplatos simple.');
@@ -1079,6 +1152,8 @@ function opAgregarEquipo(out: Diseno, ctx: CtxOp, tipo: TipoEquipoOp, o: Opcione
     out.equipos.push(l);
     configurarLavaplatos(out, ctx, l, { posicion: o.ubicacion, margen: o.margen });
     ctx.id = l.id;
+    const choque = choqueEnModulo(out, l);
+    if (choque) rechazar(choque);
   }
 }
 
@@ -1130,6 +1205,8 @@ function opMoverEquipo(out: Diseno, ctx: CtxOp, id: string, destino: { tramo: Tr
     if (motivo) rechazar(motivo);
     e.tramo = t;
     e.modulo = dest.id;
+    const choque = choqueEnModulo(out, e);
+    if (choque) rechazar(choque);
     return;
   }
   // El horno se mueve intercambiando el contenido de los dos módulos (los ids, y con ellos el
@@ -1148,21 +1225,83 @@ function opMoverEquipo(out: Diseno, ctx: CtxOp, id: string, destino: { tramo: Tr
   if (out.equipos.some((x) => x.tipo === 'lavaplatos' && x.tramo === t && x.modulo === dest.id)) rechazar(`El ${nombreModuloEn(out, t, i)} tiene el lavaplatos: muévelo antes de poner ahí el horno.`);
   const copiaO = { ...o };
   const copiaD = { ...dest };
-  for (const k of CONTENIDO) {
-    delete (o as Partial<Cuerpo>)[k];
-    delete (dest as Partial<Cuerpo>)[k];
-  }
-  for (const k of CONTENIDO) {
-    if (copiaD[k] !== undefined) (o as unknown as Record<string, unknown>)[k] = copiaD[k];
-    if (copiaO[k] !== undefined) (dest as unknown as Record<string, unknown>)[k] = copiaO[k];
-  }
-  if (origen.t !== t) {
-    // Cada tramo conserva su largo: la diferencia la dan o toman sus módulos ajustables.
-    const motivo = 'El horno no cabe ahí sin cambiar el largo de los lados: sus módulos ajustables no tienen de dónde ceder.';
-    absorber(out, origen.t, -(o.ancho - copiaO.ancho), origen.i, [o], motivo);
-    absorber(out, t, -(dest.ancho - copiaD.ancho), i, [dest], motivo);
+  const pasar = (de: Cuerpo, a: Cuerpo, conAncho: boolean) => {
+    for (const k of CONTENIDO) if (conAncho || k !== 'ancho') delete (a as Partial<Cuerpo>)[k];
+    for (const k of CONTENIDO) if ((conAncho || k !== 'ancho') && de[k] !== undefined) (a as unknown as Record<string, unknown>)[k] = de[k];
+  };
+  if (origen.t === t) {
+    // En el mismo tramo los dos módulos se intercambian enteros (contenido y ancho): el largo no cambia.
+    pasar(copiaD, o, true);
+    pasar(copiaO, dest, true);
+  } else {
+    // Entre tramos, el módulo del horno conserva sus 60 cm y recibe lo que tenía el destino; el
+    // destino pasa a horno (si sobra espacio y nadie lo toma, queda como un módulo aparte).
+    pasar(copiaD, o, false);
+    sanear(o, origen.t);
+    const fijo = anchoFijo(out.plantilla, o);
+    if (fijo != null && fijo !== o.ancho) {
+      absorber(out, origen.t, o.ancho - fijo, origen.i, [o], `El ${nombreModulo(o).toLowerCase()} no cabe en el lugar del horno: ${razonesRigidez(out, origen.t, 1, [o])}.`);
+      o.ancho = fijo;
+    }
+    hacerHorno(out, ctx, t, i, copiaD);
   }
   ctx.avisos.push(`El horno pasó al ${nombreModuloEn(out, t, i)}; el ${nombreModuloEn(out, origen.t, origen.i)} quedó con lo que tenía ese módulo.`);
+}
+
+/**
+ * Pasa el módulo i del tramo a horno (60 cm) sin cambiar el largo del tramo: la diferencia
+ * la dan o toman los ajustables más cercanos. Si sobra espacio y nadie lo puede tomar, lo que
+ * sobra queda como un módulo aparte con el contenido que tenía (un módulo de 140 cm pasa a
+ * horno de 60 cm + módulo de 80 cm).
+ */
+function hacerHorno(out: Diseno, ctx: CtxOp, t: TramoBase, i: number, resto: Cuerpo) {
+  const cs = cuerposDe(out, t);
+  const c = cs[i];
+  const nombre = nombreModuloEn(out, t, i);
+  const sobra = c.ancho - ANCHO_HORNO;
+  for (const k of CONTENIDO) if (k !== 'ancho') delete (c as Partial<Cuerpo>)[k];
+  Object.assign(c, { tipo: 'horno', puertas: 0, cajones: 0, bisagra: 'izq', columnasCajones: 1, altoCajon: 0, repisas: 0, colgador: false, alto: 0 });
+  sanear(c, t);
+  if (sobra === 0) return;
+  if (sobra < 0) {
+    absorber(out, t, sobra, i, [c], `No caben los ${cm(ANCHO_HORNO)} del horno en el ${nombre} (${cm(c.ancho)}): ${razonesRigidez(out, t, -1, [c])}. Elige un módulo más ancho o achica otro.`);
+    c.ancho = ANCHO_HORNO;
+    return;
+  }
+  const cap = capacidad(out, t, 1, [c]);
+  if (cap >= sobra) {
+    absorber(out, t, sobra, i, [c], 'No hay espacio.');
+    c.ancho = ANCHO_HORNO;
+    return;
+  }
+  // Nadie toma todo lo que sobra: queda un módulo aparte (de al menos 15 cm) junto al horno.
+  const tipoResto = resto.tipo === 'hueco' ? 'hueco' : 'frentes';
+  const minResto = tipoResto === 'hueco' ? ANCHO_MIN_HUECO : ANCHO_MIN_CUERPO;
+  const ancho = Math.max(minResto, sobra - cap);
+  const nuevo: Cuerpo = { ...resto, id: nuevoId(), tipo: tipoResto, ancho };
+  if (tipoResto === 'frentes' && resto.tipo !== 'frentes') Object.assign(nuevo, { puertas: ancho >= 2 * ANCHO_POR_PUERTA - 100 ? 2 : 1, cajones: 0, repisas: 1, bisagra: 'der' });
+  delete nuevo.campanaDe;
+  sanear(nuevo, t);
+  c.ancho = ANCHO_HORNO;
+  const razones = razonesRigidez(out, t, -1, [c]);
+  cs.splice(i + 1, 0, nuevo);
+  const delta = sobra - ancho;
+  absorber(out, t, delta, i + 1, [c, nuevo], `No caben los ${cm(ANCHO_HORNO)} del horno en el ${nombre}: ${razones}.`);
+  ctx.avisos.push(`El horno ocupa ${cm(ANCHO_HORNO)} del ${nombre}; los ${cm(ancho)} que sobran quedaron como un módulo de ${nombreModulo(nuevo).toLowerCase()} a su lado.`);
+}
+
+/** Módulo que recibe un horno cuando no cabe uno nuevo: el de la encimera (si no tiene lavaplatos) o el más ancho que pueda. */
+function moduloParaHorno(out: Diseno, t: TramoBase): number {
+  const cs = cuerposDe(out, t);
+  const conLavaplatos = (c: Cuerpo) => out.equipos.some((e) => e.tipo === 'lavaplatos' && e.tramo === t && e.modulo === c.id);
+  const sirve = (c: Cuerpo, k: number) => c.tipo === 'frentes' && !conLavaplatos(c) && k >= posicionMinima(out, t);
+  const enc = out.equipos.find((e) => e.tipo === 'encimera' && e.tramo === t && cs.some((c, k) => c.id === e.modulo && sirve(c, k)));
+  if (enc) return cs.findIndex((c) => c.id === enc.modulo);
+  let mejor = -1;
+  cs.forEach((c, k) => {
+    if (sirve(c, k) && (mejor < 0 || c.ancho > cs[mejor].ancho)) mejor = k;
+  });
+  return mejor;
 }
 
 function configurarLavaplatos(out: Diseno, ctx: Ctx, l: Lavaplatos, cambios: { posicion?: Lavaplatos['posicion']; margen?: number }) {
@@ -1192,6 +1331,8 @@ function opConfigurarEquipo(out: Diseno, ctx: CtxOp, id: string, cambios: Cambio
   const opc = opcionesEquipo(out.plantilla);
   const e = out.equipos.find((x) => x.id === id);
   if (!e) rechazar('Ese equipo no existe.');
+  // Solo se rechaza un choque que provoca este cambio (no uno que ya venía de antes).
+  const yaChocaba = choqueEnModulo(out, e) != null;
   if (e.tipo === 'encimera') {
     if (cambios.platos) {
       if (!opc.platos.includes(cambios.platos)) rechazar(`La encimera de este mueble puede ser de ${opc.platos.join(' o ')} platos.`);
@@ -1201,6 +1342,8 @@ function opConfigurarEquipo(out: Diseno, ctx: CtxOp, id: string, cambios: Cambio
       if (cambios.campana && !opc.campana) rechazar('Este mueble no lleva campana.');
       e.campana = cambios.campana;
     }
+    const choque = choqueEnModulo(out, e);
+    if (choque && !yaChocaba) rechazar(choque);
     return;
   }
   if (cambios.modelo) {
@@ -1212,6 +1355,8 @@ function opConfigurarEquipo(out: Diseno, ctx: CtxOp, id: string, cambios: Cambio
     e.llave = cambios.llave;
   }
   configurarLavaplatos(out, ctx, e, cambios);
+  const choque = choqueEnModulo(out, e);
+  if (choque && !yaChocaba) rechazar(choque);
 }
 
 // ---------- Forma ----------
@@ -1251,7 +1396,7 @@ function opFijarForma(out: Diseno, ctx: CtxOp, pedida: Forma | LadoId | null) {
         if (e.tramo === lado) ctx.cerca.set(e.id, { tramo: 'base', indice: lado === 'izq' ? 0 : out.cuerpos.length - 1 });
       });
       out.lados[lado] = null;
-      ctx.avisos.push(`Se quitó el lado ${lado === 'izq' ? 'izquierdo' : 'derecho'} con sus ${n} ${n === 1 ? 'módulo' : 'módulos'}.`);
+      ctx.avisos.push(`Se quitó el lado ${lado === 'izq' ? 'izquierdo' : 'derecho'} ${n === 1 ? 'con su módulo' : `con sus ${n} módulos`}.`);
     }
   }
 }
@@ -1333,10 +1478,18 @@ function opLadoAereo(out: Diseno, ctx: Ctx, lado: LadoId, cambios: CambiosLado) 
   if (!r) rechazar(`Los aéreos no tienen lado ${lado === 'izq' ? 'izquierdo' : 'derecho'}: cambia su forma.`);
   if (cambios.profundidad != null) r.profundidad = limitar(Math.round(cambios.profundidad), LIMITES_AEREOS.profundidad);
   if (cambios.largo != null) {
-    const min = Math.max(LIMITES_AEREOS.ladoLargo[0], a.profundidad + sumar(limitesDe(out, t, r.cuerpos).map((l) => l.min)));
     const pedido = Math.round(cambios.largo);
-    const largo = limitar(pedido, [min, LIMITES_AEREOS.ladoLargo[1]]);
-    if (largo !== pedido) ctx.avisos.push(`El largo del lado del aéreo quedó en ${cm(largo)}.`);
+    const max = LIMITES_AEREOS.ladoLargo[1];
+    // Una campana no queda a medias: el largo se lleva al más cercano que la cubre o la deja fuera.
+    const minSinCampanas = Math.max(LIMITES_AEREOS.ladoLargo[0], a.profundidad + minimoSinCampanas(out, t));
+    const elegido = largoAereoSinCortarCampanas(out, t, pedido, [minSinCampanas, max]);
+    soltarCampanas(out, t, elegido.fuera);
+    const min = Math.max(LIMITES_AEREOS.ladoLargo[0], a.profundidad + sumar(limitesDe(out, t, r.cuerpos).map((l) => l.min)));
+    const largo = limitar(elegido.largo, [min, max]);
+    if (largo !== pedido) {
+      const porCampana = largo === elegido.largo && elegido.largo !== limitar(pedido, [minSinCampanas, max]);
+      ctx.avisos.push(`El largo del lado del aéreo quedó en ${cm(largo)}${porCampana ? `: con ${cm(pedido)} la campana quedaría a medias sobre la encimera` : ''}.`);
+    }
     if (largo !== r.largo) a.cuadrado = false;
     r.largo = largo;
   }
@@ -1348,12 +1501,19 @@ function opLargoAereos(out: Diseno, ctx: Ctx, largo: number) {
   if (out.plantilla === 'compacto') rechazar('El mueble superior del compacto mide lo mismo que el base.');
   if (out.plantilla !== 'cocina' || !a.cuerpos.length) rechazar('Primero activa los muebles aéreos.');
   if (a.lados.izq && a.lados.der) rechazar('Con los aéreos en U el principal va de muro a muro: cambia el ancho del mueble.');
-  const lims = limitesDe(out, 'aereos', a.cuerpos);
-  const min = Math.max(LIMITES_AEREOS.ancho[0], sumar(lims.map((l) => l.min)));
   const max = maximoTramo(out, 'aereos');
   const pedido = Math.round(largo);
-  const objetivo = Math.max(min, Math.min(max, pedido));
-  if (objetivo !== pedido) ctx.avisos.push(`Los aéreos quedaron de ${cm(objetivo)}: ${objetivo < pedido ? (hayMuros(out) ? 'no pueden pasar los muros' : 'es su largo máximo') : 'es lo mínimo para sus módulos'}.`);
+  const minSinCampanas = Math.max(LIMITES_AEREOS.ancho[0], minimoSinCampanas(out, 'aereos'));
+  const elegido = largoAereoSinCortarCampanas(out, 'aereos', pedido, [minSinCampanas, max]);
+  soltarCampanas(out, 'aereos', elegido.fuera);
+  const min = Math.max(LIMITES_AEREOS.ancho[0], sumar(limitesDe(out, 'aereos', a.cuerpos).map((l) => l.min)));
+  const objetivo = Math.max(min, Math.min(max, elegido.largo));
+  if (objetivo !== pedido) {
+    const porCampana = objetivo === elegido.largo && elegido.largo !== Math.max(minSinCampanas, Math.min(max, pedido));
+    ctx.avisos.push(
+      `Los aéreos quedaron de ${cm(objetivo)}: ${porCampana ? `con ${cm(pedido)} la campana quedaría a medias sobre la encimera` : objetivo < pedido ? (hayMuros(out) ? 'no pueden pasar los muros' : 'es su largo máximo') : 'es lo mínimo para sus módulos'}.`,
+    );
+  }
   const [x0, x1] = extremosPrincipal(out);
   if (objetivo !== Math.round(x1 - x0)) a.cuadrado = false;
   ajustarTramo(out, 'aereos', objetivo);
@@ -1421,6 +1581,18 @@ export type Operacion =
  * se rechazó y los avisos de lo que se ajustó solo. Un rechazo devuelve el mismo objeto.
  */
 export function ejecutar(d: Diseno, op: Operacion): Resultado {
+  // Lo que llega serializado (del asistente de IA o de un enlace) se revisa antes de tocar el diseño.
+  const malFormada = revisarOperacion(op);
+  if (malFormada) return { ok: false, diseno: d, motivo: malFormada, avisos: [] };
+  const r = aplicar(d, op);
+  if (!r.ok && (op.op === 'agregarModulo' || op.op === 'agregarCuerpo' || op.op === 'quitarModulo') && !op.ajustarLargo) {
+    const alternativa = { ...op, ajustarLargo: true };
+    if (aplicar(d, alternativa).ok) return { ...r, alternativa };
+  }
+  return r;
+}
+
+function aplicar(d: Diseno, op: Operacion): Resultado {
   return intentar(d, (out, ctx) => {
     switch (op.op) {
       case 'fijarAncho':
@@ -1438,7 +1610,7 @@ export function ejecutar(d: Diseno, op: Operacion): Resultado {
       case 'agregarModulo': {
         const t = tramoO(out, op.tramo);
         const preset = presetsModulo(out.plantilla, t).find((p) => p.id === op.preset);
-        if (!preset) rechazar(`«${op.preset}» no es un módulo que se pueda agregar en ${nombreTramo(out, t).toLowerCase()}.`);
+        if (!preset) rechazar(`«${op.preset}» no es un módulo que se pueda agregar en ${enTramo(out, t)}.`);
         return opAgregar(out, ctx, t, preset.tipo, op.posicion, { cambios: preset.cambios, ancho: preset.ancho, anchoMinimo: preset.anchoMinimo, ajustarLargo: op.ajustarLargo, texto: preset.texto });
       }
       case 'agregarCuerpo':
@@ -1844,6 +2016,12 @@ function frentesConNombre(d: Diseno): { fr: Frente; nombre: string }[] {
 }
 
 export function advertencias(d: Diseno, unidad: Unidad = 'cm'): Advertencia[] {
+  // Una misma advertencia (p. ej. las dos puertas de un módulo) se dice una sola vez.
+  const vistas = new Set<string>();
+  return advertenciasTodas(d, unidad).filter((a) => !vistas.has(a.texto) && !!vistas.add(a.texto));
+}
+
+function advertenciasTodas(d: Diseno, unidad: Unidad): Advertencia[] {
   const out: Advertencia[] = [];
   const f = (mm: number) => formatear(mm, unidad);
   if (d.plantilla === 'tocador') {
@@ -1882,12 +2060,13 @@ export function advertencias(d: Diseno, unidad: Unidad = 'cm'): Advertencia[] {
         else if (e.posicion !== 'centro' && c.ancho < MEDIDAS_EQUIPO.lavaplatos[e.modelo].ancho + e.margen + 15) {
           out.push({ nivel: 'aviso', texto: `El lavaplatos pegado al borde no cabe en el ${nombre} con ${f(e.margen)} de margen.` });
         }
-        if (d.equipos.some((x) => x.tipo === 'encimera' && x.tramo === e.tramo && x.modulo === e.modulo)) {
-          out.push({ nivel: 'aviso', texto: 'La encimera y el lavaplatos están sobre el mismo módulo: elige módulos distintos.' });
+        if (choqueEnModulo(d, e)) {
+          out.push({ nivel: 'aviso', texto: `La encimera y el lavaplatos se topan en el mismo módulo (${nombre}): elige módulos distintos o pega el lavaplatos a un borde.` });
         }
       } else {
         const minimo = e.platos === '4' ? 580 : esCocinaAdulta(d) ? 400 : 250;
-        if (c.ancho < minimo) out.push({ nivel: 'info', texto: `La encimera sobresale del ${nombre}; la cubierta igual la soporta.` });
+        if (!cabeEncimera(d, e.tramo, i)) out.push({ nivel: 'aviso', texto: `La encimera del ${nombre} queda en la punta y se sale de la cubierta: muévela a un módulo más ancho o más adentro.` });
+        else if (c.ancho < minimo) out.push({ nivel: 'info', texto: `La encimera sobresale del ${nombre}; la cubierta igual la soporta.` });
       }
     }
     const la = calcularLayoutAereos(d);
@@ -2007,7 +2186,8 @@ export function precioReferencial(d: Diseno, base: ProductoCatalogo | null, dise
     if (d.plantilla === 'compacto') {
       const hornos = (x: Diseno) => x.cuerpos.filter((c) => c.tipo === 'horno').length;
       const campanas = (x: Diseno) => (x.equipos ?? []).filter((e) => e.tipo === 'encimera' && e.campana).length;
-      precio += (hornos(d) - hornos(disenoBase)) * 150000 + (campanas(d) - campanas(disenoBase)) * 70000;
+      // El compacto no traía horno ni campana: si se agregan, se suman a su valor de tarifa.
+      precio += (hornos(d) - hornos(disenoBase)) * TARIFAS.horno + (campanas(d) - campanas(disenoBase)) * TARIFAS.campana;
     }
   }
   if (d.imagenFrontal) precio += 15000;

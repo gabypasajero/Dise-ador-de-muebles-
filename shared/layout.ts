@@ -750,7 +750,9 @@ export function centroEncimera(d: Diseno, e: Encimera): number | null {
   const m = pos.find((p) => p.id === e.modulo);
   if (!m) return null;
   const L = largoEje(d, e.tramo);
-  const media = MEDIDAS_EQUIPO.encimera[e.platos].ancho / 2;
+  // Con campana se aleja de la punta lo que pide la campana (60 cm): así la campana queda
+  // centrada sobre ella sin salirse del aéreo, que termina donde termina la cubierta.
+  const media = Math.max(MEDIDAS_EQUIPO.encimera[e.platos].ancho, e.campana ? MEDIDAS_EQUIPO.campana.ancho : 0) / 2;
   const c = (m.s0 + m.s1) / 2;
   // No se sale de la cubierta y su centro queda siempre sobre su módulo.
   return dentro(L > 2 * media ? Math.max(media, Math.min(L - media, c)) : L / 2, m);
