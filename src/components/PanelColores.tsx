@@ -1,9 +1,32 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
+import { esCocina, esCocinaAdulta } from '../../shared/layout';
 import type { Material, Materiales } from '../../shared/tipos';
 import { muestraMaterial } from '../furniture/texturas';
 import { useApp } from '../store/useApp';
 import { Segmentado } from './Controles';
 import { IcoBasura, IcoSubir } from './Iconos';
+
+function Rejilla({ titulo, lista, valor, onElegir }: { titulo: string; lista: Material[]; valor: string; onElegir: (id: string) => void }) {
+  return (
+    <div className="muestras" role="radiogroup" aria-label={titulo}>
+      {lista.map((m) => (
+        <button
+          key={m.id}
+          type="button"
+          role="radio"
+          aria-checked={m.id === valor}
+          className={`muestra${m.id === valor ? ' elegida' : ''}`}
+          title={m.nombre + (m.origen === 'catalogo-dto' ? ' · catálogo De Todito Outlet' : ' · genérico')}
+          onClick={() => onElegir(m.id)}
+        >
+          <span className="muestra-img" style={{ backgroundImage: `url(${muestraMaterial(m)})` }} />
+          <span className="muestra-nombre">{m.nombre}</span>
+          {m.origen === 'catalogo-dto' && <span className="sello-dto">DTO</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function Muestras({
   titulo,
@@ -11,14 +34,25 @@ function Muestras({
   lista,
   valor,
   onElegir,
+  subtitulo,
+  otros,
+  todos,
 }: {
   titulo: string;
   ayuda?: string;
   lista: Material[];
   valor: string;
   onElegir: (id: string) => void;
+  /** Rótulo sobre la lista principal (p. ej. "Melaminas de cocina"). */
+  subtitulo?: string;
+  /** Colores secundarios, detrás de "Ver más colores". */
+  otros?: Material[];
+  /** Todos los materiales, para mostrar el nombre del elegido aunque no esté en la lista. */
+  todos?: Material[];
 }) {
-  const elegido = lista.find((m) => m.id === valor);
+  // Si el color elegido está entre los secundarios, se abren de entrada para que se vea marcado.
+  const [verMas, setVerMas] = useState(() => !!otros?.some((m) => m.id === valor));
+  const elegido = (todos ?? [...lista, ...(otros ?? [])]).find((m) => m.id === valor);
   return (
     <section className="grupo-colores">
       <div className="grupo-colores-cabeza">
@@ -26,26 +60,27 @@ function Muestras({
         <span className="nombre-elegido">{elegido?.nombre}</span>
       </div>
       {ayuda && <p className="tenue chico">{ayuda}</p>}
-      <div className="muestras" role="radiogroup" aria-label={titulo}>
-        {lista.map((m) => (
+      {subtitulo && <p className="muestras-subtitulo">{subtitulo}</p>}
+      <Rejilla titulo={subtitulo ?? titulo} lista={lista} valor={valor} onElegir={onElegir} />
+      {otros && otros.length > 0 && (
+        <>
           <button
-            key={m.id}
             type="button"
-            role="radio"
-            aria-checked={m.id === valor}
-            className={`muestra${m.id === valor ? ' elegida' : ''}`}
-            title={m.nombre + (m.origen === 'catalogo-dto' ? ' · catálogo De Todito Outlet' : ' · genérico')}
-            onClick={() => onElegir(m.id)}
+            className="boton fantasma chico ver-mas-colores"
+            aria-expanded={verMas}
+            onClick={() => setVerMas((v) => !v)}
           >
-            <span className="muestra-img" style={{ backgroundImage: `url(${muestraMaterial(m)})` }} />
-            <span className="muestra-nombre">{m.nombre}</span>
-            {m.origen === 'catalogo-dto' && <span className="sello-dto">DTO</span>}
+            {verMas ? 'Ver menos colores' : `Ver más colores (${otros.length})`}
           </button>
-        ))}
-      </div>
+          {verMas && <Rejilla titulo={`${titulo}: otros colores`} lista={otros} valor={valor} onElegir={onElegir} />}
+        </>
+      )}
     </section>
   );
 }
+
+const oficialesPrimero = (lista: Material[]) =>
+  [...lista].sort((a, b) => Number(b.origen === 'catalogo-dto') - Number(a.origen === 'catalogo-dto'));
 
 /** Reduce la imagen subida para que el diseño no pese demasiado. */
 function reducirImagen(archivo: File, maximo = 1400): Promise<string> {
@@ -77,32 +112,57 @@ export function PanelColores() {
   const archivo = useRef<HTMLInputElement>(null);
   if (!materiales) return <aside className="panel-colores cargando">Cargando colores…</aside>;
   const set = (cambios: Partial<Materiales>) => cambiar((x) => ({ ...x, materiales: { ...x.materiales, ...cambios } }));
-  const conCubierta = d.plantilla === 'cocina' || d.plantilla === 'cocina-infantil';
-  const melaminasOrdenadas = [...materiales.melaminas].sort((a, b) => Number(b.origen === 'catalogo-dto') - Number(a.origen === 'catalogo-dto'));
-  const cubiertasOrdenadas = [...materiales.cubiertas].sort((a, b) => Number(b.origen === 'catalogo-dto') - Number(a.origen === 'catalogo-dto'));
+  // Cubierta postformada: cocina, cocina infantil y compacto (el compacto también lleva cubierta).
+  const conCubierta = esCocina(d);
+  // Las melaminas "cocina" son exclusivas de los muebles de cocina (cocina y compacto).
+  const deCocina = esCocinaAdulta(d);
+  const melaminasCocina = materiales.melaminas.filter((m) => m.cocina);
+  const melaminasResto = oficialesPrimero(materiales.melaminas.filter((m) => !m.cocina));
+  // Cuerpo (casco): todos los colores; Blanco primero porque es el habitual.
+  const melaminasCasco = [
+    ...materiales.melaminas.filter((m) => m.id === 'blanco'),
+    ...oficialesPrimero(materiales.melaminas.filter((m) => m.id !== 'blanco')),
+  ];
+  const cubiertasOrdenadas = oficialesPrimero(materiales.cubiertas);
 
   return (
     <aside className="panel-colores" aria-label="Colores y terminaciones">
       <div className="panel-colores-cabeza">
         <h2>Colores</h2>
         <p className="nota-colores" title={materiales.nota}>
-          Muestras genéricas · los marcados <span className="sello-dto inline">DTO</span> son de la tienda
+          Los marcados <span className="sello-dto inline">DTO</span> son colores oficiales de la tienda
         </p>
       </div>
-      <Muestras
-        titulo="Melamina de frentes"
-        ayuda="Puertas, cajones y fajas."
-        lista={melaminasOrdenadas}
-        valor={d.materiales.frente}
-        onElegir={(id) => set({ frente: id })}
-      />
+      {deCocina && melaminasCocina.length > 0 ? (
+        <Muestras
+          key="frente-cocina"
+          titulo="Melamina de frentes"
+          ayuda="Puertas, cajones y fajas."
+          subtitulo="Melaminas de cocina"
+          lista={melaminasCocina}
+          otros={melaminasResto}
+          todos={materiales.melaminas}
+          valor={d.materiales.frente}
+          onElegir={(id) => set({ frente: id })}
+        />
+      ) : (
+        <Muestras
+          key="frente"
+          titulo="Melamina de frentes"
+          ayuda="Puertas, cajones y fajas."
+          lista={melaminasResto}
+          todos={materiales.melaminas}
+          valor={d.materiales.frente}
+          onElegir={(id) => set({ frente: id })}
+        />
+      )}
       {conCubierta && (
         <Muestras titulo="Cubierta postformada" lista={cubiertasOrdenadas} valor={d.materiales.cubierta} onElegir={(id) => set({ cubierta: id })} />
       )}
       <Muestras
         titulo="Melamina del cuerpo"
         ayuda="Costados, base y repisas (casco)."
-        lista={melaminasOrdenadas}
+        lista={melaminasCasco}
         valor={d.materiales.casco}
         onElegir={(id) => set({ casco: id })}
       />

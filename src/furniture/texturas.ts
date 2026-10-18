@@ -233,18 +233,36 @@ function semillaDe(id: string): number {
   return Math.abs(h % 1000) + 1;
 }
 
+/**
+ * Textura fotográfica (colores oficiales). Mientras la imagen carga, o si falla, se ve el
+ * color promedio del material en vez de una superficie negra.
+ */
+function texturaFoto(url: string, color: string, tamMm: number): THREE.Texture {
+  const [c, ctx] = lienzo(1024);
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, c.width, c.height);
+  const t = aTextura(c, tamMm);
+  new THREE.ImageLoader().load(
+    url,
+    (img) => {
+      // three.js no puede cambiar el tamaño de una textura ya subida a la GPU: se libera antes.
+      if (img.width !== c.width || img.height !== c.height) t.dispose();
+      t.image = img;
+      t.needsUpdate = true;
+    },
+    undefined,
+    () => console.warn(`[texturas] no se pudo cargar ${url}; se usa el color promedio`),
+  );
+  return t;
+}
+
 export function texturaMaterial(m: Material): THREE.Texture {
-  const clave = `mat:${m.id}:${m.tipo}:${m.color}:${m.veta ?? ''}:${m.textura ?? ''}`;
+  // Escala real: tamanoMm es lo que mide (en mm) una repetición de la textura fotográfica.
+  const tamMm = m.tamanoMm ?? tamanoTextura(m);
+  const clave = `mat:${m.id}:${m.tipo}:${m.color}:${m.veta ?? ''}:${m.textura ?? ''}:${tamMm}`;
   let t = cache.get(clave);
   if (!t) {
-    if (m.textura) {
-      t = new THREE.TextureLoader().load(m.textura);
-      t.wrapS = t.wrapT = THREE.RepeatWrapping;
-      t.colorSpace = THREE.SRGBColorSpace;
-      t.repeat.set(1 / tamanoTextura(m), 1 / tamanoTextura(m));
-    } else {
-      t = aTextura(lienzoMaterial(m), tamanoTextura(m));
-    }
+    t = m.textura ? texturaFoto(m.textura, m.color, tamMm) : aTextura(lienzoMaterial(m), tamMm);
     cache.set(clave, t);
   }
   return t;

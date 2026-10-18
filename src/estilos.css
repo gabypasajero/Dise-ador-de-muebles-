@@ -2589,3 +2589,20 @@ h3 {
     height: auto;
   }
 }
+
+/* ---------- Colores oficiales de cocina (PanelColores) ---------- */
+
+.muestras-subtitulo {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--texto-2);
+}
+
+.ver-mas-colores {
+  align-self: flex-start;
+  color: var(--acento);
+  font-weight: 700;
+}
