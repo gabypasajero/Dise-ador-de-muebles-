@@ -2,7 +2,9 @@
 import type {
   Cuerpo,
   Diseno,
+  Encimera,
   Escenario,
+  Lavaplatos,
   Plantilla,
   ProductoCatalogo,
   ProductoTienda,
@@ -12,6 +14,16 @@ let contadorId = 0;
 export function nuevoId(prefijo = 'c'): string {
   contadorId += 1;
   return `${prefijo}${Date.now().toString(36)}${contadorId.toString(36)}`;
+}
+
+/** Encimera nueva sobre un módulo del tramo principal (o del tramo indicado). */
+export function encimera(modulo: string, platos: Encimera['platos'], tramo: Encimera['tramo'] = 'base'): Encimera {
+  return { id: nuevoId('e'), tipo: 'encimera', tramo, modulo, platos, campana: false };
+}
+
+/** Lavaplatos nuevo con llave, centrado en su módulo. */
+export function lavaplatos(modulo: string, modelo: Lavaplatos['modelo'] = 'simple', tramo: Lavaplatos['tramo'] = 'base'): Lavaplatos {
+  return { id: nuevoId('e'), tipo: 'lavaplatos', tramo, modulo, modelo, llave: true, posicion: 'centro', margen: 50 };
 }
 
 export function cuerpo(parcial: Partial<Cuerpo> & { ancho: number }): Cuerpo {
@@ -160,7 +172,7 @@ function base(plantilla: Plantilla, medidas: { ancho: number; alto: number; prof
   const cocina = plantilla === 'cocina' || plantilla === 'cocina-infantil' || plantilla === 'compacto';
   const adulta = plantilla === 'cocina' || plantilla === 'compacto';
   return {
-    version: 1,
+    version: 2,
     plantilla,
     productoId: null,
     nombreModelo: '',
@@ -181,10 +193,6 @@ function base(plantilla: Plantilla, medidas: { ancho: number; alto: number; prof
       tirador: adulta ? 'acero' : 'blanco',
     },
     cocina: {
-      encimera: 'ninguna',
-      encimeraCuerpo: 0,
-      lavaplatos: 'ninguno',
-      lavaplatosCuerpo: 0,
       grifo: 'negro',
       copete: plantilla === 'cocina',
       espesorCubierta: 30,
@@ -203,15 +211,16 @@ function base(plantilla: Plantilla, medidas: { ancho: number; alto: number; prof
     mudador: false,
     imagenFrontal: null,
     aereos: aereosVacios(plantilla),
-    retorno: null,
+    lados: { izq: null, der: null },
+    equipos: [],
   };
 }
 
 /** Mismos valores que reglas.aereosVacios (se repiten aquí para no crear una dependencia circular). */
 function aereosVacios(plantilla: Plantilla): Diseno['aereos'] {
   return plantilla === 'compacto'
-    ? { activo: true, montaje: 'apoyado', alto: 580, profundidad: 300, elevacion: 880, alineacion: 'centro', cuerpos: [] }
-    : { activo: false, montaje: 'mural', alto: 600, profundidad: 330, elevacion: 1450, alineacion: 'centro', cuerpos: [] };
+    ? { activo: true, montaje: 'apoyado', alto: 580, profundidad: 300, elevacion: 880, alineacion: 'centro', cuerpos: [], lados: { izq: null, der: null }, cuadrado: false }
+    : { activo: false, montaje: 'mural', alto: 600, profundidad: 300, elevacion: 1450, alineacion: 'centro', cuerpos: [], lados: { izq: null, der: null }, cuadrado: plantilla === 'cocina' };
 }
 
 /** Reparte un ancho total en partes proporcionales (enteros que suman exactamente el total). */
@@ -247,26 +256,18 @@ export function disenoInicial(p: ProductoCatalogo): Diseno {
           cuerpo({ ancho: b, cajones: 3 }),
           cuerpo({ ancho: c, puertas: 1, bisagra: 'der', repisas: 1 }),
         ];
-        d.cocina.encimera = '4';
-        d.cocina.encimeraCuerpo = 0;
-        d.cocina.lavaplatos = 'simple';
-        d.cocina.lavaplatosCuerpo = 2;
+        d.equipos = [encimera(d.cuerpos[0].id, '4'), lavaplatos(d.cuerpos[2].id)];
       } else if (/lavaplatos/.test(n)) {
         const [a, b] = repartir(util, [1, 2]);
         d.cuerpos = [cuerpo({ ancho: a, cajones: 3 }), cuerpo({ ancho: b, puertas: 2, repisas: 1 })];
-        d.cocina.encimera = '3';
-        d.cocina.encimeraCuerpo = 0;
-        d.cocina.lavaplatos = 'simple';
-        d.cocina.lavaplatosCuerpo = 1;
+        d.equipos = [encimera(d.cuerpos[0].id, '3'), lavaplatos(d.cuerpos[1].id)];
       } else if (/3 cajones/.test(n)) {
         const [a, b] = repartir(util, [2, 3]);
         d.cuerpos = [cuerpo({ ancho: a, cajones: 3 }), cuerpo({ ancho: b, puertas: 2, repisas: 1 })];
-        d.cocina.encimera = '3';
-        d.cocina.encimeraCuerpo = 1;
+        d.equipos = [encimera(d.cuerpos[1].id, '3')];
       } else {
         d.cuerpos = [cuerpo({ ancho: util, puertas: 2, repisas: 1 })];
-        d.cocina.encimera = '3';
-        d.cocina.encimeraCuerpo = 0;
+        d.equipos = [encimera(d.cuerpos[0].id, '3')];
       }
       const colores = coloresDeVariante(p.variante);
       if (colores.cubierta) d.materiales.cubierta = colores.cubierta;
@@ -319,10 +320,7 @@ export function disenoInicial(p: ProductoCatalogo): Diseno {
       d.tirador = 'boton';
       d.materiales.frente = 'blanco';
       d.materiales.cubierta = 'blanco-liso';
-      d.cocina.encimera = '2';
-      d.cocina.encimeraCuerpo = 2;
-      d.cocina.lavaplatos = 'simple';
-      d.cocina.lavaplatosCuerpo = 1;
+      d.equipos = [encimera(d.cuerpos[2].id, '2'), { ...lavaplatos(d.cuerpos[1].id), llave: false }];
       d.cocina.grifo = 'cromado';
       d.cocina.copete = false;
       d.cocina.espesorCubierta = 18;

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { clasificarProducto, disenoInicial, disenoLibre } from '../../shared/catalogo';
+import { retornoDe } from '../../shared/layout';
 import { cuerposDe, normalizar, type Tramo } from '../../shared/reglas';
 import type { CatalogoMateriales, Cotizacion, Diseno, Escenario, Plantilla, ProductoCatalogo, Unidad, Usuario } from '../../shared/tipos';
 import { obtenerCatalogo, obtenerMateriales, type RespuestaCatalogo } from '../datos/catalogo';
@@ -103,7 +104,7 @@ function leerVista(): VistaGuardada {
 
 /** Al deshacer o rehacer, el tramo y el módulo elegidos deben existir en el diseño. */
 function seleccionValida(d: Diseno, tramo: Tramo, modulo: number): { tramoActivo: Tramo; moduloActivo: number } {
-  const valido = tramo === 'retorno' ? !!d.retorno : tramo === 'aereos' ? d.aereos.activo : true;
+  const valido = tramo === 'retorno' ? !!retornoDe(d) : tramo === 'aereos' ? d.aereos.activo : true;
   const t = valido ? tramo : 'base';
   return { tramoActivo: t, moduloActivo: Math.max(0, Math.min(modulo, cuerposDe(d, t).length - 1)) };
 }

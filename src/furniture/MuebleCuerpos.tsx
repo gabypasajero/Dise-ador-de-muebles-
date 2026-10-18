@@ -2,7 +2,7 @@
 // clóset escritorio y cocina infantil.
 import { useEffect, useMemo } from 'react';
 import { altoBaseInfantil, calcularLayout, centroCuerpo, esCocina, type Layout, type LayoutCuerpo, type Rect } from '../../shared/layout';
-import { formatear } from '../../shared/reglas';
+import { equipoLegado, formatear } from '../../shared/reglas';
 import type { Diseno, Unidad } from '../../shared/tipos';
 import { Cilindro, Panel, useMats } from './base3d';
 import { Cubierta, Encimera, EspacioLibre, Horno, Lavaplatos, huecosLavaplatos, medidasEncimera, type Hueco } from './Cocina3D';
@@ -237,6 +237,7 @@ function FilaSuperior({ d, l }: { d: Diseno; l: Layout }) {
 
 function EquipoCocina({ d, l, extension }: { d: Diseno; l: Layout; extension: [number, number] }) {
   const m = useMats();
+  const eq = equipoLegado(d);
   const ct = d.cocina.espesorCubierta;
   const D = d.profundidad;
   const r = ct / 2;
@@ -244,12 +245,12 @@ function EquipoCocina({ d, l, extension }: { d: Diseno; l: Layout; extension: [n
   const W = d.ancho;
 
   let lavaplatos: JSX.Element | null = null;
-  if (d.cocina.lavaplatos !== 'ninguno' && d.cuerpos.length) {
-    const tipo = d.cocina.lavaplatos;
+  if (eq.lavaplatos !== 'ninguno' && d.cuerpos.length) {
+    const tipo = eq.lavaplatos;
     const ancho = tipo === 'doble' ? 770 : 400;
     const fondo = tipo === 'doble' ? 380 : 360;
     const escala = Math.min(1, (D - r - 120) / (fondo + 76), (W - 60) / (ancho + 76));
-    let cx = centroCuerpo(l, d.cocina.lavaplatosCuerpo);
+    let cx = centroCuerpo(l, eq.lavaplatosCuerpo);
     const media = (ancho * escala) / 2 + 45;
     cx = Math.max(-W / 2 + media, Math.min(W / 2 - media, cx));
     const cz = Math.max((D - r) * 0.55, 14 + 70 + (fondo * escala) / 2);
@@ -259,11 +260,11 @@ function EquipoCocina({ d, l, extension }: { d: Diseno; l: Layout; extension: [n
   }
 
   let encimera: JSX.Element | null = null;
-  if (d.cocina.encimera !== 'ninguna' && d.cuerpos.length) {
-    const tipo = d.cocina.encimera;
+  if (eq.encimera !== 'ninguna' && d.cuerpos.length) {
+    const tipo = eq.encimera;
     const def = medidasEncimera(tipo);
     const escala = Math.min(1, (D - r - 30) / def.fondo, (W - 40) / def.ancho);
-    let cx = centroCuerpo(l, d.cocina.encimeraCuerpo);
+    let cx = centroCuerpo(l, eq.encimeraCuerpo);
     const media = (def.ancho * escala) / 2 + 20;
     cx = Math.max(-W / 2 + media, Math.min(W / 2 - media, cx));
     const cz = (14 + D - r) / 2;
@@ -301,6 +302,7 @@ function EquipoCocina({ d, l, extension }: { d: Diseno; l: Layout; extension: [n
 
 function CocinaInfantil({ d, l }: { d: Diseno; l: Layout }) {
   const m = useMats();
+  const eq = equipoLegado(d);
   const t = d.espesor;
   const D = d.profundidad;
   const hb = altoBaseInfantil(d);
@@ -314,17 +316,17 @@ function CocinaInfantil({ d, l }: { d: Diseno; l: Layout }) {
   const yRepisa = hb + (d.alto - hb) * 0.55;
   const huecos: Hueco[] = [];
   let lav: JSX.Element | null = null;
-  if (d.cocina.lavaplatos !== 'ninguno') {
-    const cx = centroCuerpo(l, Math.max(1, d.cocina.lavaplatosCuerpo));
+  if (eq.lavaplatos !== 'ninguno') {
+    const cx = centroCuerpo(l, Math.max(1, eq.lavaplatosCuerpo));
     const escala = Math.min(0.5, (D - 60) / 460);
     const h = huecosLavaplatos('simple', cx, D * 0.55, escala);
     huecos.push(...h);
     lav = <Lavaplatos huecos={h} yTop={hb} profundidadCuba={70} grifo={d.cocina.grifo} escala={escala} />;
   }
   let enc: JSX.Element | null = null;
-  if (d.cocina.encimera !== 'ninguna') {
-    const cx = centroCuerpo(l, Math.max(1, d.cocina.encimeraCuerpo));
-    const tipo = d.cocina.encimera;
+  if (eq.encimera !== 'ninguna') {
+    const cx = centroCuerpo(l, Math.max(1, eq.encimeraCuerpo));
+    const tipo = eq.encimera;
     const escala = Math.min(0.45, (D - 40) / medidasEncimera(tipo).fondo);
     enc = <Encimera cx={cx} cz={D * 0.52} yTop={hb} tipo={tipo} escala={escala} />;
   }

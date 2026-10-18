@@ -8,6 +8,7 @@ import {
   disenoRetorno,
   esCocina,
   extremosPrincipal,
+  retornoDe,
   transformRetorno,
 } from '../../shared/layout';
 import { formatear, type Tramo } from '../../shared/reglas';
@@ -36,7 +37,7 @@ export function Mueble3D({ diseno, materiales, vista }: { diseno: Diseno; materi
     return t && { ...t, imagenFrontal: null };
   }, [diseno]);
   const tr = transformRetorno(diseno);
-  const r = diseno.retorno;
+  const r = retornoDe(diseno);
   const extension: [number, number] = r ? (r.lado === 'izq' ? [r.profundidad, 0] : [0, r.profundidad]) : [0, 0];
   return (
     <MaterialesProvider diseno={diseno} catalogo={materiales}>
@@ -65,7 +66,7 @@ export function Mueble3D({ diseno, materiales, vista }: { diseno: Diseno; materi
 /** Esquina de la cocina en L: módulo ciego bajo la cubierta, tapado por el primer módulo del retorno. */
 function EsquinaL({ d }: { d: Diseno }) {
   const m = useMats();
-  const r = d.retorno!;
+  const r = retornoDe(d)!;
   const l = calcularLayout(d);
   const t = d.espesor;
   const x0 = r.lado === 'der' ? d.ancho / 2 : -d.ancho / 2 - r.profundidad;
@@ -124,7 +125,7 @@ function Cotas({ diseno: d, unidad }: { diseno: Diseno; unidad: Unidad }) {
   const H = d.alto;
   const D = d.profundidad;
   const sep = 140;
-  const r = d.retorno;
+  const r = retornoDe(d);
   // La cota de alto va al lado contrario de la L para no cruzarla.
   const xAlto = r?.lado === 'der' ? x0 - sep : x1 + sep;
   const nx = r?.lado === 'der' ? -1 : 1;

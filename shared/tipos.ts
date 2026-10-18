@@ -44,22 +44,24 @@ export interface CategoriaTienda {
 }
 
 /**
- * Un cuerpo es una "cabina" o columna del mueble. El ancho total del mueble
- * es la suma de los cuerpos más la separación entre ellos.
+ * Un cuerpo es una "cabina" o columna del mueble (un módulo). El largo de cada
+ * tramo es la suma de sus módulos (más la separación entre ellos en el principal).
  */
 export interface Cuerpo {
   id: string;
   /**
    * frentes: puertas y/o cajones.
-   * horno: módulo para horno empotrado (cocina).
+   * horno: módulo para horno empotrado (cocina y compacto: 60 cm fijos).
    * hueco: espacio libre sin estructura (lavadora, refrigerador…), la cubierta pasa por encima.
    * escritorio: superficie de trabajo con pata lateral (clóset escritorio).
-   * campana (aéreos): mueble más bajo con puertas arriba y espacio libre abajo para la campana.
+   * campana (aéreos): mueble más bajo con puertas arriba que aloja la campana de una encimera.
    * nicho (aéreos): puerta abatible arriba y nicho abierto con repisa (microondas).
+   * especiero: cajón extraíble de 20 cm fijos y alto completo, con 2 o 3 pisos interiores.
    */
-  tipo: 'frentes' | 'horno' | 'hueco' | 'escritorio' | 'campana' | 'nicho';
+  tipo: 'frentes' | 'horno' | 'hueco' | 'escritorio' | 'campana' | 'nicho' | 'especiero';
   ancho: number;
   puertas: number;
+  /** Apertura de la puerta única (1 puerta) o de la puerta impar (la 1, a la izquierda) de un módulo de 3. */
   bisagra: Bisagra;
   cajones: number;
   columnasCajones: 1 | 2;
@@ -73,6 +75,40 @@ export interface Cuerpo {
   abatible?: boolean;
   /** Cajones arriba y puertas abajo (por defecto los cajones van abajo). */
   cajonesArriba?: boolean;
+  /** Especiero: pisos interiores (2 por defecto, 3 si el cliente lo pide). */
+  pisos?: number;
+  /** Aéreos: id de la encimera cuya campana aloja este módulo de campana. */
+  campanaDe?: string;
+}
+
+/** Costado de una L o de una U. */
+export type LadoId = 'izq' | 'der';
+
+/** Forma del mueble base o de los aéreos. */
+export type Forma = 'lineal' | 'L-izq' | 'L-der' | 'U';
+
+/** Tramos del mueble base: el principal y los lados de la L/U. */
+export type TramoBase = 'base' | 'izq' | 'der';
+/** Tramos de los aéreos (o del mueble superior del compacto). */
+export type TramoAereo = 'aereos' | 'aereos-izq' | 'aereos-der';
+export type TramoId = TramoBase | TramoAereo;
+/**
+ * Tramo que reciben las operaciones. 'retorno' es el nombre heredado del único
+ * lado de una L (en una U se refiere al izquierdo); se recomienda usar 'izq' / 'der'.
+ */
+export type Tramo = TramoId | 'retorno';
+
+/** Lado de una L o U (del mueble base o de los aéreos), contra un muro lateral. */
+export interface Lado {
+  /** Largo exterior medido desde el muro principal (mm): incluye la esquina. */
+  largo: number;
+  profundidad: number;
+  cuerpos: Cuerpo[];
+}
+
+export interface Lados {
+  izq: Lado | null;
+  der: Lado | null;
 }
 
 /** Muebles aéreos (cocina) o mueble superior del compacto. */
@@ -80,23 +116,25 @@ export interface Aereos {
   activo: boolean;
   /** mural: colgados del muro; apoyado: sobre la cubierta con costados hasta arriba (compacto). */
   montaje: 'mural' | 'apoyado';
-  /** Alto de los muebles superiores (mm). */
+  /** Alto de los muebles superiores (mm), común a todos sus lados. */
   alto: number;
+  /** Fondo del aéreo principal (mm). Cada lado tiene el suyo. */
   profundidad: number;
   /** Mural: altura del borde inferior desde el piso. Apoyado: alto del mueble base (hasta la cubierta). */
   elevacion: number;
-  /** Alineación con el tramo principal cuando tienen distinto largo. */
+  /** Alineación del aéreo principal cuando es más corto que el base (sin lados). */
   alineacion: 'izq' | 'centro' | 'der';
+  /** Módulos del aéreo principal. */
   cuerpos: Cuerpo[];
+  /** Lados del aéreo en L o U (solo cocina). */
+  lados: Lados;
+  /** "Cuadrado" con el base: sigue su forma y el largo de cada lado. Se apaga al cambiar el aéreo a mano. */
+  cuadrado: boolean;
 }
 
-/** Segundo tramo de una cocina en L. */
-export interface Retorno {
-  lado: 'izq' | 'der';
-  /** Largo exterior medido desde el muro del tramo principal (mm). */
-  largo: number;
-  profundidad: number;
-  cuerpos: Cuerpo[];
+/** Segundo tramo de una cocina en L (vista heredada de la versión 1, ver retornoDe). */
+export interface Retorno extends Lado {
+  lado: LadoId;
 }
 
 export interface Materiales {
@@ -106,11 +144,38 @@ export interface Materiales {
   tirador: string;
 }
 
+/** Encimera a gas sobre un módulo. La campana va siempre sobre ella. */
+export interface Encimera {
+  id: string;
+  tipo: 'encimera';
+  tramo: TramoBase;
+  /** Id del módulo que la lleva. */
+  modulo: string;
+  /** La cocina adulta ofrece 3 y 4 platos; la infantil también 2. */
+  platos: '2' | '3' | '4';
+  /** Campana sobre esta encimera (en el módulo de campana de los aéreos o mural). */
+  campana: boolean;
+}
+
+/** Lavaplatos empotrado en la cubierta sobre un módulo. */
+export interface Lavaplatos {
+  id: string;
+  tipo: 'lavaplatos';
+  tramo: TramoBase;
+  modulo: string;
+  modelo: 'simple' | 'doble';
+  /** Llave (grifería) incluida. */
+  llave: boolean;
+  /** Centrado en su módulo o pegado a su borde izquierdo o derecho. */
+  posicion: 'centro' | 'izq' | 'der';
+  /** Distancia (mm) entre el borde elegido y la cubeta; mínimo 50. */
+  margen: number;
+}
+
+export type Equipo = Encimera | Lavaplatos;
+
+/** Terminaciones de la cubierta de la cocina (el equipamiento va en Diseno.equipos). */
 export interface EquipamientoCocina {
-  encimera: 'ninguna' | '2' | '3' | '4';
-  encimeraCuerpo: number;
-  lavaplatos: 'ninguno' | 'simple' | 'doble';
-  lavaplatosCuerpo: number;
   grifo: 'negro' | 'cromado';
   copete: boolean;
   espesorCubierta: number;
@@ -128,7 +193,8 @@ export interface OpcionesTocador {
 }
 
 export interface Diseno {
-  version: 1;
+  /** 2: lados por costado, equipamiento por módulo, especiero y aéreos en L/U. */
+  version: 2;
   plantilla: Plantilla;
   productoId: number | null;
   nombreModelo: string;
@@ -155,8 +221,30 @@ export interface Diseno {
   imagenFrontal: string | null;
   /** Muebles aéreos (cocina) o mueble superior (compacto). */
   aereos: Aereos;
-  /** Tramo en L (solo cocina). */
-  retorno: Retorno | null;
+  /** Lados de la L o U del mueble base (solo cocina). */
+  lados: Lados;
+  /** Encimeras y lavaplatos, cada uno sobre un módulo (los hornos son módulos). */
+  equipos: Equipo[];
+}
+
+/**
+ * Diseño tal como pudo guardarse antes (versión 1): con `retorno` en vez de
+ * `lados` y la encimera y el lavaplatos por índice de módulo. normalizar() lo
+ * convierte a la versión actual.
+ */
+export interface DisenoGuardado extends Omit<Partial<Diseno>, 'version' | 'cocina' | 'aereos' | 'lados' | 'equipos'> {
+  version?: number;
+  plantilla: Plantilla;
+  retorno?: (Omit<Lado, 'cuerpos'> & { lado: LadoId; cuerpos: Partial<Cuerpo>[] }) | null;
+  lados?: Partial<Lados>;
+  equipos?: Equipo[];
+  aereos?: Partial<Omit<Aereos, 'lados'>> & { lados?: Partial<Lados> };
+  cocina?: Partial<EquipamientoCocina> & {
+    encimera?: 'ninguna' | '2' | '3' | '4';
+    encimeraCuerpo?: number;
+    lavaplatos?: 'ninguno' | 'simple' | 'doble';
+    lavaplatosCuerpo?: number;
+  };
 }
 
 export type TipoMaterial = 'liso' | 'madera' | 'marmol' | 'granito' | 'concreto' | 'imagen';

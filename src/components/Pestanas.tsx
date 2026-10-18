@@ -1,6 +1,6 @@
 // Categorías de medidas del panel inferior: puertas, cajones, módulos y
 // espacios, equipamiento/interior. Cambian según el tipo de mueble.
-import { calcularLayout, calcularLayoutAereos, calcularLayoutTocador, disenoRetorno, type Frente } from '../../shared/layout';
+import { calcularLayout, calcularLayoutAereos, calcularLayoutTocador, disenoRetorno, retornoDe, type Frente } from '../../shared/layout';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import {
   ANCHO_MIN_CUERPO,
@@ -13,6 +13,8 @@ import {
   agregarModulo,
   anchoDisponible,
   cuerposDe,
+  equipoLegado,
+  fijarCocinaLegado,
   fijarAereos,
   fijarAnchoAereos,
   fijarForma,
@@ -88,6 +90,7 @@ const NOMBRE_TIPO: Record<Cuerpo['tipo'], string> = {
   escritorio: 'Escritorio',
   campana: 'Campana',
   nicho: 'Nicho microondas',
+  especiero: 'Especiero',
 };
 
 function tiposPermitidos(p: Plantilla, tramo: Tramo = 'base'): Cuerpo['tipo'][] {
@@ -132,7 +135,8 @@ function CabeceraCuerpo({ d, i, c, tramo, unidad }: { d: Diseno; i: number; c: C
 function gruposDe(d: Diseno, conAereos: boolean): { tramo: Tramo; cuerpos: Cuerpo[]; frentes: Frente[] }[] {
   const grupos: { tramo: Tramo; cuerpos: Cuerpo[]; frentes: Frente[] }[] = [{ tramo: 'base', cuerpos: d.cuerpos, frentes: calcularLayout(d).frentes }];
   const dr = disenoRetorno(d);
-  if (dr && d.retorno) grupos.push({ tramo: 'retorno', cuerpos: d.retorno.cuerpos, frentes: calcularLayout(dr).frentes });
+  const r = retornoDe(d);
+  if (dr && r) grupos.push({ tramo: 'retorno', cuerpos: r.cuerpos, frentes: calcularLayout(dr).frentes });
   const la = conAereos ? calcularLayoutAereos(d) : null;
   if (la) grupos.push({ tramo: 'aereos', cuerpos: d.aereos.cuerpos, frentes: la.frentes });
   return grupos;
@@ -432,7 +436,7 @@ function nombreTipo(t: Cuerpo['tipo'], p: Plantilla): string {
 /** Tramos que existen en el diseño (el retorno solo con forma L, los aéreos si están activos). */
 function tramosDe(d: Diseno): Tramo[] {
   const out: Tramo[] = ['base'];
-  if (d.retorno) out.push('retorno');
+  if (retornoDe(d)) out.push('retorno');
   if (d.aereos.activo) out.push('aereos');
   return out;
 }
@@ -466,7 +470,8 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
   const minPos = posicionMinima(d, tramo);
   const insertar = insertarEn != null && insertarEn >= minPos && insertarEn <= n ? insertarEn : null;
   const prefijo = prefijoTramo(d, tramo);
-  const largo = tramo === 'retorno' && d.retorno ? d.retorno.largo : largoTramo(d, tramo);
+  const retorno = retornoDe(d);
+  const largo = tramo === 'retorno' && retorno ? retorno.largo : largoTramo(d, tramo);
   const cocinaAdulta = d.plantilla === 'cocina' || d.plantilla === 'compacto';
   // El horno mide siempre lo mismo, y el superior único del compacto, lo mismo que el base.
   const anchoBloqueado = !!c && (anchoFijo(d.plantilla, c) != null || (tramo === 'aereos' && d.plantilla === 'compacto' && n === 1));
@@ -491,7 +496,7 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
             <>
               <Segmentado
                 etiqueta="Forma"
-                valor={d.retorno ? d.retorno.lado : 'lineal'}
+                valor={retorno ? retorno.lado : 'lineal'}
                 onCambio={(v) => {
                   cambiar((x) => fijarForma(x, v === 'lineal' ? null : v));
                   set({ tramoActivo: v === 'lineal' ? 'base' : 'retorno', moduloActivo: 0 });
@@ -524,12 +529,12 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
         </div>
       )}
       {/* Medidas propias de la L o de los aéreos: van antes de la tira para que se vean sin desplazar el panel. */}
-      {tramo === 'retorno' && d.retorno && (
+      {tramo === 'retorno' && retorno && (
         <div className="opciones-globales espacios">
           <CampoMedida
             etiqueta="Largo de la L (desde el muro)"
             compacto
-            valor={d.retorno.largo}
+            valor={retorno.largo}
             unidad={unidad}
             min={Math.max(LIMITES_RETORNO.largo[0], d.profundidad + 150)}
             max={LIMITES_RETORNO.largo[1]}
@@ -538,14 +543,14 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
           <CampoMedida
             etiqueta="Fondo de la L"
             compacto
-            valor={d.retorno.profundidad}
+            valor={retorno.profundidad}
             unidad={unidad}
             min={LIMITES_RETORNO.profundidad[0]}
             max={LIMITES_RETORNO.profundidad[1]}
             onCambio={(mm) => cambiar((x) => fijarRetorno(x, { profundidad: mm }), 'fondo-l')}
           />
           <p className="ayuda">
-            Largo total del tramo principal con la esquina: {formatear(d.ancho + d.retorno.profundidad, unidad)}.
+            Largo total del tramo principal con la esquina: {formatear(d.ancho + retorno.profundidad, unidad)}.
           </p>
         </div>
       )}
@@ -892,8 +897,8 @@ function EstructuraTocador({ d, unidad, cambiar }: PropsPestana) {
 export function PestanaEquipamiento({ d, unidad, cambiar }: PropsPestana) {
   const opcionesCuerpos = d.cuerpos.map((c, i) => ({ valor: i, texto: `Módulo ${i + 1} · ${formatear(c.ancho, unidad)}` }));
   if (d.plantilla === 'cocina' || d.plantilla === 'cocina-infantil' || d.plantilla === 'compacto') {
-    const k = d.cocina;
-    const set = (cambios: Partial<Diseno['cocina']>) => cambiar((x) => ({ ...x, cocina: { ...x.cocina, ...cambios } }));
+    const k = { ...d.cocina, ...equipoLegado(d) };
+    const set = (cambios: Parameters<typeof fijarCocinaLegado>[1]) => cambiar((x) => fijarCocinaLegado(x, cambios));
     const infantil = d.plantilla === 'cocina-infantil';
     return (
       <div className="pestana-contenido">

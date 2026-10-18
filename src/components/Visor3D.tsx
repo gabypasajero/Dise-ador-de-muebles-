@@ -8,7 +8,7 @@ import { Mueble3D } from '../furniture/Mueble3D';
 import { Escenario3D } from '../scenes/Escenarios';
 import { escenarioActual, useApp, type Vista } from '../store/useApp';
 import { cuerposDe, nombreModulo } from '../../shared/reglas';
-import { dimensionesTotales, extremosPrincipal } from '../../shared/layout';
+import { dimensionesTotales, extremosPrincipal, retornoDe } from '../../shared/layout';
 import type { Diseno } from '../../shared/tipos';
 
 function Entorno() {
@@ -38,7 +38,7 @@ function objetivoCamara(d: Diseno, vista: Vista, size: { width: number; height: 
   // En los dormitorios la cama queda a la izquierda: la cámara mira desde la derecha.
   // En la cocina en L mira desde el lado abierto, de frente a las puertas del retorno.
   const s = useApp.getState();
-  const r = d.retorno;
+  const r = retornoDe(d);
   const lado = r ? (r.lado === 'izq' ? -1 : 1) : escenarioActual(s.escenario, s.producto, d) === 'cocina' ? 1 : -0.85;
   // Todo el conjunto: tramo principal, L y aéreos.
   const caja = dimensionesTotales(d);
@@ -130,7 +130,7 @@ function Camara() {
   const vista = useApp((s) => s.vista);
   const escenario = useApp((s) => s.escenario);
   // Al cambiar la L de lado la cámara pasa al otro lado.
-  const ladoL = useApp((s) => s.diseno.retorno?.lado ?? null);
+  const ladoL = useApp((s) => retornoDe(s.diseno)?.lado ?? null);
   const animando = useRef(0);
   const destino = useRef<{ objetivo: THREE.Vector3; pos: THREE.Vector3 } | null>(null);
   // Una L grande en el teléfono puede necesitar más de 9 m: el control no debe acercar la cámara y cortarla.

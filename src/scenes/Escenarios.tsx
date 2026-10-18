@@ -2,7 +2,8 @@
 // El muro trasero está en z = 0 y el mueble se apoya en él, centrado en x = 0.
 import { useEffect, useMemo, type ReactNode } from 'react';
 import * as THREE from 'three';
-import { calcularLayout, calcularLayoutAereos, centroCuerpo, disenoBase, extremosPrincipal } from '../../shared/layout';
+import { calcularLayout, calcularLayoutAereos, centroCuerpo, disenoBase, extremosPrincipal, retornoDe } from '../../shared/layout';
+import { equipoLegado } from '../../shared/reglas';
 import type { Diseno, Escenario } from '../../shared/tipos';
 import { texturaAlfombra, texturaAzulejo, texturaBaldosas, texturaParquet, texturaPared } from '../furniture/texturas';
 
@@ -192,10 +193,10 @@ function Luces({ lado, intensidad = 2.4, color = '#fff6ea' }: { lado: number; in
 // ---------- Escenario de cocina ----------
 
 function posicionEncimera(d: Diseno): number | null {
-  if (d.plantilla !== 'cocina' || d.cocina.encimera === 'ninguna' || !d.cuerpos.length) return null;
+  if (d.plantilla !== 'cocina' || equipoLegado(d).encimera === 'ninguna' || !d.cuerpos.length) return null;
   const l = calcularLayout(d);
   const media = 0.32;
-  const cx = centroCuerpo(l, d.cocina.encimeraCuerpo) / 1000;
+  const cx = centroCuerpo(l, equipoLegado(d).encimeraCuerpo) / 1000;
   const W = d.ancho / 1000;
   return Math.max(-W / 2 + media, Math.min(W / 2 - media, cx));
 }
@@ -261,7 +262,7 @@ function EscenaCocina({ d }: { d: Diseno }) {
   const base = disenoBase(d);
   const [ex0, ex1] = extremosPrincipal(d).map((v) => v / 1000);
   const H = base.alto / 1000;
-  const r = d.retorno;
+  const r = retornoDe(d);
   const la = calcularLayoutAereos(d);
   const mural = la?.montaje === 'mural';
   // Los aéreos pueden ser más largos que el mueble base: el refrigerador va al lado de ambos.
@@ -273,8 +274,8 @@ function EscenaCocina({ d }: { d: Diseno }) {
   const azulejo = texturaAzulejo('#f7f6f2', '#d9d6cf');
   const xEnc = posicionEncimera(d);
   const lav =
-    d.plantilla === 'cocina' && d.cocina.lavaplatos !== 'ninguno' && d.cuerpos.length
-      ? centroCuerpo(calcularLayout(d), d.cocina.lavaplatosCuerpo) / 1000
+    d.plantilla === 'cocina' && equipoLegado(d).lavaplatos !== 'ninguno' && d.cuerpos.length
+      ? centroCuerpo(calcularLayout(d), equipoLegado(d).lavaplatosCuerpo) / 1000
       : null;
   // Cerámica entre la cubierta y los aéreos (o 62 cm sin aéreos); el compacto ya tiene respaldo.
   const altoAz = la && mural ? Math.max(0.3, la.y0 / 1000 - H) : 0.62;

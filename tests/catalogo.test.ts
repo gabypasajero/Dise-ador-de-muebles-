@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { clasificarProducto, coloresDeVariante, disenoInicial, disenoLibre, leerMedidas } from '../shared/catalogo';
 import { calcularLayout, calcularLayoutTocador } from '../shared/layout';
+import { normalizar } from '../shared/reglas';
+import { validarDiseno } from '../shared/validar';
 import type { Plantilla, ProductoTienda } from '../shared/tipos';
 
 const productos = JSON.parse(fs.readFileSync('public/datos/productos-respaldo.json', 'utf8')) as ProductoTienda[];
@@ -63,6 +65,9 @@ describe('clasificación del catálogo de la tienda', () => {
       const d = disenoInicial(c);
       const suma = d.cuerpos.reduce((s, x) => s + x.ancho, 0) + d.separacionCuerpos * (d.cuerpos.length - 1);
       expect(suma, p.nombre).toBe(d.ancho);
+      expect(validarDiseno(d), p.nombre).toEqual([]);
+      // El diseño inicial ya está normalizado.
+      expect(normalizar(JSON.parse(JSON.stringify(d))), p.nombre).toEqual(d);
       const frentes = d.plantilla === 'tocador' ? calcularLayoutTocador(d).frentes : calcularLayout(d).frentes;
       for (const f of frentes) {
         expect(f.rect.x1 - f.rect.x0, `${p.nombre} ancho frente`).toBeGreaterThan(50);
@@ -76,8 +81,13 @@ describe('clasificación del catálogo de la tienda', () => {
     expect(d.cuerpos.map((c) => c.tipo)).toEqual(['horno', 'frentes', 'frentes']);
     expect(d.cuerpos[1].cajones).toBe(3);
     expect(d.cuerpos[2].puertas).toBe(1);
-    expect(d.cocina.encimera).toBe('4');
-    expect(d.cocina.lavaplatos).toBe('simple');
+    // El equipamiento va por id de módulo: la encimera sobre el horno y el lavaplatos (con llave) sobre la puerta.
+    expect(d.equipos).toMatchObject([
+      { tipo: 'encimera', tramo: 'base', modulo: d.cuerpos[0].id, platos: '4', campana: false },
+      { tipo: 'lavaplatos', tramo: 'base', modulo: d.cuerpos[2].id, modelo: 'simple', llave: true, posicion: 'centro' },
+    ]);
+    expect(d.version).toBe(2);
+    expect(d.lados).toEqual({ izq: null, der: null });
     expect(d.materiales).toMatchObject({ cubierta: 'clasic', frente: 'pino-casina' });
   });
 

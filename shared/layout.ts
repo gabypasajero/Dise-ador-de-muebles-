@@ -2,7 +2,7 @@
 // cada cuerpo, puerta y cajón. Lo usan el visor 3D y los paneles de medidas.
 // Ejes (mm): x de izquierda a derecha centrado en 0, y desde el piso hacia
 // arriba, z desde el muro (0) hacia el frente.
-import type { Bisagra, Cuerpo, Diseno, Retorno } from './tipos';
+import type { Bisagra, Cuerpo, Diseno, Encimera, Lado, LadoId, Lavaplatos, Retorno, TramoAereo, TramoBase, TramoId } from './tipos';
 
 export interface Rect {
   x0: number;
@@ -25,6 +25,8 @@ export interface FrentePuerta extends FrenteBase {
 
 export interface FrenteCajon extends FrenteBase {
   tipo: 'cajon';
+  /** Frente del especiero: cajón extraíble de alto completo. */
+  especiero?: boolean;
 }
 
 /** Franja de melamina fija (sobre el horno o tapa de cajonera). */
@@ -50,6 +52,8 @@ export interface LayoutCuerpo {
   zonaPuertas: Rect | null;
   zonaCajones: Rect | null;
   horno: Rect | null;
+  /** Especiero: altura (y) de cada piso interior del cajón extraíble. */
+  especiero: { pisos: number[] } | null;
 }
 
 export interface Layout {
@@ -87,47 +91,129 @@ export function disenoBase(d: Diseno): Diseno {
   return { ...d, plantilla: 'cocina', alto: Math.min(d.alto, d.aereos.elevacion) };
 }
 
-/** Largo útil (mm) de los módulos del tramo en L: lo que sobresale del tramo principal. */
-export function largoUtilRetorno(d: Diseno, r: Retorno | null = d.retorno): number {
+export const LADOS: LadoId[] = ['izq', 'der'];
+
+export function esTramoAereo(t: TramoId): t is TramoAereo {
+  return t === 'aereos' || t === 'aereos-izq' || t === 'aereos-der';
+}
+
+/** Costado de un tramo lateral (null para los principales). */
+export function ladoDeTramo(t: TramoId): LadoId | null {
+  if (t === 'izq' || t === 'aereos-izq') return 'izq';
+  if (t === 'der' || t === 'aereos-der') return 'der';
+  return null;
+}
+
+/** Tramo aéreo que va sobre un tramo del base (y viceversa). */
+export function tramoAereoDe(t: TramoBase): TramoAereo {
+  return t === 'base' ? 'aereos' : t === 'izq' ? 'aereos-izq' : 'aereos-der';
+}
+export function tramoBaseDe(t: TramoAereo): TramoBase {
+  return t === 'aereos' ? 'base' : t === 'aereos-izq' ? 'izq' : 'der';
+}
+
+/** Forma que dibujan unos lados: lineal, L a la izquierda, L a la derecha o U. */
+export function formaDe(lados: { izq: unknown; der: unknown }): 'lineal' | 'L-izq' | 'L-der' | 'U' {
+  if (lados.izq && lados.der) return 'U';
+  if (lados.izq) return 'L-izq';
+  if (lados.der) return 'L-der';
+  return 'lineal';
+}
+
+/** Largo útil (mm) de los módulos de un lado del base: lo que sobresale del tramo principal. */
+export function largoUtilLado(d: Diseno, lado: LadoId): number {
+  const r = d.lados?.[lado];
   return r ? Math.max(0, r.largo - d.profundidad) : 0;
 }
 
-/** Diseño del tramo en L para calcular su distribución con el mismo motor. */
-export function disenoRetorno(d: Diseno): Diseno | null {
-  const r = d.retorno;
+/** Vista heredada del tramo en L: el único lado de la L (en una U, el izquierdo). */
+export function retornoDe(d: Diseno): Retorno | null {
+  for (const lado of LADOS) {
+    const r = d.lados?.[lado];
+    if (r) return { ...r, lado };
+  }
+  return null;
+}
+
+/** Largo útil (mm) de los módulos del tramo en L (vista heredada, ver retornoDe). */
+export function largoUtilRetorno(d: Diseno, r: Retorno | null = retornoDe(d)): number {
+  return r ? largoUtilLado(d, r.lado) : 0;
+}
+
+/**
+ * Diseño de un lado de la L/U para calcular su distribución con el mismo motor: sus
+ * módulos pasan a ser el tramo principal y su equipamiento queda en el tramo 'base'.
+ */
+export function disenoLado(d: Diseno, lado: LadoId): Diseno | null {
+  const r = d.lados?.[lado];
   if (!r || d.plantilla !== 'cocina') return null;
   return {
     ...d,
-    ancho: largoUtilRetorno(d),
+    ancho: largoUtilLado(d, lado),
     profundidad: r.profundidad,
     cuerpos: r.cuerpos,
     separacionCuerpos: 0,
-    retorno: null,
-    aereos: { ...d.aereos, activo: false, cuerpos: [] },
-    cocina: { ...d.cocina, encimera: 'ninguna', lavaplatos: 'ninguno' },
+    lados: { izq: null, der: null },
+    aereos: { ...d.aereos, activo: false, cuerpos: [], lados: { izq: null, der: null } },
+    equipos: (d.equipos ?? []).filter((e) => e.tramo === lado).map((e) => ({ ...e, tramo: 'base' as const })),
   };
 }
 
-/** Ubicación del tramo en L: su eje x local corre desde la esquina, y su fondo queda contra el muro lateral. */
-export function transformRetorno(d: Diseno): { x: number; z: number; rotY: number } | null {
-  const r = d.retorno;
+/** Diseño del tramo en L (vista heredada, ver retornoDe). */
+export function disenoRetorno(d: Diseno): Diseno | null {
+  const r = retornoDe(d);
+  return r ? disenoLado(d, r.lado) : null;
+}
+
+export interface Transformacion {
+  /** Posición (mm) del centro del eje local y giro en y del tramo. */
+  x: number;
+  z: number;
+  rotY: number;
+}
+
+/** Ubicación de un lado del base: su eje x local corre a lo largo del muro lateral y su fondo queda contra ese muro. */
+export function transformLado(d: Diseno, lado: LadoId): Transformacion | null {
+  const r = d.lados?.[lado];
   if (!r) return null;
-  const z = d.profundidad + largoUtilRetorno(d) / 2;
-  return r.lado === 'der'
-    ? { x: d.ancho / 2 + r.profundidad, z, rotY: -Math.PI / 2 }
-    : { x: -d.ancho / 2 - r.profundidad, z, rotY: Math.PI / 2 };
+  const z = d.profundidad + largoUtilLado(d, lado) / 2;
+  return lado === 'der' ? { x: d.ancho / 2 + r.profundidad, z, rotY: -Math.PI / 2 } : { x: -d.ancho / 2 - r.profundidad, z, rotY: Math.PI / 2 };
 }
 
-/** Lleva un punto del tramo en L (coordenadas locales) al espacio del mueble. */
+/** Lleva un punto local (x a lo largo del lado, z desde el muro) de un lado al espacio del mueble: [x, z]. */
+export function aMundoLado(d: Diseno, lado: LadoId, x: number, z: number): [number, number] {
+  const tr = transformLado(d, lado)!;
+  return girar(tr, lado, x, z);
+}
+
+function girar(tr: Transformacion, lado: LadoId, x: number, z: number): [number, number] {
+  return lado === 'der' ? [tr.x - z, tr.z + x] : [tr.x + z, tr.z - x];
+}
+
+function desgirar(tr: Transformacion, lado: LadoId, wx: number, wz: number): [number, number] {
+  return lado === 'der' ? [wz - tr.z, tr.x - wx] : [tr.z - wz, wx - tr.x];
+}
+
+/** Ubicación del tramo en L (vista heredada, ver retornoDe). */
+export function transformRetorno(d: Diseno): Transformacion | null {
+  const r = retornoDe(d);
+  return r ? transformLado(d, r.lado) : null;
+}
+
+/** Lleva un punto del tramo en L (coordenadas locales) al espacio del mueble (vista heredada). */
 export function aMundoRetorno(d: Diseno, x: number, z: number): [number, number] {
-  const tr = transformRetorno(d)!;
-  return d.retorno!.lado === 'der' ? [tr.x - z, tr.z + x] : [tr.x + z, tr.z - x];
+  return aMundoLado(d, retornoDe(d)!.lado, x, z);
 }
 
-/** Extremos en x del tramo principal incluyendo la esquina de la L. */
+/** Extremos en x del tramo principal incluyendo las esquinas de la L o la U (los muros laterales). */
 export function extremosPrincipal(d: Diseno): [number, number] {
-  const r = d.retorno;
-  return [-d.ancho / 2 - (r?.lado === 'izq' ? r.profundidad : 0), d.ancho / 2 + (r?.lado === 'der' ? r.profundidad : 0)];
+  return [-d.ancho / 2 - (d.lados?.izq?.profundidad ?? 0), d.ancho / 2 + (d.lados?.der?.profundidad ?? 0)];
+}
+
+/** Largo del tramo principal medido como en la tienda: de muro a muro, con las esquinas. */
+export function largoPrincipalConEsquinas(d: Diseno): number {
+  const [x0, x1] = extremosPrincipal(d);
+  return Math.round(x1 - x0);
 }
 
 /** Caja que ocupa todo el conjunto (para encuadrar la cámara y la escena). */
@@ -135,13 +221,20 @@ export function dimensionesTotales(d: Diseno): { x0: number; x1: number; alto: n
   let [x0, x1] = extremosPrincipal(d);
   let alto = d.alto;
   let fondo = d.profundidad;
-  if (d.retorno) fondo = Math.max(fondo, d.retorno.largo);
+  for (const lado of LADOS) {
+    const r = d.lados?.[lado];
+    if (r) fondo = Math.max(fondo, r.largo);
+  }
   if (d.aereos.activo && d.aereos.cuerpos.length) {
     const la = calcularLayoutAereos(d);
     if (la) {
       x0 = Math.min(x0, la.x0);
       x1 = Math.max(x1, la.x1);
       alto = Math.max(alto, la.y1);
+    }
+    for (const lado of LADOS) {
+      const ra = ladoAereoActivo(d, lado);
+      if (ra) fondo = Math.max(fondo, ra.largo);
     }
   }
   return { x0, x1, alto, fondo };
@@ -222,6 +315,7 @@ export function calcularLayout(d0: Diseno): Layout {
       zonaPuertas: null,
       zonaCajones: null,
       horno: null,
+      especiero: null,
     };
     cuerpos.push(lc);
 
@@ -233,6 +327,16 @@ export function calcularLayout(d0: Diseno): Layout {
     const fy0 = d.zocalo + (d.zocalo > 0 ? luz / 2 : 2);
     let fy1 = tope - luz / 2;
     if (!cocina) fy1 = tope - luz / 2; // bajo el techo
+
+    if (c.tipo === 'especiero') {
+      // Cajón extraíble de alto completo con sus pisos interiores repartidos en la altura.
+      frentes.push({ tipo: 'cajon', cuerpo: i, indice: 0, especiero: true, rect: { x0: fx0, x1: fx1, y0: fy0, y1: fy1 } });
+      lc.zonaCajones = { x0: fx0, x1: fx1, y0: fy0, y1: fy1 };
+      const pisos = Math.max(1, c.pisos ?? 2);
+      const alto = interior.y1 - interior.y0;
+      lc.especiero = { pisos: Array.from({ length: pisos }, (_, k) => interior.y0 + (alto * k) / pisos) };
+      return;
+    }
 
     if (c.tipo === 'horno') {
       if (infantil) {
@@ -365,12 +469,25 @@ export function calcularLayout(d0: Diseno): Layout {
   };
 }
 
-/** Bisagra de la puerta k de un cuerpo: una puerta usa la elegida; con varias se abren desde los extremos. */
+/**
+ * Bisagra de la puerta k de un cuerpo: la puerta única (o la impar de un módulo de 3,
+ * que es la primera de la izquierda) usa la apertura elegida; las demás van en pares
+ * que se abren desde los extremos.
+ */
 export function bisagraDe(c: Cuerpo, k: number): Bisagra | 'arriba' {
   if (c.abatible) return 'arriba';
-  if (c.puertas === 1) return c.bisagra;
-  if (c.puertas % 2 === 0) return k < c.puertas / 2 ? 'izq' : 'der';
-  return k === 0 ? 'izq' : k % 2 === 1 ? 'izq' : 'der';
+  const impar = c.puertas % 2 === 1;
+  if (impar && k === 0) return c.bisagra;
+  const j = impar ? k - 1 : k;
+  const pares = impar ? c.puertas - 1 : c.puertas;
+  return j < pares / 2 ? 'izq' : 'der';
+}
+
+/** Si el módulo tiene una puerta cuya apertura (izquierda o derecha) se elige: 1 puerta o la impar de 3. */
+export function aperturaAjustable(c: Cuerpo): boolean {
+  if (c.abatible || c.tipo === 'nicho') return false;
+  if (c.tipo !== 'frentes' && c.tipo !== 'campana') return false;
+  return c.puertas % 2 === 1;
 }
 
 // ---------- Aéreos ----------
@@ -409,27 +526,46 @@ export function altoSuperior(tipo: 'campana' | 'nicho', alto: number): number {
   return Math.round(Math.max(200, Math.min(alto - 150, alto * proporcion)));
 }
 
-export function calcularLayoutAereos(d: Diseno): LayoutAereos | null {
+/** Largo útil (mm) de los módulos de un lado del aéreo: desde la esquina del aéreo principal. */
+export function largoUtilLadoAereo(d: Diseno, lado: LadoId): number {
+  const r = d.aereos.lados?.[lado];
+  return r ? Math.max(0, r.largo - d.aereos.profundidad) : 0;
+}
+
+/** Lado del aéreo que existe y se dibuja (aéreos murales activos de cocina). */
+export function ladoAereoActivo(d: Diseno, lado: LadoId): Lado | null {
   const a = d.aereos;
-  if (!a.activo || !a.cuerpos.length) return null;
-  const t = d.espesor;
-  const luz = d.luzFrentes;
+  if (!a.activo || a.montaje !== 'mural' || d.plantilla !== 'cocina') return null;
+  const r = a.lados?.[lado];
+  return r && r.cuerpos.length ? r : null;
+}
+
+/** Inicio en x del aéreo principal según su largo, su alineación y sus lados (que lo anclan a un muro). */
+export function inicioAereoPrincipal(d: Diseno): number {
+  const a = d.aereos;
   const largo = a.cuerpos.reduce((s, c) => s + c.ancho, 0);
   const [sx0, sx1] = extremosPrincipal(d);
-  const x0 = a.alineacion === 'izq' ? sx0 : a.alineacion === 'der' ? sx1 - largo : (sx0 + sx1) / 2 - largo / 2;
+  const alineacion = a.lados?.izq ? 'izq' : a.lados?.der ? 'der' : a.alineacion;
+  return alineacion === 'izq' ? sx0 : alineacion === 'der' ? sx1 - largo : (sx0 + sx1) / 2 - largo / 2;
+}
+
+function layoutAereosTramo(d: Diseno, cuerpos: Cuerpo[], x0: number, profundidad: number): LayoutAereos {
+  const a = d.aereos;
+  const t = d.espesor;
+  const luz = d.luzFrentes;
   const apoyado = a.montaje === 'apoyado';
   const y1 = apoyado ? d.alto : a.elevacion + a.alto;
   const y0 = y1 - a.alto;
-  const zFrente = a.profundidad - t;
-  const cuerpos: LayoutAereoCuerpo[] = [];
+  const zFrente = profundidad - t;
+  const lcs: LayoutAereoCuerpo[] = [];
   const frentes: FrentePuerta[] = [];
   let cursor = x0;
-  a.cuerpos.forEach((c, i) => {
+  cuerpos.forEach((c, i) => {
     const cx0 = cursor;
     const cx1 = cursor + c.ancho;
     cursor = cx1;
     const lc: LayoutAereoCuerpo = { indice: i, cuerpo: c, x0: cx0, x1: cx1, y0, y1, nicho: null };
-    cuerpos.push(lc);
+    lcs.push(lc);
     if (c.tipo === 'hueco') return;
     const fx0 = cx0 + luz / 2;
     const fx1 = cx1 - luz / 2;
@@ -467,12 +603,227 @@ export function calcularLayoutAereos(d: Diseno): LayoutAereos | null {
     y0,
     y1,
     yCubierta: apoyado ? a.elevacion : y0,
-    profundidad: a.profundidad,
+    profundidad,
     zFrente,
     espesor: t,
-    cuerpos,
+    cuerpos: lcs,
     frentes,
   };
+}
+
+/** Aéreo principal (o mueble superior del compacto) en coordenadas del mueble. */
+export function calcularLayoutAereos(d: Diseno): LayoutAereos | null {
+  const a = d.aereos;
+  if (!a.activo || !a.cuerpos.length) return null;
+  return layoutAereosTramo(d, a.cuerpos, inicioAereoPrincipal(d), a.profundidad);
+}
+
+/** Lado del aéreo en coordenadas locales (como disenoLado: x a lo largo del muro lateral, centrado en 0). */
+export function calcularLayoutAereosLado(d: Diseno, lado: LadoId): LayoutAereos | null {
+  const r = ladoAereoActivo(d, lado);
+  if (!r) return null;
+  return layoutAereosTramo(d, r.cuerpos, -largoUtilLadoAereo(d, lado) / 2, r.profundidad);
+}
+
+/** Ubicación de un lado del aéreo: cuelga del muro lateral (en el extremo del base) desde la esquina del aéreo principal. */
+export function transformAereoLado(d: Diseno, lado: LadoId): Transformacion | null {
+  const r = d.aereos.lados?.[lado];
+  if (!r) return null;
+  const [x0, x1] = extremosPrincipal(d);
+  const z = d.aereos.profundidad + largoUtilLadoAereo(d, lado) / 2;
+  return lado === 'der' ? { x: x1, z, rotY: -Math.PI / 2 } : { x: x0, z, rotY: Math.PI / 2 };
+}
+
+/** Lleva un punto local de un lado del aéreo al espacio del mueble: [x, z]. */
+export function aMundoAereoLado(d: Diseno, lado: LadoId, x: number, z: number): [number, number] {
+  return girar(transformAereoLado(d, lado)!, lado, x, z);
+}
+
+// ---------- Eje de cada tramo ----------
+
+/** Largo (mm) que llenan los módulos de un tramo según la geometría (no la suma de sus módulos). */
+export function largoEje(d: Diseno, t: TramoId): number {
+  switch (t) {
+    case 'base':
+      return d.ancho;
+    case 'izq':
+    case 'der':
+      return largoUtilLado(d, t);
+    case 'aereos':
+      return d.aereos.cuerpos.reduce((s, c) => s + c.ancho, 0);
+    default:
+      return largoUtilLadoAereo(d, ladoDeTramo(t)!);
+  }
+}
+
+/**
+ * Punto en planta (x, z del mueble, sobre el muro de ese tramo) que corresponde a la
+ * posición s (mm desde el comienzo del primer módulo) a lo largo de un tramo.
+ */
+export function posEnMundo(d: Diseno, t: TramoId, s: number): { x: number; z: number } {
+  const L = largoEje(d, t);
+  if (t === 'base') return { x: -d.ancho / 2 + s, z: 0 };
+  if (t === 'aereos') return { x: inicioAereoPrincipal(d) + s, z: 0 };
+  const lado = ladoDeTramo(t)!;
+  const tr = esTramoAereo(t) ? transformAereoLado(d, lado) : transformLado(d, lado);
+  if (!tr) return { x: 0, z: 0 };
+  const [x, z] = girar(tr, lado, s - L / 2, 0);
+  return { x, z };
+}
+
+/** Posición s a lo largo de un tramo del punto en planta más cercano (inversa de posEnMundo). */
+export function posEnTramo(d: Diseno, t: TramoId, p: { x: number; z: number }): number {
+  const L = largoEje(d, t);
+  if (t === 'base') return p.x + d.ancho / 2;
+  if (t === 'aereos') return p.x - inicioAereoPrincipal(d);
+  const lado = ladoDeTramo(t)!;
+  const tr = esTramoAereo(t) ? transformAereoLado(d, lado) : transformLado(d, lado);
+  if (!tr) return 0;
+  return desgirar(tr, lado, p.x, p.z)[0] + L / 2;
+}
+
+/** Transformación de un tramo (null en los principales, que ya están en coordenadas del mueble). */
+export function transformTramo(d: Diseno, t: TramoId): Transformacion | null {
+  if (t === 'base' || t === 'aereos') return null;
+  const lado = ladoDeTramo(t)!;
+  return esTramoAereo(t) ? transformAereoLado(d, lado) : transformLado(d, lado);
+}
+
+// ---------- Equipamiento ----------
+
+/** Medidas nominales (mm) del equipamiento para ubicarlo y dibujarlo. Lavaplatos: el corte de las cubetas. */
+export const MEDIDAS_EQUIPO = {
+  encimera: { '2': { ancho: 300, fondo: 520 }, '3': { ancho: 580, fondo: 500 }, '4': { ancho: 580, fondo: 510 } },
+  lavaplatos: { simple: { ancho: 400, fondo: 360 }, doble: { ancho: 770, fondo: 380 } },
+  campana: { ancho: 600, fondo: 480 },
+  horno: { ancho: 595, alto: ALTO_HORNO },
+} as const;
+
+/** Distancia mínima (mm) entre el lavaplatos y el borde al que va pegado. */
+export const MARGEN_MIN_LAVAPLATOS = 50;
+/** Ancho de módulo con el que el lavaplatos queda dentro de su mueble. */
+export const MODULO_MIN_LAVAPLATOS = { simple: 450, doble: 800 } as const;
+
+export interface EquipoUbicado {
+  /** Id del equipo; el horno usa el id de su módulo y la campana `<id encimera>:campana`. */
+  id: string;
+  tipo: 'encimera' | 'lavaplatos' | 'horno' | 'campana';
+  tramo: TramoId;
+  /** Índice y id del módulo que lo lleva (la campana mural: el módulo de su encimera). */
+  indice: number;
+  modulo: string;
+  /** Centro a lo largo del tramo, en mm desde el comienzo de su primer módulo. */
+  s: number;
+  /** Centro en x local del layout de ese tramo (calcularLayout / calcularLayoutAereos*). */
+  x: number;
+  ancho: number;
+  fondo: number;
+  /** Centro en planta, sobre el muro del tramo (coordenadas del mueble). */
+  mundo: { x: number; z: number };
+  /** Campana: alojada en un módulo de los aéreos o mural (sin aéreos encima). */
+  montaje?: 'aereo' | 'mural';
+  /** Campana: id de su encimera. */
+  encimera?: string;
+}
+
+function cuerposTramo(d: Diseno, t: TramoId): Cuerpo[] {
+  if (t === 'base') return d.cuerpos;
+  if (t === 'izq' || t === 'der') return d.lados?.[t]?.cuerpos ?? [];
+  if (t === 'aereos') return d.aereos.cuerpos;
+  return d.aereos.lados?.[ladoDeTramo(t)!]?.cuerpos ?? [];
+}
+
+/** Inicio (s) y fin de cada módulo a lo largo de un tramo. */
+export function posicionesModulos(d: Diseno, t: TramoId): { id: string; s0: number; s1: number }[] {
+  const sep = t === 'base' ? d.separacionCuerpos : 0;
+  let cursor = 0;
+  return cuerposTramo(d, t).map((c) => {
+    const s0 = cursor;
+    cursor += c.ancho + sep;
+    return { id: c.id, s0, s1: s0 + c.ancho };
+  });
+}
+
+/** Centro (s, mm a lo largo de su tramo) de una encimera, como se dibuja (sin salirse de la cubierta). */
+export function centroEncimera(d: Diseno, e: Encimera): number | null {
+  const pos = posicionesModulos(d, e.tramo);
+  const m = pos.find((p) => p.id === e.modulo);
+  if (!m) return null;
+  const L = largoEje(d, e.tramo);
+  const media = MEDIDAS_EQUIPO.encimera[e.platos].ancho / 2;
+  const c = (m.s0 + m.s1) / 2;
+  // No se sale de la cubierta y su centro queda siempre sobre su módulo.
+  return dentro(L > 2 * media ? Math.max(media, Math.min(L - media, c)) : L / 2, m);
+}
+
+function dentro(s: number, m: { s0: number; s1: number }): number {
+  return Math.max(m.s0, Math.min(m.s1, s));
+}
+
+/** Centro (s) de un lavaplatos: centrado en su módulo o pegado a uno de sus bordes con su margen. */
+export function centroLavaplatos(d: Diseno, l: Lavaplatos): number | null {
+  const pos = posicionesModulos(d, l.tramo);
+  const m = pos.find((p) => p.id === l.modulo);
+  if (!m) return null;
+  const w = MEDIDAS_EQUIPO.lavaplatos[l.modelo].ancho;
+  if (l.posicion === 'izq') return dentro(m.s0 + l.margen + w / 2, m);
+  if (l.posicion === 'der') return dentro(m.s1 - l.margen - w / 2, m);
+  const L = largoEje(d, l.tramo);
+  const media = w / 2 + 45;
+  const c = (m.s0 + m.s1) / 2;
+  return dentro(L > 2 * media ? Math.max(media, Math.min(L - media, c)) : L / 2, m);
+}
+
+/** x local del layout de un tramo a partir de s. */
+function xLocal(d: Diseno, t: TramoId, s: number): number {
+  if (t === 'base') return -d.ancho / 2 + s;
+  if (t === 'aereos') return inicioAereoPrincipal(d) + s;
+  return s - largoEje(d, t) / 2;
+}
+
+/**
+ * Dónde va cada equipo (encimeras, lavaplatos, hornos y campanas) en todos los tramos,
+ * con su posición a lo largo del tramo y en planta. Lo usa el 3D para dibujarlos y la
+ * ficha de fabricación para acotarlos.
+ */
+export function ubicarEquipos(d: Diseno): EquipoUbicado[] {
+  const out: EquipoUbicado[] = [];
+  const tramosBase: TramoBase[] = ['base', 'izq', 'der'];
+  const db = disenoBase(d);
+  for (const t of tramosBase) {
+    const cs = cuerposTramo(db, t);
+    if (!cs.length) continue;
+    const pos = posicionesModulos(db, t);
+    cs.forEach((c, i) => {
+      if (c.tipo !== 'horno' || d.plantilla === 'cocina-infantil') return;
+      const s = (pos[i].s0 + pos[i].s1) / 2;
+      out.push({ id: c.id, tipo: 'horno', tramo: t, indice: i, modulo: c.id, s, x: xLocal(db, t, s), ancho: c.ancho, fondo: db.profundidad, mundo: posEnMundo(db, t, s) });
+    });
+  }
+  for (const e of d.equipos ?? []) {
+    const i = cuerposTramo(db, e.tramo).findIndex((c) => c.id === e.modulo);
+    if (i < 0) continue;
+    const s = e.tipo === 'encimera' ? centroEncimera(db, e) : centroLavaplatos(db, e);
+    if (s == null) continue;
+    const med = e.tipo === 'encimera' ? MEDIDAS_EQUIPO.encimera[e.platos] : MEDIDAS_EQUIPO.lavaplatos[e.modelo];
+    out.push({ id: e.id, tipo: e.tipo, tramo: e.tramo, indice: i, modulo: e.modulo, s, x: xLocal(db, e.tramo, s), ancho: med.ancho, fondo: med.fondo, mundo: posEnMundo(db, e.tramo, s) });
+    if (e.tipo !== 'encimera' || !e.campana) continue;
+    const mundo = posEnMundo(db, e.tramo, s);
+    const ta = tramoAereoDe(e.tramo);
+    const ca = cuerposTramo(d, ta);
+    const ia = ca.findIndex((c) => c.tipo === 'campana' && c.campanaDe === e.id);
+    const aereoVisible = d.aereos.activo && (ta === 'aereos' || ladoAereoActivo(d, ladoDeTramo(ta)!));
+    if (ia >= 0 && aereoVisible) {
+      const pa = posicionesModulos(d, ta)[ia];
+      const sa = Math.max(pa.s0, Math.min(pa.s1, posEnTramo(d, ta, mundo)));
+      const w = Math.min(MEDIDAS_EQUIPO.campana.ancho, pa.s1 - pa.s0);
+      const sc = Math.max(pa.s0 + w / 2, Math.min(pa.s1 - w / 2, sa));
+      out.push({ id: `${e.id}:campana`, tipo: 'campana', tramo: ta, indice: ia, modulo: ca[ia].id, s: sc, x: xLocal(d, ta, sc), ancho: w, fondo: MEDIDAS_EQUIPO.campana.fondo, mundo: posEnMundo(d, ta, sc), montaje: 'aereo', encimera: e.id });
+    } else {
+      out.push({ id: `${e.id}:campana`, tipo: 'campana', tramo: e.tramo, indice: i, modulo: e.modulo, s, x: xLocal(db, e.tramo, s), ancho: MEDIDAS_EQUIPO.campana.ancho, fondo: MEDIDAS_EQUIPO.campana.fondo, mundo, montaje: 'mural', encimera: e.id });
+    }
+  }
+  return out;
 }
 
 export function altoBaseInfantil(d: Diseno): number {
