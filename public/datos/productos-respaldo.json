@@ -865,7 +865,7 @@
     "medidas": "40 × 110 × 192 cm",
     "precio": 129990,
     "precio_oferta": null,
-    "imagen_url": "https://cdn.jsdelivr.net/gh/gabypasajero/Dise-ador-de-muebles-@54eb3b458ac0f2d078609318515715aa6c318855/public/productos/compacto-3c-verde-salvia.jpg",
+    "imagen_url": "https://disenador-muebles-dto.vercel.app/productos/compacto-3c-verde-salvia.jpg",
     "personalizable": false,
     "destacado": false,
     "orden": 5
@@ -878,7 +878,7 @@
     "medidas": "40 × 180 × 190 cm",
     "precio": 190000,
     "precio_oferta": null,
-    "imagen_url": "https://cdn.jsdelivr.net/gh/gabypasajero/Dise-ador-de-muebles-@54eb3b458ac0f2d078609318515715aa6c318855/public/productos/compacto-5c-pino-nebraska.jpg",
+    "imagen_url": "https://disenador-muebles-dto.vercel.app/productos/compacto-5c-pino-nebraska.jpg",
     "personalizable": false,
     "destacado": false,
     "orden": 5
