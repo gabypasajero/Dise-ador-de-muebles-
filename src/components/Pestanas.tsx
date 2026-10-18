@@ -253,6 +253,11 @@ export function PestanaCajones({ d, unidad, cambiar }: PropsPestana) {
               );
             const cajones = g.frentes.filter((f) => f.tipo === 'cajon' && f.cuerpo === i);
             const act = (cambios: Partial<Cuerpo>) => cambiar((x) => actualizarCuerpo(x, i, cambios, g.tramo));
+            // Con el cajón arriba la puerta conserva al menos 20 cm: el frente del cajón llega hasta lo que deja libre.
+            const puerta = c.cajonesArriba && c.puertas > 0 ? g.frentes.find((f) => f.tipo === 'puerta' && f.cuerpo === i) : undefined;
+            const maxCajon =
+              puerta && cajones.length ? Math.min(600, Math.max(90, Math.floor(Math.max(...cajones.map((f) => f.rect.y1)) - puerta.rect.y0 - d.luzFrentes - 200))) : 600;
+            const altoReal = cajones.length ? Math.round(cajones[0].rect.y1 - cajones[0].rect.y0) : null;
             return (
               <article key={c.id} className="tarjeta-cuerpo">
                 <CabeceraCuerpo d={d} i={i} c={c} tramo={g.tramo} unidad={unidad} />
@@ -284,7 +289,7 @@ export function PestanaCajones({ d, unidad, cambiar }: PropsPestana) {
                     <Segmentado
                       etiqueta="Alto de cada cajón"
                       valor={c.altoCajon > 0 ? 'fijo' : 'auto'}
-                      onCambio={(v) => act({ altoCajon: v === 'fijo' ? 180 : 0 })}
+                      onCambio={(v) => act({ altoCajon: v === 'fijo' ? Math.min(180, maxCajon) : 0 })}
                       opciones={[
                         { valor: 'auto', texto: 'Automático' },
                         { valor: 'fijo', texto: 'A medida' },
@@ -297,9 +302,12 @@ export function PestanaCajones({ d, unidad, cambiar }: PropsPestana) {
                         valor={c.altoCajon}
                         unidad={unidad}
                         min={90}
-                        max={600}
+                        max={maxCajon}
                         onCambio={(mm) => cambiar((x) => actualizarCuerpo(x, i, { altoCajon: mm }, g.tramo), `alto-cajon-${g.tramo}-${i}`)}
                       />
+                    )}
+                    {puerta && c.altoCajon > 0 && altoReal != null && c.altoCajon > altoReal && (
+                      <p className="aviso-texto">Con el cajón arriba la puerta conserva al menos 20 cm: el frente queda en {formatear(altoReal, unidad)}.</p>
                     )}
                   </>
                 )}

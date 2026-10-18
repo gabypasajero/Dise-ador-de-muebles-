@@ -5,6 +5,7 @@ import { calcularLayout, calcularLayoutAereos, centroCuerpo, dimensionesTotales,
 import {
   ANCHO_HORNO,
   LIMITES,
+  LIMITES_AEREOS,
   LIMITES_RETORNO,
   actualizarCuerpo,
   activarAereos,
@@ -369,6 +370,12 @@ describe('correcciones de la revisión de tramos', () => {
       expect(la.x1).toBeLessThanOrEqual(x1);
       expect(textos(x).some((t) => t.includes('pasan del muro'))).toBe(false);
     }
+    // Un diseño guardado con los aéreos pasando el muro se corrige al abrirlo.
+    const viejo = { ...d, aereos: { ...d.aereos, cuerpos: d.aereos.cuerpos.map((c) => ({ ...c, ancho: c.ancho + 200 })) } };
+    expect(textos(viejo).some((t) => t.includes('pasan del muro'))).toBe(true);
+    const abierto = recargar(viejo);
+    expect(textos(abierto).some((t) => t.includes('pasan del muro'))).toBe(false);
+    expect(recargar(abierto)).toEqual(abierto);
   });
 
   it('8: avisa si el nicho del microondas queda muy bajo', () => {
@@ -396,6 +403,9 @@ describe('correcciones de la revisión de tramos', () => {
     const d = activarAereos(full(), true);
     expect(campanaSobreEncimera(d)).toBe(true);
     const izq = fijarForma(d, 'izq');
+    // Elegir la forma que ya tiene no cambia nada (no deja un paso de deshacer).
+    expect(fijarForma(izq, 'izq')).toBe(izq);
+    expect(fijarForma(d, null)).toBe(d);
     for (const x of [izq, fijarForma(d, 'der'), fijarForma(izq, 'der'), fijarForma(izq, null)]) {
       expect(campanaSobreEncimera(x)).toBe(true);
       expect(textos(x).some((t) => t.includes('pasan del muro'))).toBe(false);
@@ -406,6 +416,25 @@ describe('correcciones de la revisión de tramos', () => {
       expect(campanaSobreEncimera(x)).toBe(true);
       expect(textos(x).some((t) => t.includes('pasan del muro'))).toBe(false);
     }
+    // Encimera en el módulo 2, bajo el borde de la campana: al pasar la L al otro lado sigue cubierta.
+    const e = activarAereos(fijarForma(fijarAncho(full(), 2000), 'izq'), true);
+    const m2 = { ...e, cocina: { ...e.cocina, encimeraCuerpo: 1, lavaplatosCuerpo: 2 } };
+    expect(campanaSobreEncimera(m2)).toBe(true);
+    expect(campanaSobreEncimera(fijarForma(m2, 'der'))).toBe(true);
+  });
+
+  it('18: al volver a lineal un aéreo largo sobre la esquina no queda colgando ni pasa el largo máximo', () => {
+    let d = activarAereos(fijarRetorno(fijarForma(fijarAncho(full(), 3600), 'izq'), { profundidad: 679 }), true);
+    while (d.aereos.cuerpos.length > 1) d = quitarCuerpo(d, 0, 'aereos');
+    d = fijarAnchoCuerpo(d, 0, 3448, 'aereos');
+    expect(calcularLayoutAereos(d)!.x0).toBeLessThan(-d.ancho / 2);
+    const m = fijarForma(d, null);
+    const [x0, x1] = extremosPrincipal(m);
+    const la = calcularLayoutAereos(m)!;
+    expect(largoTramo(m, 'aereos')).toBeLessThanOrEqual(LIMITES_AEREOS.ancho[1]);
+    expect(la.x0).toBeGreaterThanOrEqual(x0);
+    expect(la.x1).toBeLessThanOrEqual(x1);
+    expect(recargar(m)).toEqual(m);
   });
 
   it('32: avisa si el compacto lleva encimera a gas bajo el mueble superior', () => {

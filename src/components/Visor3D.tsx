@@ -1,6 +1,6 @@
 import { OrbitControls } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Suspense, useEffect, useMemo, useRef } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { OrbitControls as OrbitImpl } from 'three-stdlib';
@@ -65,9 +65,10 @@ function objetivoCamara(d: Diseno, vista: Vista, size: { width: number; height: 
       objetivo.y + Math.sin(el) * dist,
       objetivo.z + Math.cos(az) * Math.cos(el) * dist,
     );
-  // Puntos que deben quedar en el cuadro. Sin L es solo un resguardo y el encuadre de siempre no cambia;
+  // Puntos que deben quedar en el cuadro. Sin L es solo un resguardo y el encuadre de siempre no cambia: aleja
+  // la cámara solo si la caja del mueble se sale del cuadro (cocinas lineales anchas en 3D), no si apenas lo toca;
   // en la L cuentan el tramo principal y el retorno por separado (no el rincón libre) y sus cotas (ver Mueble3D).
-  const limite = r ? 0.9 : 0.95;
+  const limite = r ? 0.9 : 1;
   // Las etiquetas de las cotas no deben quedar bajo los botones del visor (unos 60 px arriba).
   const reserva = Math.min(0.3, Math.max(0, limite - 1 + 60 / Math.max(1, size.height / 2)));
   const puntos: { p: THREE.Vector3; extra: number }[] = [];
@@ -132,11 +133,17 @@ function Camara() {
   const ladoL = useApp((s) => s.diseno.retorno?.lado ?? null);
   const animando = useRef(0);
   const destino = useRef<{ objetivo: THREE.Vector3; pos: THREE.Vector3 } | null>(null);
+  // Una L grande en el teléfono puede necesitar más de 9 m: el control no debe acercar la cámara y cortarla.
+  const [maxDistancia, setMaxDistancia] = useState(9);
+  const encuadrar = (d: Diseno, v: Vista) => {
+    const dst = objetivoCamara(d, v, size);
+    destino.current = dst;
+    animando.current = 1;
+    setMaxDistancia(Math.max(9, dst.pos.distanceTo(dst.objetivo) * 1.2));
+  };
 
   useEffect(() => {
-    const d = useApp.getState().diseno;
-    destino.current = objetivoCamara(d, vista, size);
-    animando.current = 1;
+    encuadrar(useApp.getState().diseno, vista);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [encuadre, vista, escenario, ladoL]);
 
@@ -153,9 +160,9 @@ function Camara() {
     const p = previo.current;
     if (Math.abs(ancho - p.ancho) / p.ancho > 0.18 || Math.abs(alto - p.alto) / p.alto > 0.18 || Math.abs(fondo - p.fondo) / p.fondo > 0.3) {
       previo.current = { ancho, alto, fondo };
-      destino.current = objetivoCamara(useApp.getState().diseno, useApp.getState().vista, size);
-      animando.current = 1;
+      encuadrar(useApp.getState().diseno, useApp.getState().vista);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ancho, alto, fondo, size]);
 
   useFrame((_, dt) => {
@@ -175,7 +182,7 @@ function Camara() {
       enableDamping
       dampingFactor={0.08}
       minDistance={0.5}
-      maxDistance={9}
+      maxDistance={maxDistancia}
       minPolarAngle={0.12}
       maxPolarAngle={Math.PI / 2 - 0.03}
       minAzimuthAngle={-1.3}

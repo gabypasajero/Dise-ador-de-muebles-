@@ -20,16 +20,23 @@ export function Modal({
   pie?: ReactNode;
 }) {
   const caja = useRef<HTMLDivElement>(null);
+  // onCerrar suele ser una función nueva en cada render: se guarda en una ref para que el efecto
+  // corra solo al abrir. Si dependiera de onCerrar, cada letra escrita movería el foco fuera del campo.
+  const cerrar = useRef(onCerrar);
+  cerrar.current = onCerrar;
   useEffect(() => {
     const previo = document.activeElement as HTMLElement | null;
-    caja.current?.querySelector<HTMLElement>('input, button, select, textarea')?.focus();
-    const tecla = (e: KeyboardEvent) => e.key === 'Escape' && onCerrar();
+    const primero =
+      caja.current?.querySelector<HTMLElement>('.modal-cuerpo input, .modal-cuerpo select, .modal-cuerpo textarea') ??
+      caja.current?.querySelector<HTMLElement>('input, button, select, textarea');
+    primero?.focus();
+    const tecla = (e: KeyboardEvent) => e.key === 'Escape' && cerrar.current();
     window.addEventListener('keydown', tecla);
     return () => {
       window.removeEventListener('keydown', tecla);
       previo?.focus?.();
     };
-  }, [onCerrar]);
+  }, []);
   return (
     <div className="modal" role="dialog" aria-modal="true" aria-label={titulo}>
       <div className="modal-fondo" onClick={onCerrar} />

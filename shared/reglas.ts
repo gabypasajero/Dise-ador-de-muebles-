@@ -178,9 +178,12 @@ function ajustarSuperiorCompacto(out: Diseno) {
   if (largoTramo(out, 'aereos') !== out.ancho) repartirModulos(out.aereos.cuerpos, out.ancho);
 }
 
-/** En la L los aéreos no pasan el muro lateral: si el tramo principal o la esquina se acortan, sus módulos también. */
+/**
+ * Los aéreos no pasan su largo máximo; en la L, el muro lateral: si el tramo principal o la esquina
+ * se acortan, sus módulos también (el superior del compacto se ajusta aparte).
+ */
 function ajustarAereosAlMuro(out: Diseno) {
-  if (!out.retorno || !out.aereos.cuerpos.length) return;
+  if (out.plantilla === 'compacto' || !out.aereos.cuerpos.length) return;
   const maximo = maximoTramo(out, 'aereos');
   if (largoTramo(out, 'aereos') > maximo) repartirModulos(out.aereos.cuerpos, maximo);
 }
@@ -623,7 +626,8 @@ function layoutAereos(d: Diseno) {
  * Al cambiar la esquina de la L los aéreos se anclan a otros extremos y se correrían. Se prueba
  * dejarlos como están, cada alineación, pasar a la otra punta los módulos de la esquina que ya no
  * está y un espacio libre en una punta (todo ya recortado al muro), y se queda lo que deja la
- * campana (o el primer módulo) más cerca de donde estaba, para que siga sobre la encimera.
+ * campana sobre la encimera (si lo estaba), sin muebles fuera del tramo y lo más cerca de donde estaba
+ * (o el primer módulo, si no hay campana).
  */
 function conservarAereos(antes: Diseno, out: Diseno) {
   const la = layoutAereos(antes);
@@ -653,22 +657,31 @@ function conservarAereos(antes: Diseno, out: Diseno) {
   }
   if (c0 - s0 >= ANCHO_MIN_HUECO) opciones.push(['izq', [espacio(c0 - s0), ...contenido], true]);
   if (s1 - c1 >= ANCHO_MIN_HUECO) opciones.push(['der', [...contenido, espacio(s1 - c1)], true]);
-  let mejor: { aereos: Diseno['aereos']; desvio: number } | null = null;
+  // Si la campana estaba sobre la encimera, primero cuentan las opciones que la dejan ahí (el tramo principal no se mueve).
+  const xEnc = ref.cuerpo.tipo === 'campana' && antes.cocina.encimera !== 'ninguna' && antes.cuerpos.length ? centroCuerpo(calcularLayout(antes), antes.cocina.encimeraCuerpo) : null;
+  const sobreEncimera = (x0: number, x1: number) => xEnc != null && ref.x0 <= xEnc && xEnc <= ref.x1 && x0 <= xEnc && xEnc <= x1;
+  let mejor: { aereos: Diseno['aereos']; sobre: boolean; cuelga: boolean; desvio: number } | null = null;
   for (const [alineacion, cuerpos, conEspacio] of opciones) {
     const prueba = { ...out, aereos: { ...out.aereos, alineacion, cuerpos: cuerpos.map((c) => ({ ...c })) } };
     ajustarAereosAlMuro(prueba);
-    const r = layoutAereos(prueba)!.cuerpos.find((c) => c.cuerpo.id === ref.cuerpo.id)!;
+    const lp = layoutAereos(prueba)!;
+    const r = lp.cuerpos.find((c) => c.cuerpo.id === ref.cuerpo.id)!;
     // Un espacio libre nuevo solo se agrega si la campana sigue sobre el mismo punto.
     if (conEspacio && !(r.x0 <= centro && centro <= r.x1)) continue;
     const desvio = Math.abs((r.x0 + r.x1) / 2 - centro);
-    if (!mejor || desvio < mejor.desvio - 0.5) mejor = { aereos: prueba.aereos, desvio };
+    const sobre = sobreEncimera(r.x0, r.x1);
+    // Al volver a lineal se evita que un mueble quede colgando donde estaba la esquina.
+    const cuelga = lp.cuerpos.some((c) => c.cuerpo.tipo !== 'hueco' && (c.x0 < s0 - 1 || c.x1 > s1 + 1));
+    const gana = !mejor || (sobre !== mejor.sobre ? sobre : cuelga !== mejor.cuelga ? !cuelga : desvio < mejor.desvio - 0.5);
+    if (gana) mejor = { aereos: prueba.aereos, sobre, cuelga, desvio };
   }
   out.aereos = mejor!.aereos;
 }
 
 /** Cambia la forma de la cocina: lineal (null) o en L hacia un lado. */
 export function fijarForma(d: Diseno, lado: 'izq' | 'der' | null): Diseno {
-  if (d.plantilla !== 'cocina') return d;
+  // Elegir la forma que ya tiene no cambia nada (ni deja un paso de deshacer).
+  if (d.plantilla !== 'cocina' || (d.retorno?.lado ?? null) === lado) return d;
   const out = clonar(d);
   if (!lado) out.retorno = null;
   else if (out.retorno) out.retorno.lado = lado;
@@ -714,6 +727,8 @@ export function normalizar(d: Diseno): Diseno {
     out.retorno.profundidad = limitar(out.retorno.profundidad, LIMITES_RETORNO.profundidad);
     ajustarRetorno(out);
   }
+  // Diseños guardados con los aéreos pasando el muro de la L (o su largo máximo).
+  ajustarAereosAlMuro(out);
   if (out.plantilla === 'compacto') {
     out.aereos.activo = true;
     out.aereos.montaje = 'apoyado';
