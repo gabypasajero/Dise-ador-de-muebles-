@@ -23,7 +23,7 @@ export const config = { maxDuration: 60 };
 /** Modelo estable de Gemini (Flash: rápido y económico). Se cambia con GEMINI_MODEL. */
 const MODELO_POR_DEFECTO = 'gemini-3.8-flash';
 /** Modelo de respaldo si el principal está saturado (503). Se cambia con GEMINI_MODEL_RESPALDO. */
-const MODELO_RESPALDO = 'gemini-2.5-flash';
+const MODELO_RESPALDO = 'gemini-3.8-flash-lite';
 
 /** Google responde 503/500 cuando el modelo tiene alta demanda: vale la pena reintentar. */
 function saturado(e: unknown): boolean {
@@ -125,8 +125,8 @@ export default {
     const modelo = process.env.GEMINI_MODEL?.trim() || MODELO_POR_DEFECTO;
     const ai = new GoogleGenAI({ apiKey: clave });
     const respaldo = process.env.GEMINI_MODEL_RESPALDO?.trim() || MODELO_RESPALDO;
-    // Si Google está saturado: un reintento con el mismo modelo y, si sigue, el modelo de respaldo.
-    const intentos = [modelo, ...(respaldo !== modelo ? [respaldo] : []), 'gemini-2.5-flash-lite'].filter((m, i, xs) => xs.indexOf(m) === i);
+    // Si Google está saturado: hasta 3 intentos con el modelo principal (con pausa) y luego el respaldo, si existe.
+    const intentos = [modelo, modelo, modelo, ...(respaldo !== modelo ? [respaldo] : [])];
     const pedir = (modelo: string) =>
       ai.models.generateContent({
         model: modelo,
@@ -144,20 +144,20 @@ export default {
           maxOutputTokens: 8192,
           // Los modelos Gemini 3 piensan antes de responder: «low» basta para planear y responde más rápido.
           ...(/^gemini-[3-9]/.test(modelo) ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } : {}),
-          httpOptions: { timeout: 25_000 },
+          httpOptions: { timeout: 20_000 },
         },
       });
     let respuesta;
     let fallo: unknown = null;
     for (const [i, m] of intentos.entries()) {
-      if (i > 0) await new Promise((r) => setTimeout(r, 1200));
+      if (i > 0) await new Promise((r) => setTimeout(r, 1500 * i));
       try {
         respuesta = await pedir(m);
         break;
       } catch (e) {
-        // Si el respaldo no existe o falla distinto, se informa el error del modelo principal.
         console.error(`Gemini intento ${i + 1} (${m}):`, e instanceof Error ? e.message.slice(0, 200) : e);
-        if (i < intentos.length - 1 || !fallo) fallo = e;
+        // Se informa el error del modelo principal (el respaldo puede no existir en la cuenta).
+        if (m === modelo) fallo = e;
         if (!saturado(e)) break;
       }
     }
