@@ -1,7 +1,8 @@
 // Datos en Supabase: registro e ingreso de vendedores con Supabase Auth,
 // productos de la tienda y cotizaciones protegidas con RLS.
 import { createClient, type PostgrestError } from '@supabase/supabase-js';
-import type { Cotizacion, ProductoTienda, Usuario } from '../../shared/tipos';
+import type { Cotizacion, DatosCotizacion, ProductoTienda, Usuario } from '../../shared/tipos';
+import { marcaDe } from '../cotizacion/marcas';
 import { aCotizacion, aFila, validarDatos, validarRegistro, type Backend, type FilaCotizacion } from './backend';
 
 const URL_SUPABASE = import.meta.env.VITE_SUPABASE_URL || 'https://bmxmqhbkgvgyqpwsuazm.supabase.co';
@@ -13,8 +14,37 @@ export const supabase = createClient(URL_SUPABASE, CLAVE_PUBLICA, {
 
 const CAMPOS_PRODUCTO = 'id,nombre,categoria,descripcion,medidas,precio,precio_oferta,imagen_url,personalizable,destacado,orden';
 const VENDEDOR = 'vendedor:vendedores(id,nombre,telefono)';
-const CAMPOS_LISTA = `id,vendedor_id,cliente_nombre,cliente_telefono,cliente_email,cliente_direccion,observaciones,producto_id,modelo,detalle,miniatura,valor,fecha,estado,fecha_venta,valor_venta,medio_pago,nota_venta,creado_en,actualizado_en,${VENDEDOR}`;
-const CAMPOS_COMPLETOS = `${CAMPOS_LISTA},config`;
+const CAMPOS_BASE = `id,vendedor_id,cliente_nombre,cliente_telefono,cliente_email,cliente_direccion,observaciones,producto_id,modelo,detalle,miniatura,valor,fecha,estado,fecha_venta,valor_venta,medio_pago,nota_venta,creado_en,actualizado_en,${VENDEDOR}`;
+
+/**
+ * La marca y la imagen grande vienen de supabase/migrations/20261019000000_marca_cotizaciones.sql.
+ * Mientras ese SQL no se ejecute en el proyecto, la app sigue funcionando sin ellas (todo sale
+ * como De Todito Outlet y el PDF usa la miniatura).
+ */
+let sinColumnasMarca = false;
+const camposLista = () => (sinColumnasMarca ? CAMPOS_BASE : `${CAMPOS_BASE},marca`);
+const camposCompletos = () => (sinColumnasMarca ? `${CAMPOS_BASE},config` : `${CAMPOS_BASE},marca,config,imagen`);
+
+function faltanColumnasMarca(e: PostgrestError | null): boolean {
+  return !!e && (e.code === '42703' || e.code === 'PGRST204') && /\b(marca|imagen)\b/.test(e.message);
+}
+
+type Respuesta = { data: unknown; error: PostgrestError | null };
+
+/** Ejecuta la consulta y, si la base aún no tiene las columnas nuevas, la repite sin ellas. */
+async function conRespaldo(q: () => PromiseLike<Respuesta>): Promise<Respuesta> {
+  const r = await q();
+  if (sinColumnasMarca || !faltanColumnasMarca(r.error)) return r;
+  sinColumnasMarca = true;
+  console.warn('Supabase aún no tiene la marca de las cotizaciones: ejecuta supabase/migrations/20261019000000_marca_cotizaciones.sql');
+  return q();
+}
+
+/** Columnas a escribir (sin marca ni imagen si la base todavía no las tiene). */
+function filaParaGuardar(d: DatosCotizacion) {
+  const { marca, imagen, ...resto } = aFila(d);
+  return sinColumnasMarca ? resto : { ...resto, marca, imagen };
+}
 
 export class ErrorConfiguracion extends Error {}
 
@@ -31,10 +61,12 @@ function traducir(e: PostgrestError | null): Error {
   return new Error(e.message);
 }
 
-async function una(q: PromiseLike<{ data: unknown; error: PostgrestError | null }>): Promise<Cotizacion> {
-  const { data, error } = await q;
+async function una(q: () => PromiseLike<Respuesta>, marca?: DatosCotizacion['marca']): Promise<Cotizacion> {
+  const { data, error } = await conRespaldo(q);
   if (error) throw traducir(error);
-  return aCotizacion(data as FilaCotizacion);
+  const c = aCotizacion(data as FilaCotizacion);
+  // Sin la columna en la base, la cotización recién guardada conserva en pantalla la marca elegida.
+  return sinColumnasMarca && marca ? { ...c, marca: marcaDe({ marca }) } : c;
 }
 
 export const backendSupabase: Backend = {
@@ -131,45 +163,47 @@ export const backendSupabase: Backend = {
   },
 
   async cotizaciones() {
-    const { data, error } = await supabase
-      .from('cotizaciones')
-      .select(CAMPOS_LISTA)
-      .order('fecha', { ascending: false })
-      .order('id', { ascending: false })
-      .limit(500);
+    const { data, error } = await conRespaldo(() =>
+      supabase
+        .from('cotizaciones')
+        .select(camposLista())
+        .order('fecha', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(500),
+    );
     if (error) throw traducir(error);
     return (data as unknown as FilaCotizacion[]).map(aCotizacion);
   },
 
   cotizacion(id) {
-    return una(supabase.from('cotizaciones').select(CAMPOS_COMPLETOS).eq('id', id).single());
+    return una(() => supabase.from('cotizaciones').select(camposCompletos()).eq('id', id).single());
   },
 
   crearCotizacion(d) {
     const error = validarDatos(d);
     if (error) return Promise.reject(new Error(error));
-    return una(supabase.from('cotizaciones').insert(aFila(d)).select(CAMPOS_COMPLETOS).single());
+    return una(() => supabase.from('cotizaciones').insert(filaParaGuardar(d)).select(camposCompletos()).single(), d.marca);
   },
 
   actualizarCotizacion(id, d) {
     const error = validarDatos(d);
     if (error) return Promise.reject(new Error(error));
-    return una(supabase.from('cotizaciones').update(aFila(d)).eq('id', id).select(CAMPOS_COMPLETOS).single());
+    return una(() => supabase.from('cotizaciones').update(filaParaGuardar(d)).eq('id', id).select(camposCompletos()).single(), d.marca);
   },
 
   registrarVenta(id, v) {
     if (!Number.isInteger(v.valor) || v.valor <= 0) return Promise.reject(new Error('Ingresa el valor de la venta'));
-    return una(
+    return una(() =>
       supabase
         .from('cotizaciones')
         .update({ estado: 'vendida', fecha_venta: v.fecha, valor_venta: v.valor, medio_pago: v.medioPago, nota_venta: v.nota })
         .eq('id', id)
-        .select(CAMPOS_LISTA)
+        .select(camposLista())
         .single(),
     );
   },
 
   cambiarEstado(id, estado) {
-    return una(supabase.from('cotizaciones').update({ estado }).eq('id', id).select(CAMPOS_LISTA).single());
+    return una(() => supabase.from('cotizaciones').update({ estado }).eq('id', id).select(camposLista()).single());
   },
 };

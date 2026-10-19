@@ -1,21 +1,29 @@
 import { Html, Line } from '@react-three/drei';
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import {
-  aMundoRetorno,
+  aMundoAereoLado,
+  aMundoLado,
   calcularLayout,
   calcularLayoutAereos,
+  calcularLayoutAereosLado,
   disenoBase,
-  disenoRetorno,
+  disenoLado,
   esCocina,
   extremosPrincipal,
-  retornoDe,
-  transformRetorno,
+  LADOS,
+  ladoAereoActivo,
+  transformAereoLado,
+  transformLado,
+  ubicarEquipos,
+  type LayoutAereos,
+  type Transformacion,
 } from '../../shared/layout';
-import { formatear, type Tramo } from '../../shared/reglas';
-import type { CatalogoMateriales, Diseno, Unidad } from '../../shared/tipos';
+import { formatear, nombreModuloEn } from '../../shared/reglas';
+import type { CatalogoMateriales, Diseno, LadoId, TramoBase, TramoId, Unidad } from '../../shared/tipos';
 import { Aereos3D } from './Aereos3D';
 import { MaterialesProvider, Panel, useMats } from './base3d';
-import { MuebleCuerpos } from './MuebleCuerpos';
+import { CampanaMural } from './Cocina3D';
+import { MuebleCuerpos, type EquipoDibujo } from './MuebleCuerpos';
 import { Tocador3D } from './Tocador3D';
 
 export interface OpcionesVista {
@@ -24,21 +32,57 @@ export interface OpcionesVista {
   etiquetasFrentes: boolean;
   unidad: Unidad;
   /** Numera los módulos del tramo elegido y marca el activo (pestaña «Módulos y espacios»). */
-  modulos?: { tramo: Tramo; activo: number; nombre: (i: number) => string; onElegir: (i: number) => void } | null;
+  modulos?: { tramo: TramoId; activo: number; nombre: (i: number) => string; onElegir: (i: number) => void } | null;
+}
+
+/** Grupo con la ubicación de un tramo lateral (null: el tramo ya está en coordenadas del mueble). */
+function EnTramo({ tr, children }: { tr: Transformacion | null; children: ReactNode }) {
+  if (!tr) return <>{children}</>;
+  return (
+    <group position={[tr.x, 0, tr.z]} rotation={[0, tr.rotY, 0]}>
+      {children}
+    </group>
+  );
 }
 
 /** Mueble completo en metros (internamente modelado en mm). */
 export function Mueble3D({ diseno, materiales, vista }: { diseno: Diseno; materiales: CatalogoMateriales | null; vista: OpcionesVista }) {
   const props = { abierto: vista.abierto, etiquetas: vista.etiquetasFrentes, unidad: vista.unidad };
   const base = useMemo(() => disenoBase(diseno), [diseno]);
-  // La imagen del cliente va solo en los frentes del tramo principal (comparten la textura).
-  const dr = useMemo(() => {
-    const t = disenoRetorno(diseno);
-    return t && { ...t, imagenFrontal: null };
+  // Dónde va cada equipo (encimeras, lavaplatos, hornos y campanas) en todos los tramos.
+  const ubicados = useMemo(() => ubicarEquipos(diseno), [diseno]);
+  const equiposDe = (t: TramoBase): EquipoDibujo[] =>
+    ubicados.flatMap((u) => {
+      if (u.tramo !== t || (u.tipo !== 'encimera' && u.tipo !== 'lavaplatos')) return [];
+      const e = diseno.equipos?.find((x) => x.id === u.id);
+      return e ? [{ u, e }] : [];
+    });
+  const campanas = ubicados.filter((u) => u.tipo === 'campana');
+  // Lados de la L o la U (la imagen del cliente va solo en los frentes del tramo principal).
+  const lados = useMemo(
+    () =>
+      LADOS.flatMap((lado) => {
+        const dl = disenoLado(diseno, lado);
+        const tr = transformLado(diseno, lado);
+        return dl && tr ? [{ lado, d: { ...dl, imagenFrontal: null }, tr }] : [];
+      }),
+    [diseno],
+  );
+  // Aéreo principal y lados del aéreo, cada uno con su ubicación.
+  const aereos = useMemo(() => {
+    const out: { tramo: TramoId; la: LayoutAereos; tr: Transformacion | null }[] = [];
+    if (!diseno.aereos.activo) return out;
+    const la = calcularLayoutAereos(diseno);
+    if (la) out.push({ tramo: 'aereos', la, tr: null });
+    for (const lado of LADOS) {
+      const ll = calcularLayoutAereosLado(diseno, lado);
+      const tr = transformAereoLado(diseno, lado);
+      if (ll && tr) out.push({ tramo: lado === 'izq' ? 'aereos-izq' : 'aereos-der', la: ll, tr });
+    }
+    return out;
   }, [diseno]);
-  const tr = transformRetorno(diseno);
-  const r = retornoDe(diseno);
-  const extension: [number, number] = r ? (r.lado === 'izq' ? [r.profundidad, 0] : [0, r.profundidad]) : [0, 0];
+  const extension: [number, number] = [diseno.lados?.izq?.profundidad ?? 0, diseno.lados?.der?.profundidad ?? 0];
+  const trLado = (t: TramoBase) => (t === 'base' ? null : lados.find((x) => x.lado === t)?.tr ?? null);
   return (
     <MaterialesProvider diseno={diseno} catalogo={materiales}>
       <group scale={0.001} position={[0, 0, 0.004]}>
@@ -46,14 +90,28 @@ export function Mueble3D({ diseno, materiales, vista }: { diseno: Diseno; materi
           <Tocador3D diseno={diseno} {...props} />
         ) : (
           <>
-            <MuebleCuerpos diseno={base} {...props} extensionCubierta={extension} />
-            {dr && tr && (
-              <group position={[tr.x, 0, tr.z]} rotation={[0, tr.rotY, 0]}>
-                <MuebleCuerpos diseno={dr} {...props} />
-              </group>
-            )}
-            {r && <EsquinaL d={base} />}
-            {diseno.aereos.activo && <Aereos3D d={diseno} {...props} />}
+            <MuebleCuerpos diseno={base} {...props} extensionCubierta={extension} equipos={equiposDe('base')} />
+            {lados.map(({ lado, d, tr }) => (
+              <EnTramo key={lado} tr={tr}>
+                <MuebleCuerpos diseno={d} {...props} equipos={equiposDe(lado)} />
+              </EnTramo>
+            ))}
+            {lados.map(({ lado }) => (
+              <Esquina key={lado} d={base} lado={lado} />
+            ))}
+            {aereos.map(({ tramo, la, tr }) => (
+              <EnTramo key={tramo} tr={tr}>
+                <Aereos3D d={diseno} la={la} campanas={campanas.filter((u) => u.montaje === 'aereo' && u.tramo === tramo)} {...props} />
+              </EnTramo>
+            ))}
+            {/* Campana mural: sobre la encimera cuando no hay aéreo encima, con chimenea hasta el cielo. */}
+            {campanas
+              .filter((u) => u.montaje === 'mural' && (u.tramo === 'base' || u.tramo === 'izq' || u.tramo === 'der'))
+              .map((u) => (
+                <EnTramo key={u.id} tr={trLado(u.tramo as TramoBase)}>
+                  <CampanaMural x={u.x} y0={diseno.aereos.elevacion} ancho={u.ancho} fondo={u.fondo} />
+                </EnTramo>
+              ))}
           </>
         )}
         {vista.cotas && <Cotas diseno={diseno} unidad={vista.unidad} />}
@@ -63,13 +121,14 @@ export function Mueble3D({ diseno, materiales, vista }: { diseno: Diseno; materi
   );
 }
 
-/** Esquina de la cocina en L: módulo ciego bajo la cubierta, tapado por el primer módulo del retorno. */
-function EsquinaL({ d }: { d: Diseno }) {
+/** Esquina de la L o la U: módulo ciego bajo la cubierta del tramo principal, tapado por el primer módulo del lado. */
+function Esquina({ d, lado }: { d: Diseno; lado: LadoId }) {
   const m = useMats();
-  const r = retornoDe(d)!;
+  const r = d.lados[lado];
+  if (!r) return null;
   const l = calcularLayout(d);
   const t = d.espesor;
-  const x0 = r.lado === 'der' ? d.ancho / 2 : -d.ancho / 2 - r.profundidad;
+  const x0 = lado === 'der' ? d.ancho / 2 : -d.ancho / 2 - r.profundidad;
   const x1 = x0 + r.profundidad;
   const zF = l.zFrente;
   return (
@@ -77,15 +136,7 @@ function EsquinaL({ d }: { d: Diseno }) {
       <Panel x0={x0} x1={x1} y0={d.zocalo + 2} y1={l.yTope - d.luzFrentes / 2} z0={zF} z1={zF + l.espesorFrente} mat={m.frente} eje="x" />
       <Panel x0={x0} x1={x1} y0={d.zocalo} y1={d.zocalo + t} z0={0} z1={zF} mat={m.casco} />
       {d.zocalo > 0 && <Panel x0={x0} x1={x1} y0={0} y1={d.zocalo} z0={zF - 50 - t} z1={zF - 50} mat={m.casco} />}
-      <Panel
-        x0={r.lado === 'der' ? x1 - t : x0}
-        x1={r.lado === 'der' ? x1 : x0 + t}
-        y0={0}
-        y1={l.yTope}
-        z0={0}
-        z1={zF}
-        mat={m.casco}
-      />
+      <Panel x0={lado === 'der' ? x1 - t : x0} x1={lado === 'der' ? x1 : x0 + t} y0={0} y1={l.yTope} z0={0} z1={zF} mat={m.casco} />
     </group>
   );
 }
@@ -125,31 +176,55 @@ function Cotas({ diseno: d, unidad }: { diseno: Diseno; unidad: Unidad }) {
   const H = d.alto;
   const D = d.profundidad;
   const sep = 140;
-  const r = retornoDe(d);
-  // La cota de alto va al lado contrario de la L para no cruzarla.
-  const xAlto = r?.lado === 'der' ? x0 - sep : x1 + sep;
-  const nx = r?.lado === 'der' ? -1 : 1;
-  const xBorde = r?.lado === 'der' ? x0 : x1;
-  // La del retorno va pegada al muro lateral (por dentro) y más alta que la de largo, para no cruzarla.
-  const xr = r?.lado === 'der' ? x1 - 20 : x0 + 20;
+  const izq = d.lados?.izq ?? null;
+  const der = d.lados?.der ?? null;
+  const conLados = !!(izq || der);
+  const ref = (a: [number, number, number], b: [number, number, number], k: string) => (
+    <Line key={k} points={[a, b]} color="#a8325e" lineWidth={1} dashed dashSize={20} gapSize={15} />
+  );
+  // Alto y fondo van en un extremo libre (sin muro): a la derecha, o a la izquierda si la L es derecha.
+  // En la U los dos extremos tienen muro: el alto va en la punta del lado izquierdo y el fondo junto a la esquina derecha.
+  let alto: JSX.Element[];
+  if (!izq || !der) {
+    const s = der ? -1 : 1;
+    const xBorde = der ? x0 : x1;
+    const xA = xBorde + s * sep;
+    alto = [
+      <Cota key="alto" desde={[xA, 0, D]} hasta={[xA, H, D]} normal={[1, 0, 0]} texto={`Alto ${formatear(H, unidad)}`} />,
+      <Cota key="prof" desde={[xA, H + sep, 0]} hasta={[xA, H + sep, D]} normal={[1, 0, 0]} texto={`Prof. ${formatear(D, unidad)}`} />,
+      ref([xBorde, 0, D], [xA + s * 40, 0, D], 'r-alto'),
+      ref([xBorde, H, 0], [xA + s * 40, H + sep + 40, 0], 'r-prof'),
+    ];
+  } else {
+    const xP = x0 + izq.profundidad / 2;
+    const zP = izq.largo + sep;
+    const xF = d.ancho / 2 - 60;
+    alto = [
+      <Cota key="alto" desde={[xP, 0, zP]} hasta={[xP, H, zP]} normal={[1, 0, 0]} texto={`Alto ${formatear(H, unidad)}`} />,
+      ref([xP, 0, izq.largo], [xP, 0, zP + 40], 'r-alto'),
+      <Cota key="prof" desde={[xF, H + sep, 0]} hasta={[xF, H + sep, D]} normal={[1, 0, 0]} texto={`Prof. ${formatear(D, unidad)}`} />,
+    ];
+  }
   const yr = H + sep * 2;
   return (
     // El nombre permite ocultarlas al capturar la miniatura de la cotización.
     <group name="cotas">
-      <Cota desde={[x0, H + sep, D]} hasta={[x1, H + sep, D]} normal={[0, 1, 0]} texto={`${r ? 'Largo' : 'Ancho'} ${formatear(W, unidad)}`} />
-      <Cota desde={[xAlto, 0, D]} hasta={[xAlto, H, D]} normal={[1, 0, 0]} texto={`Alto ${formatear(H, unidad)}`} />
-      <Cota desde={[xAlto, H + sep, 0]} hasta={[xAlto, H + sep, D]} normal={[1, 0, 0]} texto={`Prof. ${formatear(D, unidad)}`} />
-      {r && (
-        <>
-          <Cota desde={[xr, yr, 0]} hasta={[xr, yr, r.largo]} normal={[0, 1, 0]} texto={`Retorno ${formatear(r.largo, unidad)}`} />
-          <Line points={[[xr, H, r.largo], [xr, yr + 40, r.largo]]} color="#a8325e" lineWidth={1} dashed dashSize={20} gapSize={15} />
-        </>
-      )}
-      {/* Líneas de referencia hacia el mueble */}
-      <Line points={[[x0, H, D], [x0, H + sep + 40, D]]} color="#a8325e" lineWidth={1} dashed dashSize={20} gapSize={15} />
-      <Line points={[[x1, H, D], [x1, H + sep + 40, D]]} color="#a8325e" lineWidth={1} dashed dashSize={20} gapSize={15} />
-      <Line points={[[xBorde, 0, D], [xAlto + nx * 40, 0, D]]} color="#a8325e" lineWidth={1} dashed dashSize={20} gapSize={15} />
-      <Line points={[[xBorde, H, 0], [xAlto + nx * 40, H + sep + 40, 0]]} color="#a8325e" lineWidth={1} dashed dashSize={20} gapSize={15} />
+      <Cota desde={[x0, H + sep, D]} hasta={[x1, H + sep, D]} normal={[0, 1, 0]} texto={`${conLados ? 'Largo' : 'Ancho'} ${formatear(W, unidad)}`} />
+      {ref([x0, H, D], [x0, H + sep + 40, D], 'r-x0')}
+      {ref([x1, H, D], [x1, H + sep + 40, D], 'r-x1')}
+      {alto}
+      {/* Cada lado de la L o la U: su largo desde el muro principal (con la esquina), pegado a su muro lateral. */}
+      {LADOS.map((lado) => {
+        const r = d.lados?.[lado];
+        if (!r) return null;
+        const xr = lado === 'der' ? x1 - 20 : x0 + 20;
+        return (
+          <group key={lado}>
+            <Cota desde={[xr, yr, 0]} hasta={[xr, yr, r.largo]} normal={[0, 1, 0]} texto={`Lado ${lado === 'izq' ? 'izq.' : 'der.'} ${formatear(r.largo, unidad)}`} />
+            {ref([xr, H, r.largo], [xr, yr + 40, r.largo], `r-${lado}`)}
+          </group>
+        );
+      })}
     </group>
   );
 }
@@ -163,35 +238,41 @@ interface Marca {
   contorno: [number, number, number][];
 }
 
-/** Etiquetas y contornos de los módulos de un tramo. */
-function marcasTramo(d: Diseno, tramo: Tramo): Marca[] {
-  if (tramo === 'aereos') {
-    const la = calcularLayoutAereos(d);
-    if (!la) return [];
+/** Etiquetas y contornos de los módulos de un tramo (principal, lados, aéreo y lados del aéreo). */
+function marcasTramo(d: Diseno, tramo: TramoId): Marca[] {
+  const lado: LadoId | null = tramo === 'izq' || tramo === 'aereos-izq' ? 'izq' : tramo === 'der' || tramo === 'aereos-der' ? 'der' : null;
+  if (tramo === 'aereos' || tramo === 'aereos-izq' || tramo === 'aereos-der') {
+    const la = lado ? calcularLayoutAereosLado(d, lado) : calcularLayoutAereos(d);
+    if (!la || (lado && !ladoAereoActivo(d, lado))) return [];
     const z = la.profundidad + 4;
+    const aMundo = (x: number, y: number, zz: number): [number, number, number] => {
+      if (!lado) return [x, y, zz];
+      const [wx, wz] = aMundoAereoLado(d, lado, x, zz);
+      return [wx, y, wz];
+    };
     return la.cuerpos.map((lc) => ({
       clave: lc.cuerpo.id,
       indice: lc.indice,
       ancho: lc.cuerpo.ancho,
-      etiqueta: [(lc.x0 + lc.x1) / 2, la.y0 + Math.min(110, (la.y1 - la.y0) / 2), z + 30],
+      etiqueta: aMundo((lc.x0 + lc.x1) / 2, la.y0 + Math.min(110, (la.y1 - la.y0) / 2), z + 30),
       contorno: [
-        [lc.x0 + 6, la.y0 + 6, z],
-        [lc.x1 - 6, la.y0 + 6, z],
-        [lc.x1 - 6, la.y1 - 6, z],
-        [lc.x0 + 6, la.y1 - 6, z],
-        [lc.x0 + 6, la.y0 + 6, z],
+        aMundo(lc.x0 + 6, la.y0 + 6, z),
+        aMundo(lc.x1 - 6, la.y0 + 6, z),
+        aMundo(lc.x1 - 6, la.y1 - 6, z),
+        aMundo(lc.x0 + 6, la.y1 - 6, z),
+        aMundo(lc.x0 + 6, la.y0 + 6, z),
       ],
     }));
   }
-  const dt = tramo === 'retorno' ? disenoRetorno(d) : disenoBase(d);
+  const dt = lado ? disenoLado(d, lado) : disenoBase(d);
   if (!dt) return [];
   const l = calcularLayout(dt);
   const z = dt.profundidad + 4;
   // Alto visible de cada módulo (casco más cubierta o techo).
   const tope = (yTope: number) => Math.min(dt.alto, yTope + (esCocina(dt) ? dt.cocina.espesorCubierta : dt.espesor));
   const aMundo = (x: number, y: number, zz: number): [number, number, number] => {
-    if (tramo !== 'retorno') return [x, y, zz];
-    const [wx, wz] = aMundoRetorno(d, x, zz);
+    if (!lado) return [x, y, zz];
+    const [wx, wz] = aMundoLado(d, lado, x, zz);
     return [wx, y, wz];
   };
   return l.cuerpos.map((lc) => {
@@ -223,7 +304,7 @@ function EtiquetasModulos({
 }: {
   diseno: Diseno;
   unidad: Unidad;
-  tramo: Tramo;
+  tramo: TramoId;
   activo: number;
   nombre: (i: number) => string;
   onElegir: (i: number) => void;
@@ -231,23 +312,25 @@ function EtiquetasModulos({
   const marcas = useMemo(() => marcasTramo(d, tramo), [d, tramo]);
   const ia = Math.max(0, Math.min(marcas.length - 1, activo));
   const elegida = marcas[ia];
-  const prefijo = tramo === 'aereos' ? (d.plantilla === 'compacto' ? 'Superior' : 'Aéreo') : tramo === 'retorno' ? 'L' : 'Módulo';
   return (
     // Ayuda visual: se oculta al capturar la miniatura de la cotización.
     <group name="ayudas">
       {elegida && <Line points={elegida.contorno} color="#a8325e" lineWidth={3} dashed dashSize={40} gapSize={22} />}
-      {marcas.map((mc) => (
-        <Html key={mc.clave} position={mc.etiqueta} center zIndexRange={[31, 0]}>
-          <button
-            type="button"
-            className={`etiqueta-modulo${mc.indice === ia ? ' activa' : ''}`}
-            title={`${prefijo} ${mc.indice + 1}: ${nombre(mc.indice)}, ${formatear(mc.ancho, unidad)}`}
-            onClick={() => onElegir(mc.indice)}
-          >
-            {mc.indice + 1}
-          </button>
-        </Html>
-      ))}
+      {marcas.map((mc) => {
+        const n = nombreModuloEn(d, tramo, mc.indice);
+        return (
+          <Html key={mc.clave} position={mc.etiqueta} center zIndexRange={[31, 0]}>
+            <button
+              type="button"
+              className={`etiqueta-modulo${mc.indice === ia ? ' activa' : ''}`}
+              title={`${n.charAt(0).toUpperCase()}${n.slice(1)}: ${nombre(mc.indice)}, ${formatear(mc.ancho, unidad)}`}
+              onClick={() => onElegir(mc.indice)}
+            >
+              {mc.indice + 1}
+            </button>
+          </Html>
+        );
+      })}
     </group>
   );
 }

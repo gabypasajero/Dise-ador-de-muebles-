@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 const MIGRACION = fs.readFileSync('supabase/migrations/20261013120000_vendedores_cotizaciones.sql', 'utf8');
+const MIGRACION_MARCA = fs.readFileSync('supabase/migrations/20261019000000_marca_cotizaciones.sql', 'utf8');
 
 const BASE_SUPABASE = `
   create role supabase_auth_admin nologin;
@@ -100,6 +101,7 @@ let pedro: string;
 let admin: string;
 let previo: string;
 let codigo: string;
+let antigua: number;
 
 beforeAll(async () => {
   db = new PGlite();
@@ -114,6 +116,11 @@ beforeAll(async () => {
   pedro = await registrar('pedro@dto.cl', { rol: 'vendedor', nombre: 'Pedro Soto', codigo });
   admin = await registrar('admin@dto.cl', {});
   await comoEditor(() => db.query('insert into public.admins (user_id) values ($1)', [admin]));
+  // Una cotización registrada antes de que existiera la marca.
+  await como(pedro);
+  antigua = (await cotizacion('Cliente Antiguo', 99990)).rows[0].id;
+  await comoEditor(() => db.exec(MIGRACION_MARCA));
+  await comoEditor(() => db.exec(MIGRACION_MARCA));
 }, 60_000);
 
 describe('ejecución del SQL en Supabase', () => {
@@ -213,7 +220,7 @@ describe('cotizaciones y ventas', () => {
     await como(pedro);
     await cotizacion('Marcela Díaz', 159990);
     const vistas = await db.query<{ cliente_nombre: string }>('select cliente_nombre from public.cotizaciones');
-    expect(vistas.rows.map((r) => r.cliente_nombre)).toEqual(['Marcela Díaz']);
+    expect(vistas.rows.map((r) => r.cliente_nombre).sort()).toEqual(['Cliente Antiguo', 'Marcela Díaz']);
     // Pedro no puede tocar la de Ana: la actualización no afecta filas.
     const r = await db.query(`update public.cotizaciones set valor = 1 where id = $1`, [c.id]);
     expect(r.affectedRows).toBe(0);
@@ -222,7 +229,7 @@ describe('cotizaciones y ventas', () => {
   it('los admins de la tienda ven todas las cotizaciones pero no las registran', async () => {
     await como(admin);
     const r = await db.query('select id from public.cotizaciones');
-    expect(r.rows.length).toBe(2);
+    expect(r.rows.length).toBe(3);
     await expect(cotizacion()).rejects.toThrow(/row-level security|violates/);
   });
 
@@ -306,10 +313,76 @@ describe('cotizaciones y ventas', () => {
     await expect(cotizacion()).rejects.toThrow(/row-level security|violates/);
     expect((await db.query('select id from public.cotizaciones')).rows).toHaveLength(0);
     await como(admin);
-    const r = await db.query<{ cliente_nombre: string }>('select cliente_nombre from public.cotizaciones where vendedor_id = $1', [pedro]);
-    expect(r.rows.map((x) => x.cliente_nombre)).toEqual(['Marcela Díaz']);
+    const r = await db.query<{ cliente_nombre: string }>('select cliente_nombre from public.cotizaciones where vendedor_id = $1 order by id', [pedro]);
+    expect(r.rows.map((x) => x.cliente_nombre)).toEqual(['Cliente Antiguo', 'Marcela Díaz']);
     await comoEditor(() => db.query('update public.vendedores set activo = true where id = $1', [pedro]));
     await como(pedro);
-    expect((await db.query('select id from public.cotizaciones')).rows).toHaveLength(1);
+    expect((await db.query('select id from public.cotizaciones')).rows).toHaveLength(2);
+  });
+});
+
+describe('marca de la cotización (20261019000000_marca_cotizaciones.sql)', () => {
+  const conMarca = (marca: string, cliente = 'Cliente Molina') =>
+    db.query<{ id: number; marca: string }>(
+      `insert into public.cotizaciones (cliente_nombre, modelo, config, detalle, valor, marca)
+       values ($1, 'Cocina en L', '{"plantilla":"cocina"}', '[]', 450000, $2) returning id, marca`,
+      [cliente, marca],
+    );
+
+  it('no usa DROP, se puede ejecutar de nuevo y termina con "Listo"', async () => {
+    expect(MIGRACION_MARCA).not.toMatch(/\bdrop\b/i);
+    const r = await comoEditor(() => db.exec(MIGRACION_MARCA));
+    const ultima = r[r.length - 1].rows[0] as { resultado: string };
+    expect(ultima.resultado).toBe('Listo');
+  });
+
+  it('las cotizaciones anteriores quedan como De Todito Outlet', async () => {
+    await como(pedro);
+    const r = await db.query<{ marca: string; imagen: string | null }>('select marca, imagen from public.cotizaciones where id = $1', [antigua]);
+    expect(r.rows[0]).toEqual({ marca: 'dto', imagen: null });
+    // Sin indicar la marca, también es De Todito Outlet.
+    expect((await cotizacion('Cliente Sin Marca')).rows[0]).toBeTruthy();
+    const sin = await db.query<{ marca: string }>(`select marca from public.cotizaciones where cliente_nombre = 'Cliente Sin Marca'`);
+    expect(sin.rows[0].marca).toBe('dto');
+  });
+
+  it('el vendedor elige De Todito Outlet o Muebles y Hogar Molina, y la puede cambiar', async () => {
+    await como(ana);
+    const c = (await conMarca('molina')).rows[0];
+    expect(c.marca).toBe('molina');
+    await expect(conMarca('otra')).rejects.toThrow(/check/);
+    await expect(conMarca(null as unknown as string)).rejects.toThrow(/null/);
+    await db.query(`update public.cotizaciones set marca = 'dto' where id = $1`, [c.id]);
+    await expect(db.query(`update public.cotizaciones set marca = 'MOLINA' where id = $1`, [c.id])).rejects.toThrow(/check/);
+    await como(pedro);
+    // Pedro no ve ni cambia la de Ana.
+    expect((await db.query(`update public.cotizaciones set marca = 'molina' where id = $1`, [c.id])).affectedRows).toBe(0);
+  });
+
+  it('guarda la imagen grande con un tope de tamaño', async () => {
+    await como(ana);
+    const { id } = (await conMarca('molina', 'Cliente Imagen')).rows[0];
+    const imagen = `data:image/jpeg;base64,${'A'.repeat(900_000)}`;
+    await db.query('update public.cotizaciones set imagen = $2 where id = $1', [id, imagen]);
+    const r = await db.query<{ n: number }>('select char_length(imagen) as n from public.cotizaciones where id = $1', [id]);
+    expect(Number(r.rows[0].n)).toBe(imagen.length);
+    await expect(db.query('update public.cotizaciones set imagen = $2 where id = $1', [id, 'A'.repeat(2_000_001)])).rejects.toThrow(/check/);
+  });
+
+  it('una venta no cambia de marca, y la venta sigue funcionando igual', async () => {
+    await como(ana);
+    const { id } = (await conMarca('molina', 'Cliente Venta Molina')).rows[0];
+    await db.query(`update public.cotizaciones set estado = 'vendida', fecha_venta = '2026-10-19', valor_venta = 440000 where id = $1`, [id]);
+    await expect(db.query(`update public.cotizaciones set marca = 'dto' where id = $1`, [id])).rejects.toThrow(/ya está vendida/);
+    await expect(db.query(`update public.cotizaciones set valor = 1 where id = $1`, [id])).rejects.toThrow(/ya está vendida/);
+    await db.query(`update public.cotizaciones set estado = 'cotizada' where id = $1`, [id]);
+    const r = await db.query<{ marca: string; fecha_venta: string | null }>('select marca, fecha_venta from public.cotizaciones where id = $1', [id]);
+    expect(r.rows[0]).toEqual({ marca: 'molina', fecha_venta: null });
+  });
+
+  it('se detiene con un mensaje claro si falta el registro de cotizaciones', async () => {
+    const otro = new PGlite();
+    await expect(otro.exec(MIGRACION_MARCA)).rejects.toThrow(/20261013120000_vendedores_cotizaciones/);
+    await otro.close();
   });
 });

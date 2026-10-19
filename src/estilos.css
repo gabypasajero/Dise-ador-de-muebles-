@@ -2454,10 +2454,6 @@ h3 {
   color: #fff;
 }
 
-.numero-cuerpo.retorno {
-  background: #2f6f6a;
-}
-
 .numero-cuerpo.aereos {
   background: #5b4a8b;
 }
@@ -2631,3 +2627,656 @@ h3 {
   color: var(--acento);
   font-weight: 700;
 }
+
+/* ---------- Cotización: marca elegible, documento del cliente y hoja para el maestro (Cotizaciones.tsx) ---------- */
+
+.documento-cotizacion {
+  --acento-doc: #a8325e;
+  --acento-doc-suave: #f8e9ef;
+}
+
+.documento-cotizacion[data-marca='molina'] {
+  --acento-doc: #0c7ab0;
+  --acento-doc-suave: #e5f3fa;
+}
+
+.documento-cotizacion .documento-cabeza {
+  border-bottom-color: var(--acento-doc);
+}
+
+.documento-cotizacion .documento-cabeza .logo {
+  width: 40px;
+  height: 40px;
+  font-size: 13px;
+  background: var(--acento-doc);
+}
+
+.logo.logo-molina,
+.documento-cotizacion .documento-cabeza .logo.logo-molina {
+  background: #fff;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.documento-cotizacion .documento-imagen {
+  max-height: 340px;
+}
+
+.documento-cotizacion .documento-titulo {
+  margin: 2px 0 0;
+}
+
+.documento-cliente {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #f3f1ee;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 16px;
+  font-size: 14px;
+}
+
+.documento-cliente > div {
+  min-width: 0;
+}
+
+.documento-cliente dt {
+  display: inline;
+  font-weight: 800;
+}
+
+.documento-cliente dd {
+  display: inline;
+  margin: 0 0 0 4px;
+  overflow-wrap: anywhere;
+}
+
+.documento-cotizacion .documento-lista > li::marker {
+  color: var(--acento-doc);
+}
+
+.documento-cotizacion .documento-cierre .documento-valor {
+  background: var(--acento-doc-suave);
+}
+
+.documento-cotizacion .documento-cierre .documento-valor dt,
+.documento-cotizacion .documento-cierre .documento-valor dd {
+  color: var(--acento-doc);
+}
+
+.selector-marca {
+  border: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.selector-marca legend {
+  padding: 0;
+  margin-bottom: 6px;
+}
+
+.selector-marca-opciones {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.formulario .opcion-marca {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 12px;
+  background: var(--panel);
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.formulario .opcion-marca input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.opcion-marca .logo {
+  width: 36px;
+  height: 36px;
+  font-size: 12px;
+  flex: none;
+}
+
+.formulario .opcion-marca.activa {
+  border-color: var(--acento);
+  box-shadow: 0 0 0 3px var(--acento-suave);
+}
+
+.formulario .opcion-marca:focus-within {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+}
+
+.tabla-cotizaciones .marca-fila {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #a8325e;
+}
+
+.tabla-cotizaciones .marca-fila.molina {
+  color: #0c7ab0;
+}
+
+@media (max-width: 520px) {
+  .selector-marca-opciones,
+  .documento-cliente {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ===================== Asistente de diseño con IA (src/components/Asistente.tsx) ===================== */
+.barra-visor.derecha .boton-asistente span {
+  display: inline;
+}
+.boton-asistente {
+  color: var(--acento-oscuro);
+}
+.boton-asistente.activo {
+  color: #fff;
+}
+.asistente {
+  position: fixed;
+  top: 72px;
+  right: 16px;
+  z-index: 45;
+  width: min(400px, calc(100vw - 32px));
+  max-height: calc(100vh - 88px);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  box-shadow: 0 10px 40px rgba(30, 20, 30, 0.22);
+  overflow: hidden;
+}
+.asistente-cabecera {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 12px 10px 14px;
+  border-bottom: 1px solid var(--borde);
+}
+.asistente-cabecera > div {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.asistente-cabecera small {
+  color: var(--texto-2);
+  font-size: 12px;
+}
+.asistente-icono {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--acento-suave);
+  color: var(--acento);
+}
+.asistente-cuerpo {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 14px;
+}
+.asistente-nota {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fdf4e3;
+  color: #7a4d08;
+  font-size: 13px;
+}
+.asistente-ejemplos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.asistente-ejemplos > span {
+  width: 100%;
+}
+.asistente-ejemplo {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--borde-fuerte);
+  background: var(--panel-2);
+  font-size: 13px;
+  text-align: left;
+}
+.asistente-ejemplo:hover {
+  border-color: var(--acento);
+  color: var(--acento-oscuro);
+}
+.asistente-pensando {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--texto-2);
+  font-weight: 700;
+}
+.asistente-puntos {
+  display: inline-flex;
+  gap: 3px;
+}
+.asistente-puntos i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--acento);
+  animation: asistente-latido 1s infinite ease-in-out;
+}
+.asistente-puntos i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.asistente-puntos i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes asistente-latido {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.asistente-error {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fbeaea;
+  color: var(--error);
+  font-size: 13px;
+}
+.asistente-respuesta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.asistente-respuesta p {
+  margin: 0;
+}
+.asistente-pedido {
+  align-self: flex-end;
+  max-width: 90%;
+  padding: 6px 10px;
+  border-radius: 12px 12px 2px 12px;
+  background: var(--acento-suave);
+  color: var(--acento-oscuro);
+  font-size: 13px;
+}
+.asistente-mensaje {
+  line-height: 1.45;
+}
+.asistente-dudas {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--aviso);
+  font-weight: 600;
+}
+.asistente-lista h4 {
+  margin: 4px 0 6px;
+  font-size: 13px;
+}
+.asistente-lista ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.asistente-lista li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px 6px 10px;
+  border-radius: 8px;
+  border-left: 3px solid var(--wsp);
+  background: var(--panel-2);
+  font-size: 13px;
+}
+.asistente-lista li.rechazada {
+  border-left-color: var(--error);
+}
+.asistente-lista li small {
+  color: var(--texto-2);
+  font-size: 12px;
+}
+.asistente-lista li .boton {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+.asistente-formulario {
+  border-top: 1px solid var(--borde);
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.asistente-formulario textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 64px;
+  max-height: 200px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--borde-fuerte);
+  font: inherit;
+  font-size: 14px;
+}
+.asistente-formulario textarea:focus {
+  outline: 2px solid var(--acento);
+  outline-offset: -1px;
+}
+.asistente-acciones {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.asistente-acciones .boton {
+  flex: none;
+}
+@media (max-width: 600px) {
+  .asistente {
+    top: auto;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: auto;
+    max-height: min(78vh, calc(100vh - 16px));
+  }
+  .asistente-formulario textarea {
+    font-size: 16px;
+  }
+}
+/* ===================== Fin asistente ===================== */
+
+/* ===================== Interfaz del motor v2: tramos, rechazos, equipamiento y precio (Pestanas.tsx, PanelInferior.tsx) ===================== */
+.numero-cuerpo.lado {
+  background: #2f6f6a;
+}
+
+/* Motivo de un cambio que el motor no hizo: queda a la vista arriba del panel hasta el siguiente cambio. */
+.aviso-rechazo {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px 10px;
+  margin-bottom: 10px;
+  padding: 9px 12px;
+  border: 1px solid #ecc9a0;
+  border-left: 4px solid var(--aviso);
+  border-radius: 10px;
+  background: #fff8ee;
+  color: var(--texto);
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: var(--sombra);
+}
+
+.aviso-rechazo > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--aviso);
+}
+
+.aviso-rechazo p {
+  flex: 1 1 260px;
+  margin: 0;
+}
+
+.aviso-rechazo-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* Rol del módulo: fijo (horno, especiero), equipado (lleva equipos) o ajustable. */
+.chip-rol {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  background: var(--panel-2);
+  border: 1px solid var(--borde);
+  color: var(--texto-2);
+  cursor: help;
+}
+
+.chip-rol.fijo {
+  background: #eef0f4;
+  color: #44506a;
+}
+
+.chip-rol.equipado {
+  background: var(--acento-suave);
+  border-color: #efc9d7;
+  color: var(--acento-oscuro);
+}
+
+.rol-modulo,
+.equipos-modulo {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 12px;
+  color: var(--texto-2);
+}
+
+.equipos-modulo {
+  color: var(--texto);
+  font-weight: 600;
+}
+
+.bloque-modulo.equipado .bloque-modulo-ancho,
+.bloque-modulo.fijo .bloque-modulo-ancho {
+  font-weight: 700;
+}
+
+.bloque-modulo.equipado {
+  box-shadow: inset 0 -3px 0 #e9b6c9;
+}
+
+.ayuda-tramo {
+  align-self: flex-start;
+}
+
+/* Con la U y sus aéreos hay hasta seis tramos: la fila se desplaza en vez de salirse. */
+.modulos-forma .selector-tramo {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.selector-tramo button {
+  white-space: nowrap;
+}
+
+/* ---------- Equipamiento ---------- */
+.equipos-agregar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.equipos-agregar .campo-etiqueta {
+  margin-right: 4px;
+}
+
+.tarjeta-equipo .tarjeta-cuerpo-cabeza {
+  justify-content: space-between;
+}
+
+.tarjeta-equipo .tarjeta-cuerpo-cabeza .boton-icono {
+  margin-left: auto;
+}
+
+.tarjeta-equipo .selector select {
+  max-width: 100%;
+}
+
+.porque-no {
+  font-size: 12px;
+  color: var(--texto-2);
+}
+
+.porque-no summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.porque-no ul {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.porque-no li + li {
+  margin-top: 4px;
+}
+
+.tarjeta-cuerpo.ancha.tarjeta-equipo {
+  flex-basis: 290px;
+}
+
+/* ---------- Desglose del precio oficial ---------- */
+.desglose-precio {
+  position: relative;
+}
+
+.boton-desglose {
+  border: none;
+  background: none;
+  padding: 2px 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--acento);
+  cursor: pointer;
+}
+
+.boton-desglose:hover {
+  text-decoration: underline;
+}
+
+/* Sobre el visor (escritorio): se abre hacia arriba sin mover el panel. */
+.desglose-lista {
+  position: absolute;
+  right: -8px;
+  bottom: calc(100% + 6px);
+  z-index: 20;
+  width: min(440px, calc(100vw - 32px));
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--borde-fuerte);
+  border-radius: var(--radio);
+  box-shadow: 0 10px 30px rgba(30, 20, 30, 0.18);
+}
+
+.desglose-lista table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.desglose-lista th,
+.desglose-lista td {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--borde);
+  vertical-align: top;
+  text-align: left;
+}
+
+.desglose-lista th {
+  font-weight: 700;
+  padding-right: 12px;
+}
+
+.desglose-lista th span {
+  display: block;
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--texto-2);
+}
+
+.desglose-lista td {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.desglose-lista tfoot th,
+.desglose-lista tfoot td {
+  border-bottom: none;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--acento);
+}
+
+@media (max-width: 900px) {
+  /* En el teléfono el desglose se abre en su lugar, bajo el precio. */
+  .desglose-lista {
+    position: static;
+    width: auto;
+    max-height: none;
+    margin-top: 6px;
+    box-shadow: none;
+  }
+  .modulos-forma .segmentado {
+    flex-wrap: wrap;
+    border-radius: 14px;
+  }
+  .aviso-rechazo-acciones {
+    margin-left: 0;
+  }
+  .modulos-forma .selector-tramo {
+    flex-wrap: wrap;
+    border-radius: 14px;
+    margin-left: 0;
+  }
+}
+/* ===================== Fin interfaz del motor v2 ===================== */

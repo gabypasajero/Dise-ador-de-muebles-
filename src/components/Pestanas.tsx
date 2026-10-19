@@ -1,48 +1,67 @@
 // Categorías de medidas del panel inferior: puertas, cajones, módulos y
 // espacios, equipamiento/interior. Cambian según el tipo de mueble.
-import { calcularLayout, calcularLayoutAereos, calcularLayoutTocador, disenoRetorno, retornoDe, type Frente } from '../../shared/layout';
-import { Fragment, useEffect, useRef, useState } from 'react';
+// Toda edición del mueble pasa por el motor (`operar` → `ejecutar`): si se rechaza, el panel
+// muestra el motivo (y la alternativa, si la hay) y el diseño no cambia.
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { destinosEquipo } from '../../shared/asistente';
+import { margenMaximo } from '../../shared/equipos';
 import {
-  ANCHO_MIN_CUERPO,
-  ANCHO_MIN_HUECO,
+  aperturaAjustable,
+  calcularLayout,
+  calcularLayoutAereos,
+  calcularLayoutAereosLado,
+  calcularLayoutTocador,
+  disenoBase,
+  disenoLado,
+  largoPrincipalConEsquinas,
+  type Frente,
+} from '../../shared/layout';
+import {
   LIMITES_AEREOS,
-  LIMITES_RETORNO,
-  activarAereos,
-  actualizarCuerpo,
-  anchoFijo,
-  agregarModulo,
-  anchoDisponible,
+  LIMITES_LADO,
   cuerposDe,
-  equipoLegado,
-  fijarCocinaLegado,
-  fijarAereos,
-  fijarAnchoAereos,
-  fijarForma,
-  fijarRetorno,
-  fijarSeparacion,
+  formaAereos,
+  formaBase,
   formatear,
   largoTramo,
+  limitesModulo,
+  listarEquipamiento,
   maximoTramo,
-  moverCuerpo,
+  moduloCampana,
   nombreModulo,
+  nombreModuloEn,
+  nombreTramo,
+  opcionesEquipo,
   posicionMinima,
   presetsModulo,
-  quitarCuerpo,
+  rolModulo,
+  tiposPermitidos,
+  tramosDe,
+  type Forma,
+  type ItemEquipo,
+  type Operacion,
   type PresetModulo,
-  type Tramo,
+  type Resultado,
+  type TramoId,
 } from '../../shared/reglas';
-import type { Cuerpo, Diseno, Plantilla, Unidad } from '../../shared/tipos';
+import type { Cuerpo, Diseno, Encimera, Lavaplatos, Plantilla, Unidad } from '../../shared/tipos';
 import { useApp, type Pestana } from '../store/useApp';
 import { CampoMedida, Contador, Interruptor, Segmentado, Selector } from './Controles';
-import { IcoBasura, IcoDer, IcoIzq, IcoMas } from './Iconos';
+import { IcoAviso, IcoBasura, IcoDer, IcoIzq, IcoMas } from './Iconos';
 
 type Cambiar = (f: (d: Diseno) => Diseno, grupo?: string) => void;
 
 interface PropsPestana {
   d: Diseno;
   unidad: Unidad;
+  /** Solo para lo que el motor no cubre (opciones del tocador, fila superior y mudador de la cómoda). */
   cambiar: Cambiar;
 }
+
+/** Ejecuta una operación del motor con deshacer, avisos y rechazo (ver useApp.operar). */
+const operar = (op: Operacion, grupo?: string): Resultado => useApp.getState().operar(op, grupo);
+
+const mayus = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export function pestanasDe(p: Plantilla): { id: Pestana; texto: string }[] {
   switch (p) {
@@ -93,36 +112,99 @@ const NOMBRE_TIPO: Record<Cuerpo['tipo'], string> = {
   especiero: 'Especiero',
 };
 
-function tiposPermitidos(p: Plantilla, tramo: Tramo = 'base'): Cuerpo['tipo'][] {
-  if (tramo === 'aereos') return p === 'compacto' ? ['frentes', 'nicho'] : ['frentes', 'campana', 'nicho', 'hueco'];
-  if (tramo === 'retorno') return ['frentes', 'hueco'];
-  if (p === 'cocina') return ['frentes', 'horno', 'hueco'];
-  if (p === 'cocina-infantil') return ['frentes', 'horno'];
-  if (p === 'escritorio') return ['frentes', 'escritorio'];
-  return ['frentes'];
+// ---------- Tramos ----------
+
+/** Orden en que se ven los tramos: de izquierda a derecha, primero el mueble base y luego los aéreos. */
+const ORDEN_TRAMOS: TramoId[] = ['izq', 'base', 'der', 'aereos-izq', 'aereos', 'aereos-der'];
+
+export function tramosOrdenados(d: Diseno): TramoId[] {
+  const ts = tramosDe(d);
+  return ORDEN_TRAMOS.filter((t) => ts.includes(t));
 }
 
-/** Nombre de los módulos de cada tramo: «Módulo 2», «L 1», «Aéreo 3», «Superior 1». */
-function prefijoTramo(d: Diseno, tramo: Tramo): string {
-  if (tramo === 'retorno') return 'L';
-  if (tramo === 'aereos') return d.plantilla === 'compacto' ? 'Superior' : 'Aéreo';
+const esAereo = (t: TramoId) => t === 'aereos' || t === 'aereos-izq' || t === 'aereos-der';
+
+/** Texto corto de la pestaña de cada tramo. */
+function etiquetaTramo(d: Diseno, t: TramoId): string {
+  if (d.plantilla === 'compacto') return t === 'base' ? 'Mueble base' : 'Mueble superior';
+  switch (t) {
+    case 'izq':
+      return 'Lado izquierdo';
+    case 'base':
+      return 'Principal';
+    case 'der':
+      return 'Lado derecho';
+    case 'aereos':
+      return d.aereos.lados.izq || d.aereos.lados.der ? 'Aéreo principal' : 'Aéreos';
+    case 'aereos-izq':
+      return 'Aéreo izquierdo';
+    case 'aereos-der':
+      return 'Aéreo derecho';
+  }
+}
+
+/** Color del número de módulo según el tramo (el 3D usa los mismos). */
+function claseTramo(t: TramoId): string {
+  if (t === 'base') return '';
+  return esAereo(t) ? ' aereos' : ' lado';
+}
+
+/** «Módulo 2», «Aéreo 3», «Superior 1» (dentro de su tramo). */
+function prefijoTramo(d: Diseno, t: TramoId): string {
+  if (esAereo(t)) return d.plantilla === 'compacto' ? 'Superior' : 'Aéreo';
   return 'Módulo';
 }
 
-function tituloTramo(d: Diseno, tramo: Tramo): string {
-  if (tramo === 'retorno') return 'Esquina en L';
-  if (tramo === 'aereos') return d.plantilla === 'compacto' ? 'Mueble superior' : 'Aéreos';
-  return d.plantilla === 'compacto' ? 'Mueble base' : 'Tramo principal';
+/** Deja elegido en el panel el módulo `id` (el creado por la operación si no se indica). */
+function elegirModulo(r: Resultado, tramo: TramoId, id = r.id) {
+  if (!r.ok || !id) return;
+  const i = cuerposDe(r.diseno, tramo).findIndex((c) => c.id === id);
+  if (i >= 0) useApp.getState().set({ tramoActivo: tramo, moduloActivo: i });
 }
+
+// ---------- Rechazos del motor ----------
+
+/** Motivo del último rechazo y, si el motor la ofrece, la forma de hacerlo igual (agrandando o achicando el mueble). */
+export function AvisoRechazo() {
+  const rechazo = useApp((s) => s.rechazo);
+  const set = useApp((s) => s.set);
+  if (!rechazo) return null;
+  const alt = rechazo.alternativa;
+  const hacerAlternativa = () => {
+    if (!alt) return;
+    const r = operar(alt);
+    if (!r.ok || !('tramo' in alt) || alt.tramo === 'retorno') return;
+    if (alt.op === 'agregarModulo' || alt.op === 'agregarCuerpo') elegirModulo(r, alt.tramo);
+    else if (alt.op === 'quitarModulo') set({ moduloActivo: Math.max(0, useApp.getState().moduloActivo - 1) });
+  };
+  return (
+    <div className="aviso-rechazo" role="alert" key={rechazo.id}>
+      <IcoAviso width={16} height={16} aria-hidden="true" />
+      <p>{rechazo.motivo}</p>
+      <div className="aviso-rechazo-acciones">
+        {alt && (
+          <button type="button" className="boton primario chico" onClick={hacerAlternativa}>
+            {alt.op === 'quitarModulo' ? 'Quitarlo achicando el mueble' : 'Hacerlo agrandando el mueble'}
+          </button>
+        )}
+        <button type="button" className="boton chico" onClick={() => set({ rechazo: null })}>
+          Entendido
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Frentes por tramo (Puertas y Cajones) ----------
 
 function medida(f: Frente, unidad: Unidad) {
   return `${formatear(f.rect.x1 - f.rect.x0, unidad, false)} × ${formatear(f.rect.y1 - f.rect.y0, unidad)}`;
 }
 
-function CabeceraCuerpo({ d, i, c, tramo, unidad }: { d: Diseno; i: number; c: Cuerpo; tramo: Tramo; unidad: Unidad }) {
+function CabeceraCuerpo({ d, i, c, tramo, unidad }: { d: Diseno; i: number; c: Cuerpo; tramo: TramoId; unidad: Unidad }) {
   return (
     <header className="tarjeta-cuerpo-cabeza">
-      <span className={`numero-cuerpo${tramo !== 'base' ? ` ${tramo}` : ''}`}>{i + 1}</span>
+      <span className={`numero-cuerpo${claseTramo(tramo)}`}>{i + 1}</span>
       <strong>
         {prefijoTramo(d, tramo)} {i + 1}
       </strong>
@@ -131,20 +213,55 @@ function CabeceraCuerpo({ d, i, c, tramo, unidad }: { d: Diseno; i: number; c: C
   );
 }
 
-/** Tramos con módulos del mueble y sus frentes (para las pestañas Puertas y Cajones). */
-function gruposDe(d: Diseno, conAereos: boolean): { tramo: Tramo; cuerpos: Cuerpo[]; frentes: Frente[] }[] {
-  const grupos: { tramo: Tramo; cuerpos: Cuerpo[]; frentes: Frente[] }[] = [{ tramo: 'base', cuerpos: d.cuerpos, frentes: calcularLayout(d).frentes }];
-  const dr = disenoRetorno(d);
-  const r = retornoDe(d);
-  if (dr && r) grupos.push({ tramo: 'retorno', cuerpos: r.cuerpos, frentes: calcularLayout(dr).frentes });
-  const la = conAereos ? calcularLayoutAereos(d) : null;
-  if (la) grupos.push({ tramo: 'aereos', cuerpos: d.aereos.cuerpos, frentes: la.frentes });
-  return grupos;
+interface Grupo {
+  tramo: TramoId;
+  cuerpos: Cuerpo[];
+  frentes: Frente[];
+}
+
+/** Tramos con módulos del mueble y sus frentes, de izquierda a derecha (para las pestañas Puertas y Cajones). */
+function gruposDe(d: Diseno, conAereos: boolean): Grupo[] {
+  const out: Grupo[] = [];
+  for (const t of tramosOrdenados(d)) {
+    if (esAereo(t) && !conAereos) continue;
+    let frentes: Frente[] = [];
+    if (t === 'base') frentes = calcularLayout(disenoBase(d)).frentes;
+    else if (t === 'izq' || t === 'der') {
+      const dl = disenoLado(d, t);
+      frentes = dl ? calcularLayout(dl).frentes : [];
+    } else if (t === 'aereos') frentes = calcularLayoutAereos(d)?.frentes ?? [];
+    else frentes = calcularLayoutAereosLado(d, t === 'aereos-izq' ? 'izq' : 'der')?.frentes ?? [];
+    out.push({ tramo: t, cuerpos: cuerposDe(d, t), frentes });
+  }
+  return out;
+}
+
+function SeparadorTramo({ titulo }: { titulo: string }) {
+  return (
+    <div className="separador-tramo" role="heading" aria-level={3}>
+      {titulo}
+    </div>
+  );
+}
+
+/** Apertura de la puerta única (o de la impar de un módulo de 3 puertas). */
+function Apertura({ c, onCambio }: { c: Cuerpo; onCambio: (b: Cuerpo['bisagra']) => void }) {
+  return (
+    <Segmentado
+      etiqueta={c.puertas === 1 ? 'Abre hacia la' : 'La puerta 1 abre hacia la'}
+      valor={c.bisagra}
+      onCambio={onCambio}
+      opciones={[
+        { valor: 'izq', texto: 'Izquierda', titulo: 'Abre hacia la izquierda (bisagras a la izquierda)' },
+        { valor: 'der', texto: 'Derecha', titulo: 'Abre hacia la derecha (bisagras a la derecha)' },
+      ]}
+    />
+  );
 }
 
 // ---------- Puertas ----------
 
-export function PestanaPuertas({ d, unidad, cambiar }: PropsPestana) {
+export function PestanaPuertas({ d, unidad }: PropsPestana) {
   const grupos = gruposDe(d, true);
   return (
     <div className="pestana-contenido">
@@ -152,7 +269,7 @@ export function PestanaPuertas({ d, unidad, cambiar }: PropsPestana) {
         <Segmentado
           etiqueta="Tirador"
           valor={d.tirador}
-          onCambio={(v) => cambiar((x) => ({ ...x, tirador: v }))}
+          onCambio={(v) => operar({ op: 'fijarAcabados', tirador: v })}
           opciones={[
             { valor: 'barra', texto: 'Barra' },
             { valor: 'boton', texto: 'Botón' },
@@ -164,7 +281,7 @@ export function PestanaPuertas({ d, unidad, cambiar }: PropsPestana) {
       </div>
       <div className="lista-cuerpos">
         {grupos.flatMap((g) => [
-          ...(grupos.length > 1 ? [<SeparadorTramo key={`sep-${g.tramo}`} titulo={tituloTramo(d, g.tramo)} />] : []),
+          ...(grupos.length > 1 ? [<SeparadorTramo key={`sep-${g.tramo}`} titulo={nombreTramo(d, g.tramo)} />] : []),
           ...g.cuerpos.map((c, i) => {
             const conPuertas = c.tipo === 'frentes' || c.tipo === 'campana' || c.tipo === 'nicho';
             if (!conPuertas)
@@ -176,27 +293,16 @@ export function PestanaPuertas({ d, unidad, cambiar }: PropsPestana) {
               );
             const puertas = g.frentes.filter((f) => f.tipo === 'puerta' && f.cuerpo === i);
             const fija = c.tipo === 'nicho';
+            const act = (cambios: Partial<Cuerpo>) => operar({ op: 'actualizarModulo', tramo: g.tramo, modulo: c.id, cambios });
             return (
               <article key={c.id} className="tarjeta-cuerpo">
                 <CabeceraCuerpo d={d} i={i} c={c} tramo={g.tramo} unidad={unidad} />
-                {g.tramo === 'aereos' && c.tipo === 'frentes' && (
-                  <Interruptor activo={!!c.abatible} onCambio={(v) => cambiar((x) => actualizarCuerpo(x, i, { abatible: v, puertas: 1 }, g.tramo))} texto="Puerta abatible (se abre hacia arriba)" />
+                {esAereo(g.tramo) && c.tipo === 'frentes' && (
+                  <Interruptor activo={!!c.abatible} onCambio={(v) => act({ abatible: v, puertas: 1 })} texto="Puerta abatible (se abre hacia arriba)" />
                 )}
-                {!fija && !c.abatible && (
-                  <Contador etiqueta="Puertas" valor={c.puertas} max={4} onCambio={(v) => cambiar((x) => actualizarCuerpo(x, i, { puertas: v }, g.tramo))} />
-                )}
+                {!fija && !c.abatible && <Contador etiqueta="Puertas" valor={c.puertas} min={c.tipo === 'campana' ? 1 : 0} max={4} onCambio={(v) => act({ puertas: v })} />}
                 {fija && <p className="tenue">Puerta abatible sobre el nicho.</p>}
-                {c.puertas === 1 && !c.abatible && !fija && (
-                  <Segmentado
-                    etiqueta="Bisagra"
-                    valor={c.bisagra}
-                    onCambio={(v) => cambiar((x) => actualizarCuerpo(x, i, { bisagra: v }, g.tramo))}
-                    opciones={[
-                      { valor: 'izq', texto: 'Izquierda' },
-                      { valor: 'der', texto: 'Derecha' },
-                    ]}
-                  />
-                )}
+                {aperturaAjustable(c) && <Apertura c={c} onCambio={(v) => act({ bisagra: v })} />}
                 {puertas.length > 0 && (
                   <ul className="medidas-frentes">
                     {puertas.map((f) => (
@@ -217,46 +323,34 @@ export function PestanaPuertas({ d, unidad, cambiar }: PropsPestana) {
   );
 }
 
-function SeparadorTramo({ titulo }: { titulo: string }) {
-  return (
-    <div className="separador-tramo" role="heading" aria-level={3}>
-      {titulo}
-    </div>
-  );
-}
-
 // ---------- Cajones ----------
 
 export function PestanaCajones({ d, unidad, cambiar }: PropsPestana) {
   if (d.plantilla === 'tocador') return <CajonesTocador d={d} unidad={unidad} cambiar={cambiar} />;
   const grupos = gruposDe(d, false);
-  const fila = grupos[0].frentes.filter((f) => f.tipo === 'cajon' && f.cuerpo === -1);
+  const principal = grupos.find((g) => g.tramo === 'base')!;
+  const fila = principal.frentes.filter((f) => f.tipo === 'cajon' && f.cuerpo === -1);
   return (
     <div className="pestana-contenido">
       {d.plantilla === 'comoda' && (
         <div className="opciones-globales">
-          <Contador
-            etiqueta="Cajones pequeños en fila superior"
-            valor={d.filaSuperior}
-            max={4}
-            onCambio={(v) => cambiar((x) => ({ ...x, filaSuperior: v }))}
-          />
+          <Contador etiqueta="Cajones pequeños en fila superior" valor={d.filaSuperior} max={4} onCambio={(v) => cambiar((x) => ({ ...x, filaSuperior: v }))} />
           {fila.length > 0 && <p className="ayuda">Cada uno mide {medida(fila[0], unidad)}.</p>}
         </div>
       )}
       <div className="lista-cuerpos">
         {grupos.flatMap((g) => [
-          ...(grupos.length > 1 ? [<SeparadorTramo key={`sep-${g.tramo}`} titulo={tituloTramo(d, g.tramo)} />] : []),
+          ...(grupos.length > 1 ? [<SeparadorTramo key={`sep-${g.tramo}`} titulo={nombreTramo(d, g.tramo)} />] : []),
           ...g.cuerpos.map((c, i) => {
             if (c.tipo !== 'frentes')
               return (
                 <article key={c.id} className="tarjeta-cuerpo apagada">
                   <CabeceraCuerpo d={d} i={i} c={c} tramo={g.tramo} unidad={unidad} />
-                  <p className="tenue">{NOMBRE_TIPO[c.tipo]}: sin cajones.</p>
+                  <p className="tenue">{c.tipo === 'especiero' ? `${nombreModulo(c)}: cajón extraíble de alto completo.` : `${NOMBRE_TIPO[c.tipo]}: sin cajones.`}</p>
                 </article>
               );
             const cajones = g.frentes.filter((f) => f.tipo === 'cajon' && f.cuerpo === i);
-            const act = (cambios: Partial<Cuerpo>) => cambiar((x) => actualizarCuerpo(x, i, cambios, g.tramo));
+            const act = (cambios: Partial<Cuerpo>, grupo?: string) => operar({ op: 'actualizarModulo', tramo: g.tramo, modulo: c.id, cambios }, grupo);
             // Con el cajón arriba la puerta conserva al menos 20 cm: el frente del cajón llega hasta lo que deja libre.
             const puerta = c.cajonesArriba && c.puertas > 0 ? g.frentes.find((f) => f.tipo === 'puerta' && f.cuerpo === i) : undefined;
             const maxCajon =
@@ -307,7 +401,7 @@ export function PestanaCajones({ d, unidad, cambiar }: PropsPestana) {
                         unidad={unidad}
                         min={90}
                         max={maxCajon}
-                        onCambio={(mm) => cambiar((x) => actualizarCuerpo(x, i, { altoCajon: mm }, g.tramo), `alto-cajon-${g.tramo}-${i}`)}
+                        onCambio={(mm) => act({ altoCajon: mm }, `alto-cajon-${c.id}`)}
                       />
                     )}
                     {puerta && c.altoCajon > 0 && altoReal != null && c.altoCajon > altoReal && (
@@ -378,50 +472,18 @@ function CajonesTocador({ d, unidad, cambiar }: PropsPestana) {
 
 // ---------- Módulos y espacios ----------
 
-/** Largo máximo del tramo, para los avisos. */
-function maximoTexto(d: Diseno, tramo: Tramo, unidad: Unidad): string {
-  return formatear(tramo === 'retorno' ? LIMITES_RETORNO.largo[1] : maximoTramo(d, tramo), unidad);
-}
-
-/** Avisa que un módulo no cabe en el tramo (al agregarlo o al cambiarlo a horno). */
-function avisarNoCabe(d: Diseno, texto: string, anchoMinimo: number | null | undefined, unidad: Unidad, tramo: Tramo) {
-  const maximo = maximoTexto(d, tramo, unidad);
-  const necesita = anchoMinimo ? ` de ${formatear(anchoMinimo, unidad)}` : '';
-  const donde =
-    tramo === 'retorno' ? `el largo máximo de la L es ${maximo}` : tramo === 'aereos' && d.plantilla === 'compacto' ? 'el mueble superior ya está lleno' : `el ancho máximo es ${maximo}`;
-  useApp.getState().avisar(`No cabe «${texto}»${necesita}: ${donde}. Achica un módulo o el largo total.`, 'error');
-}
-
-/** Agrega un módulo avisando si no cabe o si queda más angosto. Devuelve la posición en que quedó. */
-function agregarConAviso(d: Diseno, preset: PresetModulo, posicion: number, cambiar: Cambiar, unidad: Unidad, tramo: Tramo = 'base'): number | null {
-  const { avisar } = useApp.getState();
-  const maximo = maximoTexto(d, tramo, unidad);
-  const ancho = anchoDisponible(d, preset.tipo, preset.ancho, preset.anchoMinimo, tramo);
-  if (ancho == null) {
-    avisarNoCabe(d, preset.texto, preset.anchoMinimo, unidad, tramo);
-    return null;
-  }
-  const i = Math.max(posicionMinima(d, tramo), Math.min(cuerposDe(d, tramo).length, posicion));
-  cambiar((x) => agregarModulo(x, preset, i, tramo));
-  if (ancho < preset.ancho) {
-    const motivo = tramo === 'aereos' && d.plantilla === 'compacto' ? 'los demás superiores se achicaron para hacerle espacio' : `es lo que quedaba hasta el máximo de ${maximo}`;
-    avisar(`Se agregó «${preset.texto}» con ${formatear(ancho, unidad)}: ${motivo}.`, 'info');
-  }
-  return i;
-}
-
 /** Dónde se ajusta el resto del módulo, según las pestañas que tiene este mueble. */
-function ayudaModulo(d: Diseno, c: Cuerpo, tramo: Tramo): string {
-  if (c.tipo === 'hueco') return tramo === 'aereos' ? 'Sin mueble: queda libre para una ventana o un extractor.' : 'Hueco libre para refrigerador, lavadora u otro equipo. La cubierta pasa por encima.';
+function ayudaModulo(d: Diseno, c: Cuerpo, tramo: TramoId): string {
+  if (c.tipo === 'hueco') return esAereo(tramo) ? 'Sin mueble: queda libre para una ventana o un extractor.' : 'Hueco libre para refrigerador, lavadora u otro equipo. La cubierta pasa por encima.';
   if (c.tipo === 'horno')
-    return d.plantilla === 'cocina-infantil'
-      ? 'Horno de juguete con puerta con ventana.'
-      : 'Horno empotrado: el módulo mide siempre 60 cm. Al cambiar el ancho del mueble se ajustan los demás módulos.';
+    return d.plantilla === 'cocina-infantil' ? 'Horno de juguete con puerta con ventana.' : 'Módulo para horno empotrado, con faja de melamina arriba.';
+  if (c.tipo === 'especiero') return 'Cajón extraíble de alto completo, con sus pisos interiores.';
   if (c.tipo === 'escritorio') return 'Cubierta de trabajo: ajusta aquí su ancho y su alto.';
-  if (c.tipo === 'campana') return 'Mueble más bajo con puertas: abajo queda la campana.';
+  if (c.tipo === 'campana') return c.campanaDe ? 'Aloja la campana: va centrado sobre su encimera.' : 'Mueble más bajo con puertas: abajo queda la campana.';
   if (c.tipo === 'nicho') return 'Puerta abatible arriba y nicho abierto con repisa para el microondas.';
+  if (contenidoEnEditor(d)) return '';
   const pestanas = pestanasDe(d.plantilla).filter(
-    (p) => (p.id === 'puertas' || (p.id === 'cajones' && tramo !== 'aereos') || (p.id === 'equipamiento' && p.texto === 'Interior' && tramo === 'base')),
+    (p) => p.id === 'puertas' || (p.id === 'cajones' && !esAereo(tramo)) || (p.id === 'equipamiento' && p.texto === 'Interior' && tramo === 'base'),
   );
   if (!pestanas.length) return '';
   const y = (xs: string[]) => (xs.length === 1 ? xs[0] : `${xs.slice(0, -1).join(', ')} y ${xs.at(-1)}`);
@@ -429,16 +491,239 @@ function ayudaModulo(d: Diseno, c: Cuerpo, tramo: Tramo): string {
   return `Sus ${que} se ajustan en ${pestanas.length === 1 ? 'la pestaña' : 'las pestañas'} ${y(pestanas.map((p) => p.texto))}.`;
 }
 
+/** En la cocina el editor del módulo también cambia puertas y cajones (en los demás muebles van en sus pestañas). */
+function contenidoEnEditor(d: Diseno): boolean {
+  return d.plantilla === 'cocina' || d.plantilla === 'compacto';
+}
+
 function nombreTipo(t: Cuerpo['tipo'], p: Plantilla): string {
   return t === 'horno' && p === 'cocina-infantil' ? 'Horno de juguete' : NOMBRE_TIPO[t];
 }
 
-/** Tramos que existen en el diseño (el retorno solo con forma L, los aéreos si están activos). */
-function tramosDe(d: Diseno): Tramo[] {
-  const out: Tramo[] = ['base'];
-  if (retornoDe(d)) out.push('retorno');
-  if (d.aereos.activo) out.push('aereos');
-  return out;
+const FORMAS: { valor: Forma; texto: string }[] = [
+  { valor: 'lineal', texto: 'Lineal' },
+  { valor: 'L-izq', texto: 'L izquierda' },
+  { valor: 'L-der', texto: 'L derecha' },
+  { valor: 'U', texto: 'U' },
+];
+
+/** Forma del mueble base y de los aéreos (solo la cocina). */
+function FormaCocina({ d }: { d: Diseno }) {
+  const set = useApp((s) => s.set);
+  const forma = formaBase(d);
+  const formaA = d.aereos.cuadrado ? 'cuadrado' : formaAereos(d);
+  const cambiarForma = (v: Forma) => {
+    const antes = tramosDe(d);
+    const r = operar({ op: 'fijarForma', forma: v });
+    if (!r.ok) return;
+    // Se abre el lado nuevo para darle sus medidas; en la U, el izquierdo.
+    const nuevo = tramosDe(r.diseno).find((t) => (t === 'izq' || t === 'der') && !antes.includes(t));
+    if (nuevo) set({ tramoActivo: nuevo, moduloActivo: 0 });
+  };
+  return (
+    <>
+      <Segmentado etiqueta="Forma del mueble" valor={forma} onCambio={cambiarForma} opciones={FORMAS} />
+      <Interruptor
+        activo={d.aereos.activo}
+        onCambio={(v) => {
+          const r = operar({ op: 'activarAereos', activo: v });
+          if (r.ok) set({ tramoActivo: v ? 'aereos' : 'base', moduloActivo: 0 });
+        }}
+        texto="Muebles aéreos"
+      />
+      {d.aereos.activo && (
+        <Segmentado
+          etiqueta="Forma de los aéreos"
+          valor={formaA}
+          onCambio={(v) => (v === 'cuadrado' ? operar({ op: 'fijarAereosCuadrados', cuadrado: true }) : operar({ op: 'fijarFormaAereos', forma: v }))}
+          opciones={[{ valor: 'cuadrado' as const, texto: 'Igual al mueble (cuadrado)', titulo: 'Siguen la forma y los largos del mueble base' }, ...FORMAS]}
+        />
+      )}
+    </>
+  );
+}
+
+/** Medidas propias del tramo elegido: lados de la L/U y aéreos. Van antes de la tira para verlas sin desplazar el panel. */
+function MedidasTramo({ d, tramo, unidad }: { d: Diseno; tramo: TramoId; unidad: Unidad }) {
+  if (tramo === 'izq' || tramo === 'der') {
+    const l = d.lados[tramo];
+    if (!l) return null;
+    const lado = tramo;
+    return (
+      <div className="opciones-globales espacios">
+        <CampoMedida
+          etiqueta="Largo (desde el muro)"
+          compacto
+          valor={l.largo}
+          unidad={unidad}
+          min={LIMITES_LADO.largo[0]}
+          max={LIMITES_LADO.largo[1]}
+          onCambio={(mm) => operar({ op: 'fijarLado', lado, largo: mm }, `largo-${lado}`)}
+        />
+        <CampoMedida
+          etiqueta="Fondo"
+          compacto
+          valor={l.profundidad}
+          unidad={unidad}
+          min={LIMITES_LADO.profundidad[0]}
+          max={LIMITES_LADO.profundidad[1]}
+          onCambio={(mm) => operar({ op: 'fijarLado', lado, profundidad: mm }, `fondo-${lado}`)}
+        />
+        <p className="ayuda">
+          Medido completo, con la esquina. Para módulos quedan {formatear(largoTramo(d, tramo), unidad)} (el resto es la esquina bajo la cubierta del tramo principal).
+        </p>
+      </div>
+    );
+  }
+  if (tramo === 'base') {
+    if (d.plantilla !== 'cocina' || formaBase(d) === 'lineal') return null;
+    return (
+      <p className="ayuda ayuda-tramo">
+        Tramo principal: {formatear(largoPrincipalConEsquinas(d), unidad)} medido completo, con las esquinas (sus módulos suman {formatear(d.ancho, unidad)}). Su largo y su fondo se cambian en Medidas.
+      </p>
+    );
+  }
+  const a = d.aereos;
+  if (tramo === 'aereos') {
+    if (d.plantilla === 'compacto')
+      return (
+        <div className="opciones-globales espacios">
+          <CampoMedida
+            etiqueta="Alto del mueble base"
+            compacto
+            valor={a.elevacion}
+            unidad={unidad}
+            min={LIMITES_AEREOS.base[0]}
+            max={LIMITES_AEREOS.base[1]}
+            onCambio={(mm) => operar({ op: 'fijarAereos', elevacion: mm }, 'base-compacto')}
+          />
+          <CampoMedida
+            etiqueta="Alto del mueble superior"
+            compacto
+            valor={a.alto}
+            unidad={unidad}
+            min={LIMITES_AEREOS.alto[0]}
+            max={d.alto - a.elevacion - 300}
+            onCambio={(mm) => operar({ op: 'fijarAereos', alto: mm }, 'alto-aereos')}
+          />
+          <CampoMedida
+            etiqueta="Fondo"
+            compacto
+            valor={a.profundidad}
+            unidad={unidad}
+            min={LIMITES_AEREOS.profundidad[0]}
+            max={Math.min(LIMITES_AEREOS.profundidad[1], d.profundidad)}
+            onCambio={(mm) => operar({ op: 'fijarAereos', profundidad: mm }, 'fondo-aereos')}
+          />
+        </div>
+      );
+    const forma = formaAereos(d);
+    return (
+      <div className="opciones-globales espacios">
+        <CampoMedida
+          etiqueta="Altura desde el piso"
+          compacto
+          valor={a.elevacion}
+          unidad={unidad}
+          min={LIMITES_AEREOS.elevacion[0]}
+          max={LIMITES_AEREOS.elevacion[1]}
+          onCambio={(mm) => operar({ op: 'fijarAereos', elevacion: mm }, 'elevacion')}
+        />
+        <CampoMedida
+          etiqueta="Alto de los aéreos"
+          compacto
+          valor={a.alto}
+          unidad={unidad}
+          min={LIMITES_AEREOS.alto[0]}
+          max={LIMITES_AEREOS.alto[1]}
+          onCambio={(mm) => operar({ op: 'fijarAereos', alto: mm }, 'alto-aereos')}
+        />
+        <CampoMedida
+          etiqueta="Fondo"
+          compacto
+          valor={a.profundidad}
+          unidad={unidad}
+          min={LIMITES_AEREOS.profundidad[0]}
+          max={LIMITES_AEREOS.profundidad[1]}
+          onCambio={(mm) => operar({ op: 'fijarAereos', profundidad: mm }, 'fondo-aereos')}
+        />
+        {!a.cuadrado && forma !== 'U' && (
+          <CampoMedida
+            etiqueta="Largo"
+            compacto
+            valor={largoTramo(d, 'aereos')}
+            unidad={unidad}
+            min={LIMITES_AEREOS.ancho[0]}
+            max={LIMITES_AEREOS.ancho[1]}
+            onCambio={(mm) => operar({ op: 'fijarLargoAereos', largo: mm }, 'largo-aereos')}
+          />
+        )}
+        {!a.cuadrado && forma === 'lineal' && (
+          <Segmentado
+            etiqueta="Alineación"
+            valor={a.alineacion}
+            onCambio={(v) => operar({ op: 'fijarAereos', alineacion: v })}
+            opciones={[
+              { valor: 'izq', texto: 'Izquierda' },
+              { valor: 'centro', texto: 'Centro' },
+              { valor: 'der', texto: 'Derecha' },
+            ]}
+          />
+        )}
+        <p className="ayuda">
+          {a.cuadrado
+            ? 'Iguales al mueble: siguen su forma y sus largos. Al cambiar un largo aquí quedan a medida.'
+            : forma === 'U'
+              ? 'En U el aéreo principal va de muro a muro.'
+              : 'El alto y la altura valen para todos los aéreos.'}
+        </p>
+      </div>
+    );
+  }
+  const lado = tramo === 'aereos-izq' ? 'izq' : 'der';
+  const la = a.lados[lado];
+  if (!la) return null;
+  return (
+    <div className="opciones-globales espacios">
+      {!a.cuadrado && (
+        <CampoMedida
+          etiqueta="Largo (desde el muro)"
+          compacto
+          valor={la.largo}
+          unidad={unidad}
+          min={LIMITES_AEREOS.ladoLargo[0]}
+          max={LIMITES_AEREOS.ladoLargo[1]}
+          onCambio={(mm) => operar({ op: 'fijarLadoAereo', lado, largo: mm }, `largo-aereo-${lado}`)}
+        />
+      )}
+      <CampoMedida
+        etiqueta="Fondo"
+        compacto
+        valor={la.profundidad}
+        unidad={unidad}
+        min={LIMITES_AEREOS.profundidad[0]}
+        max={LIMITES_AEREOS.profundidad[1]}
+        onCambio={(mm) => operar({ op: 'fijarLadoAereo', lado, profundidad: mm }, `fondo-aereo-${lado}`)}
+      />
+      <p className="ayuda">
+        {a.cuadrado ? `Largo ${formatear(la.largo, unidad)}, igual al lado del mueble. ` : ''}
+        Alto {formatear(a.alto, unidad)} a {formatear(a.elevacion, unidad)} del piso, como el aéreo principal.
+      </p>
+    </div>
+  );
+}
+
+const TEXTO_ROL = { fijo: 'Fijo', equipado: 'Equipado', ajustable: 'Ajustable' } as const;
+
+function ayudaRol(d: Diseno, tramo: TramoId, c: Cuerpo, unidad: Unidad): string {
+  const rol = rolModulo(d, tramo, c);
+  if (rol === 'fijo') return `Mide siempre ${formatear(c.ancho, unidad)}: no cede ni toma espacio.`;
+  if (rol === 'equipado')
+    return esAereo(tramo)
+      ? 'Aloja la campana: va siempre centrado sobre su encimera.'
+      : 'Lleva equipamiento: conserva su ancho cuando agregas, quitas o mueves otros módulos.';
+  const l = limitesModulo(d, tramo, c);
+  return `Cede o toma espacio cuando agregas o quitas módulos (mínimo ${formatear(l.min, unidad)}${Number.isFinite(l.max) ? `, máximo ${formatear(l.max, unidad)}` : ''}).`;
 }
 
 export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
@@ -446,13 +731,14 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
   const tramoGuardado = useApp((s) => s.tramoActivo);
   const set = useApp((s) => s.set);
   const [insertarEn, setInsertarEn] = useState<number | null>(null);
-  const tramos = tramosDe(d);
-  const tramo: Tramo = tramos.includes(tramoGuardado) ? tramoGuardado : 'base';
+  const tramos = tramosOrdenados(d);
+  const tramo: TramoId = tramos.includes(tramoGuardado) ? tramoGuardado : 'base';
   const cuerpos = cuerposDe(d, tramo);
   const n = cuerpos.length;
   const activo = Math.max(0, Math.min(n - 1, guardado));
   const tira = useRef<HTMLDivElement>(null);
   const panelInsertar = useRef<HTMLDivElement>(null);
+  const equipos = useMemo(() => listarEquipamiento(d), [d]);
   // El panel de inserción se cierra si cambia el mueble, el tramo, la cantidad de módulos (deshacer) o el módulo elegido.
   useEffect(() => setInsertarEn(null), [n, d.plantilla, guardado, tramo]);
   useEffect(() => {
@@ -464,166 +750,162 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
   }, [activo, n, tramo]);
   if (d.plantilla === 'tocador') return <EstructuraTocador d={d} unidad={unidad} cambiar={cambiar} />;
 
-  const tipos = tiposPermitidos(d.plantilla, tramo);
+  const tipos = tiposPermitidos(d, tramo);
   const presets = presetsModulo(d.plantilla, tramo);
   const c = cuerpos[activo];
   const minPos = posicionMinima(d, tramo);
   const insertar = insertarEn != null && insertarEn >= minPos && insertarEn <= n ? insertarEn : null;
   const prefijo = prefijoTramo(d, tramo);
-  const retorno = retornoDe(d);
-  const largo = tramo === 'retorno' && retorno ? retorno.largo : largoTramo(d, tramo);
-  const cocinaAdulta = d.plantilla === 'cocina' || d.plantilla === 'compacto';
-  // El horno mide siempre lo mismo, y el superior único del compacto, lo mismo que el base.
-  const anchoBloqueado = !!c && (anchoFijo(d.plantilla, c) != null || (tramo === 'aereos' && d.plantilla === 'compacto' && n === 1));
+  const conTramos = d.plantilla === 'cocina' || d.plantilla === 'compacto';
+  const pestanas = pestanasDe(d.plantilla).map((p) => p.id);
+  const enEditor = contenidoEnEditor(d);
 
   const agregar = (preset: PresetModulo, posicion: number) => {
     setInsertarEn(null);
-    const i = agregarConAviso(d, preset, posicion, cambiar, unidad, tramo);
-    if (i != null) set({ moduloActivo: i });
+    const r = operar({ op: 'agregarModulo', tramo, preset: preset.id, posicion: Math.max(minPos, Math.min(n, posicion)) });
+    elegirModulo(r, tramo);
   };
   const elegir = (i: number) => {
     setInsertarEn(null);
     set({ moduloActivo: i });
   };
-  const elegirTramo = (t: Tramo) => set({ tramoActivo: t, moduloActivo: 0 });
-  const act = (cambios: Partial<Cuerpo>, grupo?: string) => cambiar((x) => actualizarCuerpo(x, activo, cambios, tramo), grupo);
+  const elegirTramo = (t: TramoId) => set({ tramoActivo: t, moduloActivo: 0 });
+
+  const editor = (() => {
+    if (!c) return null;
+    const act = (cambios: Partial<Cuerpo>, grupo?: string) => operar({ op: 'actualizarModulo', tramo, modulo: c.id, cambios }, grupo);
+    const rol = rolModulo(d, tramo, c);
+    const lim = limitesModulo(d, tramo, c);
+    const campanaAlojada = c.tipo === 'campana' && !!c.campanaDe;
+    // El horno y el especiero miden siempre lo mismo; el superior único del compacto, lo mismo que el base.
+    const bloqueado = rol === 'fijo' || campanaAlojada || (tramo === 'aereos' && d.plantilla === 'compacto' && n === 1);
+    const lleva = equipos.filter((e) => e.tramo === tramo && e.modulo === c.id);
+    const mover = (delta: -1 | 1) => elegirModulo(operar({ op: 'moverModulo', tramo, modulo: c.id, delta }), tramo, c.id);
+    const conPuertas = enEditor && pestanas.includes('puertas') && (c.tipo === 'frentes' || c.tipo === 'campana') && !c.abatible;
+    const conCajones = enEditor && pestanas.includes('cajones') && c.tipo === 'frentes' && !esAereo(tramo);
+    return (
+      <div className={`modulo-editor${c.tipo === 'hueco' ? ' hueco' : ''}`}>
+        <div className="modulo-editor-cabeza">
+          <span className={`numero-cuerpo${claseTramo(tramo)}`}>{activo + 1}</span>
+          <strong>
+            {prefijo} {activo + 1}
+          </strong>
+          <span className={`chip-rol ${rol}`} title={ayudaRol(d, tramo, c, unidad)}>
+            {TEXTO_ROL[rol]}
+          </span>
+          <span className="acciones-cuerpo">
+            <button type="button" className="boton-icono" aria-label="Mover a la izquierda" title="Mover a la izquierda" disabled={activo - 1 < minPos} onClick={() => mover(-1)}>
+              <IcoIzq width={15} height={15} />
+            </button>
+            <button
+              type="button"
+              className="boton-icono"
+              aria-label="Mover a la derecha"
+              title="Mover a la derecha"
+              disabled={activo === n - 1 || activo < minPos}
+              onClick={() => mover(1)}
+            >
+              <IcoDer width={15} height={15} />
+            </button>
+            <button
+              type="button"
+              className="boton-icono peligro"
+              aria-label={`Quitar ${prefijo.toLowerCase()} ${activo + 1}`}
+              title="Quitar este módulo"
+              disabled={n <= 1}
+              onClick={() => {
+                const r = operar({ op: 'quitarModulo', tramo, modulo: c.id });
+                if (r.ok) set({ moduloActivo: Math.max(0, activo - 1) });
+              }}
+            >
+              <IcoBasura width={15} height={15} />
+            </button>
+          </span>
+        </div>
+        <p className="rol-modulo">{ayudaRol(d, tramo, c, unidad)}</p>
+        {lleva.length > 0 && (
+          <p className="equipos-modulo">
+            Lleva: {lleva.map((e) => e.nombre).join(', ')}. <span className="tenue">Se cambia en Equipamiento.</span>
+          </p>
+        )}
+        {tipos.length > 1 && !campanaAlojada && (
+          <Selector
+            etiqueta="Tipo"
+            valor={c.tipo}
+            opciones={tipos.filter((t) => t !== 'campana' || c.tipo === 'campana').map((t) => ({ valor: t, texto: nombreTipo(t, d.plantilla) }))}
+            onCambio={(v) =>
+              act({
+                tipo: v,
+                ...(v === 'frentes' ? { puertas: Math.max(1, c.puertas), abatible: false } : {}),
+                ...(v === 'nicho' ? { puertas: 1, abatible: true } : {}),
+                ...(v === 'especiero' ? { pisos: 2 } : {}),
+                ...(v === 'escritorio' ? { alto: 750 } : { alto: 0 }),
+              })
+            }
+          />
+        )}
+        <CampoMedida
+          etiqueta={bloqueado ? 'Ancho del módulo (fijo)' : 'Ancho del módulo'}
+          compacto
+          valor={c.ancho}
+          unidad={unidad}
+          min={lim.min}
+          max={Number.isFinite(lim.max) ? lim.max : Math.max(lim.min, maximoTramo(d, tramo))}
+          deshabilitado={bloqueado}
+          onCambio={(mm) => operar({ op: 'fijarAnchoModulo', tramo, modulo: c.id, ancho: mm }, `ancho-cuerpo-${c.id}`)}
+        />
+        {c.tipo === 'escritorio' && (
+          <CampoMedida
+            etiqueta="Alto del escritorio"
+            compacto
+            valor={c.alto || 750}
+            unidad={unidad}
+            min={450}
+            max={Math.min(900, d.alto)}
+            onCambio={(mm) => act({ alto: mm }, `alto-esc-${c.id}`)}
+          />
+        )}
+        {conPuertas && <Contador etiqueta="Puertas" valor={c.puertas} min={c.tipo === 'campana' ? 1 : 0} max={4} onCambio={(v) => act({ puertas: v })} />}
+        {conCajones && <Contador etiqueta="Cajones" valor={c.cajones} max={12} onCambio={(v) => act({ cajones: v })} />}
+        {aperturaAjustable(c) && <Apertura c={c} onCambio={(v) => act({ bisagra: v })} />}
+        {esAereo(tramo) && c.tipo === 'frentes' && <Interruptor activo={!!c.abatible} onCambio={(v) => act({ abatible: v, puertas: 1 })} texto="Abatible" />}
+        {c.tipo === 'especiero' && (
+          <Segmentado
+            etiqueta="Pisos"
+            valor={String(c.pisos ?? 2) as '2' | '3'}
+            onCambio={(v) => act({ pisos: Number(v) })}
+            opciones={[
+              { valor: '2', texto: '2 pisos' },
+              { valor: '3', texto: '3 pisos' },
+            ]}
+          />
+        )}
+        {ayudaModulo(d, c, tramo) && <p className="tenue">{ayudaModulo(d, c, tramo)}</p>}
+      </div>
+    );
+  })();
 
   return (
     <div className="pestana-contenido modulos">
-      {cocinaAdulta && (
+      {conTramos && (
         <div className="modulos-forma">
-          {d.plantilla === 'cocina' && (
-            <>
-              <Segmentado
-                etiqueta="Forma"
-                valor={retorno ? retorno.lado : 'lineal'}
-                onCambio={(v) => {
-                  cambiar((x) => fijarForma(x, v === 'lineal' ? null : v));
-                  set({ tramoActivo: v === 'lineal' ? 'base' : 'retorno', moduloActivo: 0 });
-                }}
-                opciones={[
-                  { valor: 'lineal', texto: 'Lineal' },
-                  { valor: 'izq', texto: 'L izquierda' },
-                  { valor: 'der', texto: 'L derecha' },
-                ]}
-              />
-              <Interruptor
-                activo={d.aereos.activo}
-                onCambio={(v) => {
-                  cambiar((x) => activarAereos(x, v));
-                  set({ tramoActivo: v ? 'aereos' : 'base', moduloActivo: 0 });
-                }}
-                texto="Muebles aéreos"
-              />
-            </>
-          )}
+          {d.plantilla === 'cocina' && <FormaCocina d={d} />}
           {tramos.length > 1 && (
             <div className="selector-tramo" role="tablist" aria-label="Tramo que editas">
               {tramos.map((t) => (
                 <button key={t} type="button" role="tab" aria-selected={t === tramo} className={t === tramo ? 'activo' : ''} onClick={() => elegirTramo(t)}>
-                  {tituloTramo(d, t)}
+                  {etiquetaTramo(d, t)}
                 </button>
               ))}
             </div>
           )}
         </div>
       )}
-      {/* Medidas propias de la L o de los aéreos: van antes de la tira para que se vean sin desplazar el panel. */}
-      {tramo === 'retorno' && retorno && (
-        <div className="opciones-globales espacios">
-          <CampoMedida
-            etiqueta="Largo de la L (desde el muro)"
-            compacto
-            valor={retorno.largo}
-            unidad={unidad}
-            min={Math.max(LIMITES_RETORNO.largo[0], d.profundidad + 150)}
-            max={LIMITES_RETORNO.largo[1]}
-            onCambio={(mm) => cambiar((x) => fijarRetorno(x, { largo: mm }), 'largo-l')}
-          />
-          <CampoMedida
-            etiqueta="Fondo de la L"
-            compacto
-            valor={retorno.profundidad}
-            unidad={unidad}
-            min={LIMITES_RETORNO.profundidad[0]}
-            max={LIMITES_RETORNO.profundidad[1]}
-            onCambio={(mm) => cambiar((x) => fijarRetorno(x, { profundidad: mm }), 'fondo-l')}
-          />
-          <p className="ayuda">
-            Largo total del tramo principal con la esquina: {formatear(d.ancho + retorno.profundidad, unidad)}.
-          </p>
-        </div>
-      )}
-      {tramo === 'aereos' && (
-        <div className="opciones-globales espacios">
-          {d.plantilla === 'compacto' ? (
-            <CampoMedida
-              etiqueta="Alto del mueble base"
-              compacto
-              valor={d.aereos.elevacion}
-              unidad={unidad}
-              min={LIMITES_AEREOS.base[0]}
-              max={LIMITES_AEREOS.base[1]}
-              onCambio={(mm) => cambiar((x) => fijarAereos(x, { elevacion: mm }), 'base-compacto')}
-            />
-          ) : (
-            <CampoMedida
-              etiqueta="Altura desde el piso"
-              compacto
-              valor={d.aereos.elevacion}
-              unidad={unidad}
-              min={LIMITES_AEREOS.elevacion[0]}
-              max={LIMITES_AEREOS.elevacion[1]}
-              onCambio={(mm) => cambiar((x) => fijarAereos(x, { elevacion: mm }), 'elevacion')}
-            />
-          )}
-          <CampoMedida
-            etiqueta={d.plantilla === 'compacto' ? 'Alto del mueble superior' : 'Alto de los aéreos'}
-            compacto
-            valor={d.aereos.alto}
-            unidad={unidad}
-            min={LIMITES_AEREOS.alto[0]}
-            max={d.plantilla === 'compacto' ? d.alto - d.aereos.elevacion - 300 : LIMITES_AEREOS.alto[1]}
-            onCambio={(mm) => cambiar((x) => fijarAereos(x, { alto: mm }), 'alto-aereos')}
-          />
-          <CampoMedida
-            etiqueta="Fondo"
-            compacto
-            valor={d.aereos.profundidad}
-            unidad={unidad}
-            min={LIMITES_AEREOS.profundidad[0]}
-            max={d.plantilla === 'compacto' ? Math.min(LIMITES_AEREOS.profundidad[1], d.profundidad) : LIMITES_AEREOS.profundidad[1]}
-            onCambio={(mm) => cambiar((x) => fijarAereos(x, { profundidad: mm }), 'fondo-aereos')}
-          />
-          {d.plantilla !== 'compacto' && (
-            <>
-              <CampoMedida
-                etiqueta="Largo de los aéreos"
-                compacto
-                valor={largoTramo(d, 'aereos')}
-                unidad={unidad}
-                min={LIMITES_AEREOS.ancho[0]}
-                max={LIMITES_AEREOS.ancho[1]}
-                onCambio={(mm) => cambiar((x) => fijarAnchoAereos(x, mm), 'largo-aereos')}
-              />
-              <Segmentado
-                etiqueta="Alineación"
-                valor={d.aereos.alineacion}
-                onCambio={(v) => cambiar((x) => fijarAereos(x, { alineacion: v }))}
-                opciones={[
-                  { valor: 'izq', texto: 'Izquierda' },
-                  { valor: 'centro', texto: 'Centro' },
-                  { valor: 'der', texto: 'Derecha' },
-                ]}
-              />
-            </>
-          )}
-        </div>
-      )}
+      <MedidasTramo d={d} tramo={tramo} unidad={unidad} />
 
       <div className="modulos-cabeza">
         <strong>
-          {tramos.length > 1 ? tituloTramo(d, tramo) : 'Distribución'} · {n} {n === 1 ? 'módulo' : 'módulos'} · {formatear(largo, unidad)}
+          {tramos.length > 1 ? nombreTramo(d, tramo) : 'Distribución'} · {n} {n === 1 ? 'módulo' : 'módulos'} · {formatear(largoTramo(d, tramo), unidad)}
         </strong>
         <div className="modulos-agregar" role="group" aria-label="Agregar al final">
           {presets.map((p) => (
@@ -634,29 +916,32 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
         </div>
       </div>
 
-      <div className={`tira-modulos ${tramo}`} ref={tira} role="group" aria-label={`${tituloTramo(d, tramo)}: módulos de izquierda a derecha`}>
-        {cuerpos.map((m, i) => (
-          <Fragment key={m.id}>
-            {i >= minPos && <BotonInsertar posicion={i} abierto={insertar === i} onClick={() => setInsertarEn(insertar === i ? null : i)} />}
-            <button
-              type="button"
-              className={`bloque-modulo ${m.tipo}${i === activo ? ' activo' : ''}`}
-              style={{ flexGrow: m.ancho }}
-              aria-pressed={i === activo}
-              aria-label={`${prefijo} ${i + 1}: ${nombreModulo(m)}, ${formatear(m.ancho, unidad)}`}
-              onClick={() => elegir(i)}
-            >
-              <span className={`numero-cuerpo${tramo !== 'base' ? ` ${tramo}` : ''}`}>{i + 1}</span>
-              <span className="bloque-modulo-texto">
-                <span className="bloque-modulo-nombre">{nombreModulo(m)}</span>
-                <span className="bloque-modulo-ancho">
-                  {formatear(m.ancho, unidad)}
-                  {tramo === 'base' && anchoFijo(d.plantilla, m) != null ? ' · fijo' : ''}
+      <div className={`tira-modulos ${tramo}`} ref={tira} role="group" aria-label={`${nombreTramo(d, tramo)}: módulos de izquierda a derecha`}>
+        {cuerpos.map((m, i) => {
+          const rol = rolModulo(d, tramo, m);
+          return (
+            <Fragment key={m.id}>
+              {i >= minPos && <BotonInsertar posicion={i} abierto={insertar === i} onClick={() => setInsertarEn(insertar === i ? null : i)} />}
+              <button
+                type="button"
+                className={`bloque-modulo ${m.tipo}${i === activo ? ' activo' : ''}${rol !== 'ajustable' ? ` ${rol}` : ''}`}
+                style={{ flexGrow: m.ancho }}
+                aria-pressed={i === activo}
+                aria-label={`${mayus(nombreModuloEn(d, tramo, i))}: ${nombreModulo(m)}, ${formatear(m.ancho, unidad)}${rol !== 'ajustable' ? `, ${rol}` : ''}`}
+                onClick={() => elegir(i)}
+              >
+                <span className={`numero-cuerpo${claseTramo(tramo)}`}>{i + 1}</span>
+                <span className="bloque-modulo-texto">
+                  <span className="bloque-modulo-nombre">{nombreModulo(m)}</span>
+                  <span className="bloque-modulo-ancho">
+                    {formatear(m.ancho, unidad)}
+                    {rol !== 'ajustable' ? ` · ${rol}` : ''}
+                  </span>
                 </span>
-              </span>
-            </button>
-          </Fragment>
-        ))}
+              </button>
+            </Fragment>
+          );
+        })}
         <BotonInsertar posicion={n} abierto={insertar === n} onClick={() => setInsertarEn(insertar === n ? null : n)} />
       </div>
 
@@ -667,7 +952,7 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
               ? 'Agregar al comienzo (izquierda):'
               : insertar === n
                 ? 'Agregar al final (derecha):'
-                : `Agregar entre ${prefijo.toLowerCase() === 'módulo' ? 'el módulo' : `el ${prefijo}`} ${insertar} y el ${insertar + 1}:`}
+                : `Agregar entre ${prefijo.toLowerCase() === 'módulo' ? 'el módulo' : `el ${prefijo.toLowerCase()}`} ${insertar} y el ${insertar + 1}:`}
           </span>
           {presets.map((p) => (
             <button key={p.id} type="button" className="boton secundario chico" title={p.ayuda} onClick={() => agregar(p, insertar)}>
@@ -678,109 +963,9 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
             Cancelar
           </button>
         </div>
-      ) : c ? (
-        <div className={`modulo-editor${c.tipo === 'hueco' ? ' hueco' : ''}`}>
-          <div className="modulo-editor-cabeza">
-            <span className={`numero-cuerpo${tramo !== 'base' ? ` ${tramo}` : ''}`}>{activo + 1}</span>
-            <strong>
-              {prefijo} {activo + 1}
-            </strong>
-            <span className="acciones-cuerpo">
-              <button
-                type="button"
-                className="boton-icono"
-                aria-label="Mover a la izquierda"
-                title="Mover a la izquierda"
-                disabled={activo - 1 < minPos}
-                onClick={() => {
-                  cambiar((x) => moverCuerpo(x, activo, -1, tramo));
-                  set({ moduloActivo: activo - 1 });
-                }}
-              >
-                <IcoIzq width={15} height={15} />
-              </button>
-              <button
-                type="button"
-                className="boton-icono"
-                aria-label="Mover a la derecha"
-                title="Mover a la derecha"
-                disabled={activo === n - 1 || activo < minPos}
-                onClick={() => {
-                  cambiar((x) => moverCuerpo(x, activo, 1, tramo));
-                  set({ moduloActivo: activo + 1 });
-                }}
-              >
-                <IcoDer width={15} height={15} />
-              </button>
-              <button
-                type="button"
-                className="boton-icono peligro"
-                aria-label={`Quitar ${prefijo.toLowerCase()} ${activo + 1}`}
-                title="Quitar este módulo"
-                disabled={n <= 1}
-                onClick={() => {
-                  cambiar((x) => quitarCuerpo(x, activo, tramo));
-                  set({ moduloActivo: Math.max(0, activo - 1) });
-                }}
-              >
-                <IcoBasura width={15} height={15} />
-              </button>
-            </span>
-          </div>
-          {tipos.length > 1 && (
-            <Selector
-              etiqueta="Tipo"
-              valor={c.tipo}
-              opciones={tipos.map((t) => ({ valor: t, texto: nombreTipo(t, d.plantilla) }))}
-              onCambio={(v) => {
-                const cambios: Partial<Cuerpo> = {
-                  tipo: v,
-                  ...(v === 'frentes' ? { puertas: Math.max(1, c.puertas), abatible: false } : {}),
-                  ...(v === 'campana' ? { puertas: 2, abatible: false } : {}),
-                  ...(v === 'nicho' ? { puertas: 1, abatible: true } : {}),
-                  ...(v === 'escritorio' ? { alto: 750 } : { alto: 0 }),
-                };
-                // El horno mide siempre lo mismo; si no cabe, las reglas no hacen el cambio y se avisa por qué.
-                const fijo = anchoFijo(d.plantilla, { ...c, tipo: v });
-                if (fijo != null && actualizarCuerpo(d, activo, cambios, tramo) === d) {
-                  avisarNoCabe(d, nombreTipo(v, d.plantilla), fijo, unidad, tramo);
-                  return;
-                }
-                act(cambios);
-              }}
-            />
-          )}
-          <CampoMedida
-            etiqueta={anchoBloqueado ? 'Ancho del módulo (fijo)' : 'Ancho del módulo'}
-            compacto
-            valor={c.ancho}
-            unidad={unidad}
-            min={c.tipo === 'hueco' ? ANCHO_MIN_HUECO : ANCHO_MIN_CUERPO}
-            max={1500}
-            deshabilitado={anchoBloqueado}
-            onCambio={(mm) => act({ ancho: mm }, `ancho-cuerpo-${c.id}`)}
-          />
-          {c.tipo === 'escritorio' && (
-            <CampoMedida
-              etiqueta="Alto del escritorio"
-              compacto
-              valor={c.alto || 750}
-              unidad={unidad}
-              min={450}
-              max={Math.min(900, d.alto)}
-              onCambio={(mm) => act({ alto: mm }, `alto-esc-${c.id}`)}
-            />
-          )}
-          {tramo !== 'base' && (c.tipo === 'frentes' || c.tipo === 'campana') && !c.abatible && (
-            <Contador etiqueta="Puertas" valor={c.puertas} max={4} onCambio={(v) => act({ puertas: v })} />
-          )}
-          {tramo === 'retorno' && c.tipo === 'frentes' && <Contador etiqueta="Cajones" valor={c.cajones} max={8} onCambio={(v) => act({ cajones: v })} />}
-          {tramo === 'aereos' && c.tipo === 'frentes' && (
-            <Interruptor activo={!!c.abatible} onCambio={(v) => act({ abatible: v, puertas: 1 })} texto="Abatible" />
-          )}
-          <p className="tenue">{ayudaModulo(d, c, tramo)}</p>
-        </div>
-      ) : null}
+      ) : (
+        editor
+      )}
 
       {tramo === 'base' && (
         <div className="opciones-globales espacios">
@@ -792,7 +977,7 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
             paso={unidad === 'cm' ? 5 : 1}
             min={0}
             max={200}
-            onCambio={(mm) => cambiar((x) => fijarSeparacion(x, mm), 'separacion')}
+            onCambio={(mm) => operar({ op: 'fijarSeparacion', separacion: mm }, 'separacion')}
           />
           <CampoMedida
             etiqueta="Zócalo"
@@ -802,7 +987,7 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
             paso={unidad === 'cm' ? 5 : 1}
             min={0}
             max={200}
-            onCambio={(mm) => cambiar((x) => ({ ...x, zocalo: mm }), 'zocalo')}
+            onCambio={(mm) => operar({ op: 'fijarAcabados', zocalo: mm }, 'zocalo')}
           />
           <CampoMedida
             etiqueta="Luz entre frentes"
@@ -812,12 +997,12 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
             paso={1}
             min={1}
             max={10}
-            onCambio={(mm) => cambiar((x) => ({ ...x, luzFrentes: mm }), 'luz')}
+            onCambio={(mm) => operar({ op: 'fijarAcabados', luzFrentes: mm }, 'luz')}
           />
           <Segmentado
             etiqueta="Espesor melamina"
             valor={String(d.espesor) as '15' | '18'}
-            onCambio={(v) => cambiar((x) => ({ ...x, espesor: v === '18' ? 18 : 15 }))}
+            onCambio={(v) => operar({ op: 'fijarAcabados', espesor: v === '18' ? 18 : 15 })}
             opciones={[
               { valor: '15', texto: '15 mm' },
               { valor: '18', texto: '18 mm' },
@@ -865,12 +1050,12 @@ function EstructuraTocador({ d, unidad, cambiar }: PropsPestana) {
           paso={1}
           min={1}
           max={10}
-          onCambio={(mm) => cambiar((x) => ({ ...x, luzFrentes: mm }), 'luz')}
+          onCambio={(mm) => operar({ op: 'fijarAcabados', luzFrentes: mm }, 'luz')}
         />
         <Segmentado
           etiqueta="Espesor melamina"
           valor={String(d.espesor) as '15' | '18'}
-          onCambio={(v) => cambiar((x) => ({ ...x, espesor: v === '18' ? 18 : 15 }))}
+          onCambio={(v) => operar({ op: 'fijarAcabados', espesor: v === '18' ? 18 : 15 })}
           opciones={[
             { valor: '15', texto: '15 mm' },
             { valor: '18', texto: '18 mm' },
@@ -879,7 +1064,7 @@ function EstructuraTocador({ d, unidad, cambiar }: PropsPestana) {
         <Segmentado
           etiqueta="Tirador"
           valor={d.tirador}
-          onCambio={(v) => cambiar((x) => ({ ...x, tirador: v }))}
+          onCambio={(v) => operar({ op: 'fijarAcabados', tirador: v })}
           opciones={[
             { valor: 'boton', texto: 'Botón' },
             { valor: 'barra', texto: 'Barra' },
@@ -894,122 +1079,228 @@ function EstructuraTocador({ d, unidad, cambiar }: PropsPestana) {
 
 // ---------- Equipamiento / interior / extras ----------
 
-export function PestanaEquipamiento({ d, unidad, cambiar }: PropsPestana) {
-  const opcionesCuerpos = d.cuerpos.map((c, i) => ({ valor: i, texto: `Módulo ${i + 1} · ${formatear(c.ancho, unidad)}` }));
-  if (d.plantilla === 'cocina' || d.plantilla === 'cocina-infantil' || d.plantilla === 'compacto') {
-    const k = { ...d.cocina, ...equipoLegado(d) };
-    const set = (cambios: Parameters<typeof fijarCocinaLegado>[1]) => cambiar((x) => fijarCocinaLegado(x, cambios));
-    const infantil = d.plantilla === 'cocina-infantil';
-    return (
-      <div className="pestana-contenido">
-        <div className="lista-cuerpos">
+/** Un equipo (encimera, lavaplatos u horno) con dónde está, a dónde se puede mover y sus opciones. */
+function TarjetaEquipo({ d, item, items, unidad }: { d: Diseno; item: ItemEquipo; items: ItemEquipo[]; unidad: Unidad }) {
+  const ops = opcionesEquipo(d.plantilla);
+  const destinos = useMemo(() => destinosEquipo(d, item.id), [d, item.id]);
+  const eq = d.equipos.find((e) => e.id === item.id);
+  const campana = items.find((i) => i.tipo === 'campana' && i.de === item.id);
+  const actual = destinos.find((x) => x.actual);
+  const noVan = destinos.filter((x) => !x.ok);
+  const config = (cambios: Parameters<typeof configurar>[1], grupo?: string) => configurar(item.id, cambios, grupo);
+  return (
+    <article className="tarjeta-cuerpo ancha tarjeta-equipo">
+      <header className="tarjeta-cuerpo-cabeza">
+        <strong>{item.nombre}</strong>
+        <button
+          type="button"
+          className="boton-icono peligro"
+          aria-label={`Quitar ${item.nombre.toLowerCase()}`}
+          title="Quitar"
+          onClick={() => operar({ op: 'quitarEquipo', id: item.id })}
+        >
+          <IcoBasura width={15} height={15} />
+        </button>
+      </header>
+      <p className="tenue">
+        {mayus(item.donde)} · {item.detalle}
+      </p>
+      {destinos.length > 1 && (
+        <Selector
+          etiqueta="Mover a"
+          valor={actual ? `${actual.tramo}|${actual.modulo}` : ''}
+          opciones={destinos.map((x) => ({
+            valor: `${x.tramo}|${x.modulo}`,
+            texto: `${mayus(x.nombre)}${x.actual ? ' (aquí)' : x.ok ? '' : ' · no se puede'}`,
+            deshabilitada: !x.ok,
+          }))}
+          onCambio={(v) => {
+            const [tramo, modulo] = v.split('|');
+            operar({ op: 'moverEquipo', id: item.id, tramo: tramo as TramoId, modulo });
+          }}
+        />
+      )}
+      {noVan.length > 0 && (
+        <details className="porque-no">
+          <summary>
+            Por qué no va en {noVan.length === 1 ? '1 módulo' : `${noVan.length} módulos`}
+          </summary>
+          <ul>
+            {noVan.map((x) => (
+              <li key={`${x.tramo}-${x.modulo}`}>
+                <strong>{mayus(x.nombre)}:</strong> {x.motivo}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {eq?.tipo === 'encimera' && <OpcionesEncimera d={d} e={eq} campana={campana} config={config} />}
+      {eq?.tipo === 'lavaplatos' && <OpcionesLavaplatos d={d} l={eq} unidad={unidad} config={config} ops={ops} />}
+    </article>
+  );
+}
+
+const configurar = (id: string, cambios: Extract<Operacion, { op: 'configurarEquipo' }>['cambios'], grupo?: string) =>
+  operar({ op: 'configurarEquipo', id, cambios }, grupo);
+
+type Configurar = (cambios: Parameters<typeof configurar>[1], grupo?: string) => Resultado;
+
+function OpcionesEncimera({ d, e, campana, config }: { d: Diseno; e: Encimera; campana?: ItemEquipo; config: Configurar }) {
+  const ops = opcionesEquipo(d.plantilla);
+  const mural = e.campana && !moduloCampana(d, e.id);
+  return (
+    <>
+      <Segmentado etiqueta="Platos" valor={e.platos} onCambio={(v) => config({ platos: v })} opciones={ops.platos.map((p) => ({ valor: p, texto: `${p} platos` }))} />
+      {ops.campana && <Interruptor activo={e.campana} onCambio={(v) => config({ campana: v })} texto="Campana sobre la encimera" />}
+      {e.campana && campana && (
+        <p className={mural ? 'aviso-texto' : 'tenue'}>
+          {mural
+            ? `Campana mural: no hay aéreo sobre la encimera, va al muro con su chimenea (${campana.detalle}).`
+            : `Campana en el ${campana.donde}, centrada sobre la encimera.`}
+        </p>
+      )}
+    </>
+  );
+}
+
+function OpcionesLavaplatos({ d, l, unidad, config, ops }: { d: Diseno; l: Lavaplatos; unidad: Unidad; config: Configurar; ops: ReturnType<typeof opcionesEquipo> }) {
+  const modulo = cuerposDe(d, l.tramo).find((c) => c.id === l.modulo);
+  const max = modulo ? margenMaximo(modulo, l) : 50;
+  return (
+    <>
+      {ops.lavaplatos.length > 1 && (
+        <Segmentado
+          etiqueta="Modelo"
+          valor={l.modelo}
+          onCambio={(v) => config({ modelo: v })}
+          opciones={ops.lavaplatos.map((m) => ({ valor: m, texto: m === 'simple' ? 'Simple' : 'Doble' }))}
+        />
+      )}
+      {ops.llave && <Interruptor activo={l.llave} onCambio={(v) => config({ llave: v })} texto="Con llave" />}
+      <Segmentado
+        etiqueta="Ubicación en su módulo"
+        valor={l.posicion}
+        onCambio={(v) => config({ posicion: v })}
+        opciones={[
+          { valor: 'izq', texto: 'Al borde izq.', titulo: 'Pegado al borde izquierdo de su módulo' },
+          { valor: 'centro', texto: 'Centrado' },
+          { valor: 'der', texto: 'Al borde der.', titulo: 'Pegado al borde derecho de su módulo' },
+        ]}
+      />
+      {l.posicion !== 'centro' && (
+        <CampoMedida
+          etiqueta={`Margen al borde ${l.posicion === 'izq' ? 'izquierdo' : 'derecho'}`}
+          compacto
+          valor={l.margen}
+          unidad={unidad}
+          min={50}
+          onCambio={(mm) => config({ margen: mm }, `margen-${l.id}`)}
+        />
+      )}
+      {l.posicion !== 'centro' && <p className="tenue">Mínimo {formatear(50, unidad)}; en este módulo, hasta {formatear(Math.max(50, max), unidad)}.</p>}
+    </>
+  );
+}
+
+function EquipamientoCocina({ d, unidad }: { d: Diseno; unidad: Unidad }) {
+  const ops = opcionesEquipo(d.plantilla);
+  const items = useMemo(() => listarEquipamiento(d), [d]);
+  const infantil = d.plantilla === 'cocina-infantil';
+  const encimeras = d.equipos.filter((e): e is Encimera => e.tipo === 'encimera');
+  const lavaplatos = d.equipos.filter((e): e is Lavaplatos => e.tipo === 'lavaplatos');
+  const principales = items.filter((i) => i.tipo === 'encimera' || i.tipo === 'lavaplatos' || i.tipo === 'horno');
+  const grupos = tramosOrdenados(d)
+    .filter((t) => !esAereo(t))
+    .map((t) => ({ t, items: principales.filter((i) => i.tramo === t) }))
+    .filter((g) => g.items.length);
+  const sinCampana = encimeras.find((e) => !e.campana);
+  const sinLlave = lavaplatos.find((l) => !l.llave);
+  return (
+    <div className="pestana-contenido">
+      <div className="equipos-agregar" role="group" aria-label="Agregar equipamiento">
+        <span className="campo-etiqueta">Agregar</span>
+        {ops.platos.length > 0 && (
+          <button type="button" className="boton secundario chico" onClick={() => operar({ op: 'agregarEquipo', equipo: 'encimera' })}>
+            <IcoMas width={14} height={14} /> Encimera
+          </button>
+        )}
+        {ops.lavaplatos.length > 0 && (
+          <button type="button" className="boton secundario chico" onClick={() => operar({ op: 'agregarEquipo', equipo: 'lavaplatos' })}>
+            <IcoMas width={14} height={14} /> Lavaplatos
+          </button>
+        )}
+        {ops.horno && (
+          <button type="button" className="boton secundario chico" onClick={() => operar({ op: 'agregarEquipo', equipo: 'horno' })}>
+            <IcoMas width={14} height={14} /> Horno
+          </button>
+        )}
+        {ops.campana && sinCampana && (
+          <button type="button" className="boton secundario chico" onClick={() => operar({ op: 'agregarEquipo', equipo: 'campana', para: sinCampana.id })}>
+            <IcoMas width={14} height={14} /> Campana
+          </button>
+        )}
+        {ops.llave && sinLlave && (
+          <button type="button" className="boton secundario chico" onClick={() => operar({ op: 'agregarEquipo', equipo: 'llave', para: sinLlave.id })}>
+            <IcoMas width={14} height={14} /> Llave
+          </button>
+        )}
+        {!principales.length && <span className="tenue">Sin equipamiento: agrégalo y elige después en qué módulo va.</span>}
+      </div>
+      <div className="lista-cuerpos equipos">
+        {grupos.flatMap((g) => [
+          ...(grupos.length > 1 || g.t !== 'base' ? [<SeparadorTramo key={`sep-${g.t}`} titulo={nombreTramo(d, g.t)} />] : []),
+          ...g.items.map((it) => <TarjetaEquipo key={it.id} d={d} item={it} items={items} unidad={unidad} />),
+        ])}
+        {(lavaplatos.some((l) => l.llave) || (infantil && lavaplatos.length > 0)) && (
           <article className="tarjeta-cuerpo ancha">
             <header className="tarjeta-cuerpo-cabeza">
-              <strong>Encimera a gas</strong>
+              <strong>Grifería</strong>
             </header>
             <Segmentado
-              valor={k.encimera}
-              onCambio={(v) => set({ encimera: v })}
+              valor={d.cocina.grifo}
+              onCambio={(v) => operar({ op: 'fijarCocina', cambios: { grifo: v } })}
               opciones={[
-                { valor: 'ninguna', texto: 'Sin' },
-                { valor: '2', texto: '2 platos' },
-                { valor: '3', texto: '3 platos' },
-                { valor: '4', texto: '4 platos' },
+                { valor: 'negro', texto: 'Negro mate' },
+                { valor: 'cromado', texto: 'Cromado' },
               ]}
             />
-            {k.encimera !== 'ninguna' && <Selector etiqueta="Sobre el" valor={k.encimeraCuerpo} opciones={opcionesCuerpos} onCambio={(v) => set({ encimeraCuerpo: v })} />}
           </article>
+        )}
+        {!infantil && (
           <article className="tarjeta-cuerpo ancha">
             <header className="tarjeta-cuerpo-cabeza">
-              <strong>Lavaplatos</strong>
+              <strong>Cubierta postformada</strong>
             </header>
             <Segmentado
-              valor={k.lavaplatos}
-              onCambio={(v) => set({ lavaplatos: v })}
-              opciones={
-                infantil
-                  ? [
-                      { valor: 'ninguno', texto: 'Sin' },
-                      { valor: 'simple', texto: 'Con lavaplatos' },
-                    ]
-                  : [
-                      { valor: 'ninguno', texto: 'Sin' },
-                      { valor: 'simple', texto: '1 cubeta' },
-                      { valor: 'doble', texto: '2 cubetas' },
-                    ]
-              }
+              etiqueta="Espesor"
+              valor={String(d.cocina.espesorCubierta) as '28' | '30' | '38'}
+              onCambio={(v) => operar({ op: 'fijarCocina', cambios: { espesorCubierta: Number(v) } })}
+              opciones={[
+                { valor: '28', texto: '28 mm' },
+                { valor: '30', texto: '30 mm' },
+                { valor: '38', texto: '38 mm' },
+              ]}
             />
-            {k.lavaplatos !== 'ninguno' && (
-              <>
-                <Selector etiqueta="Sobre el" valor={k.lavaplatosCuerpo} opciones={opcionesCuerpos} onCambio={(v) => set({ lavaplatosCuerpo: v })} />
-                <Segmentado
-                  etiqueta="Grifería"
-                  valor={k.grifo}
-                  onCambio={(v) => set({ grifo: v })}
-                  opciones={[
-                    { valor: 'negro', texto: 'Negro mate' },
-                    { valor: 'cromado', texto: 'Cromado' },
-                  ]}
-                />
-              </>
-            )}
+            <CampoMedida
+              etiqueta="Vuelo frontal"
+              compacto
+              valor={d.cocina.vueloCubierta}
+              unidad="mm"
+              paso={5}
+              min={0}
+              max={60}
+              onCambio={(mm) => operar({ op: 'fijarCocina', cambios: { vueloCubierta: mm } }, 'vuelo')}
+            />
+            <Interruptor activo={d.cocina.copete} onCambio={(v) => operar({ op: 'fijarCocina', cambios: { copete: v } })} texto="Copete trasero" />
           </article>
-          {!infantil && (
-            <article className="tarjeta-cuerpo ancha">
-              <header className="tarjeta-cuerpo-cabeza">
-                <strong>Cubierta postformada</strong>
-              </header>
-              <Segmentado
-                etiqueta="Espesor"
-                valor={String(k.espesorCubierta) as '28' | '30' | '38'}
-                onCambio={(v) => set({ espesorCubierta: Number(v) })}
-                opciones={[
-                  { valor: '28', texto: '28 mm' },
-                  { valor: '30', texto: '30 mm' },
-                  { valor: '38', texto: '38 mm' },
-                ]}
-              />
-              <CampoMedida
-                etiqueta="Vuelo frontal"
-                compacto
-                valor={k.vueloCubierta}
-                unidad="mm"
-                paso={5}
-                min={0}
-                max={60}
-                onCambio={(mm) => set({ vueloCubierta: mm })}
-              />
-              <Interruptor activo={k.copete} onCambio={(v) => set({ copete: v })} texto="Copete trasero" />
-            </article>
-          )}
-          {d.plantilla === 'cocina' && (
-            <article className="tarjeta-cuerpo ancha">
-              <header className="tarjeta-cuerpo-cabeza">
-                <strong>Horno empotrado</strong>
-              </header>
-              <p className="tenue">
-                {d.cuerpos.some((c) => c.tipo === 'horno')
-                  ? 'Tu mueble lleva horno. Puedes moverlo o quitarlo en Módulos y espacios.'
-                  : 'Agrega un módulo de 60 cm preparado para horno empotrado.'}
-              </p>
-              {!d.cuerpos.some((c) => c.tipo === 'horno') && (
-                <button
-                  type="button"
-                  className="boton secundario chico"
-                  onClick={() => {
-                    const horno = presetsModulo('cocina').find((p) => p.id === 'horno')!;
-                    agregarConAviso(d, horno, d.cuerpos.length, cambiar, unidad);
-                  }}
-                >
-                  <IcoMas width={14} height={14} /> Agregar horno
-                </button>
-              )}
-            </article>
-          )}
-        </div>
+        )}
       </div>
-    );
-  }
+    </div>
+  );
+}
+
+export function PestanaEquipamiento({ d, unidad, cambiar }: PropsPestana) {
+  if (d.plantilla === 'cocina' || d.plantilla === 'cocina-infantil' || d.plantilla === 'compacto') return <EquipamientoCocina d={d} unidad={unidad} />;
 
   if (d.plantilla === 'tocador') {
     const t = d.tocador;
@@ -1061,8 +1352,12 @@ export function PestanaEquipamiento({ d, unidad, cambiar }: PropsPestana) {
           c.tipo === 'frentes' ? (
             <article key={c.id} className="tarjeta-cuerpo">
               <CabeceraCuerpo d={d} i={i} c={c} tramo="base" unidad={unidad} />
-              <Contador etiqueta="Repisas" valor={c.repisas} max={8} onCambio={(v) => cambiar((x) => actualizarCuerpo(x, i, { repisas: v }))} />
-              <Interruptor activo={c.colgador} onCambio={(v) => cambiar((x) => actualizarCuerpo(x, i, { colgador: v }))} texto="Barra para colgar" />
+              <Contador etiqueta="Repisas" valor={c.repisas} max={8} onCambio={(v) => operar({ op: 'actualizarModulo', tramo: 'base', modulo: c.id, cambios: { repisas: v } })} />
+              <Interruptor
+                activo={c.colgador}
+                onCambio={(v) => operar({ op: 'actualizarModulo', tramo: 'base', modulo: c.id, cambios: { colgador: v } })}
+                texto="Barra para colgar"
+              />
               {c.colgador && <p className="tenue">Con barra se usa una repisa superior y el resto queda para colgar.</p>}
             </article>
           ) : (

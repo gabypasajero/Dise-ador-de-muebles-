@@ -10,6 +10,7 @@ import type {
   Usuario,
   Venta,
 } from '../../shared/tipos';
+import { esMarca, marcaDe, type Marca } from '../cotizacion/marcas';
 
 export interface DatosRegistro {
   nombre: string;
@@ -53,6 +54,10 @@ export interface FilaCotizacion {
   config?: unknown;
   detalle: unknown;
   miniatura: string | null;
+  /** Marca con la que se emite (columna nueva: las filas anteriores no la traen = De Todito Outlet). */
+  marca?: Marca | null;
+  /** Imagen grande del mueble (solo al pedir una cotización puntual). */
+  imagen?: string | null;
   valor: number;
   fecha: string;
   estado: EstadoCotizacion;
@@ -76,6 +81,7 @@ export function aCotizacion(f: FilaCotizacion): Cotizacion {
     modelo: f.modelo,
     detalle: Array.isArray(f.detalle) ? (f.detalle as Cotizacion['detalle']) : [],
     miniatura: f.miniatura,
+    marca: marcaDe(f),
     valor: Number(f.valor),
     fecha: f.fecha,
     estado: f.estado,
@@ -86,6 +92,7 @@ export function aCotizacion(f: FilaCotizacion): Cotizacion {
     creado: f.creado_en,
     actualizado: f.actualizado_en,
     ...(f.config !== undefined ? { config: f.config as Cotizacion['config'] } : {}),
+    ...(f.imagen !== undefined ? { imagen: f.imagen } : {}),
   };
 }
 
@@ -102,6 +109,8 @@ export function aFila(d: DatosCotizacion) {
     config: d.config,
     detalle: d.detalle,
     miniatura: d.miniatura,
+    marca: marcaDe(d),
+    imagen: d.imagen ?? null,
     valor: Math.round(d.valor),
     fecha: d.fecha,
   };
@@ -136,5 +145,7 @@ export function validarDatos(d: DatosCotizacion): string | null {
   if (!Number.isInteger(d.valor) || d.valor <= 0) return 'Ingresa el valor del mueble';
   if (d.valor > 100_000_000) return 'El valor es demasiado alto';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d.fecha)) return 'Fecha no válida';
+  if (d.marca !== undefined && !esMarca(d.marca)) return 'Elige la marca de la cotización';
+  if (d.imagen && d.imagen.length > 2_000_000) return 'La imagen del mueble es demasiado grande';
   return null;
 }

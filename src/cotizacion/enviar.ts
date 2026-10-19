@@ -1,23 +1,25 @@
 // Envío de la cotización al cliente: correo (Gmail, Outlook o la app de
 // correo del equipo), WhatsApp y, en teléfonos, compartir el PDF directo.
-import { telefonoWhatsapp, textoCotizacion } from '../../shared/resumen';
+import { telefonoWhatsapp } from '../../shared/resumen';
 import type { Cotizacion } from '../../shared/tipos';
+import { MARCAS, marcaDe, textoCotizacionMarca } from './marcas';
 import { pdfComoArchivo, type DatosDocumento } from './pdf';
 
 export type ServicioCorreo = 'gmail' | 'outlook' | 'app';
 
-export function asuntoCorreo(c: Pick<Cotizacion, 'numero' | 'cliente'>): string {
-  return `Cotización ${c.numero} · ${c.cliente.nombre} · De Todito Outlet`;
+export function asuntoCorreo(c: Pick<Cotizacion, 'numero' | 'cliente' | 'marca'>): string {
+  return `Cotización ${c.numero} · ${c.cliente.nombre} · ${MARCAS[marcaDe(c)].nombre}`;
 }
 
 export function cuerpoMensaje(c: Cotizacion, medio: 'correo' | 'whatsapp'): string {
   const nombre = c.cliente.nombre.split(' ')[0];
+  const tienda = MARCAS[marcaDe(c)].nombre;
   const intro =
     medio === 'correo'
       ? `Hola ${nombre}:\n\nTe envío la cotización de tu mueble a medida. Adjunto el PDF con el detalle.\n\n`
-      : `Hola ${nombre}, te envío tu cotización de De Todito Outlet:\n\n`;
-  const despedida = medio === 'correo' ? `\n\nSaludos,\n${c.vendedor.nombre}\nDe Todito Outlet${c.vendedor.telefono ? `\n${c.vendedor.telefono}` : ''}` : '';
-  return intro + textoCotizacion(c) + despedida;
+      : `Hola ${nombre}, te envío tu cotización de ${tienda}:\n\n`;
+  const despedida = medio === 'correo' ? `\n\nSaludos,\n${c.vendedor.nombre}\n${tienda}${c.vendedor.telefono ? `\n${c.vendedor.telefono}` : ''}` : '';
+  return intro + textoCotizacionMarca(c) + despedida;
 }
 
 export function enlaceCorreo(c: Cotizacion, servicio: ServicioCorreo): string {
@@ -53,5 +55,5 @@ export function puedeCompartirArchivos(): boolean {
 /** Abre el menú de compartir del sistema con el PDF adjunto (WhatsApp, correo, etc.). */
 export async function compartirPdf(c: Cotizacion, datos: DatosDocumento): Promise<void> {
   const archivo = pdfComoArchivo(datos);
-  await navigator.share({ files: [archivo], title: asuntoCorreo(c), text: `Cotización ${c.numero} de De Todito Outlet` });
+  await navigator.share({ files: [archivo], title: asuntoCorreo(c), text: `Cotización ${c.numero} de ${MARCAS[marcaDe(c)].nombre}` });
 }

@@ -1,11 +1,14 @@
 // Registro de cotizaciones y ventas del vendedor.
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { NOMBRE_PLANTILLA } from '../../shared/catalogo';
-import { formatoPrecio, precioReferencial } from '../../shared/reglas';
-import { detalleCotizacion, formatoFecha, hoy, textoCotizacion } from '../../shared/resumen';
+import { formatoPrecio, precioDiseno } from '../../shared/reglas';
+import { detalleCotizacion, formatoFecha, hoy } from '../../shared/resumen';
 import type { Cliente, Cotizacion, DatosCotizacion, EstadoCotizacion } from '../../shared/tipos';
 import { compartirPdf, enlaceCorreo, enlaceWhatsapp, puedeCompartirArchivos, type ServicioCorreo } from '../cotizacion/enviar';
-import { descargarPdf, type DatosDocumento } from '../cotizacion/pdf';
+import { descargarHojaMaestro, type DatosHojaMaestro } from '../cotizacion/hojaMaestro';
+import { reducirImagen } from '../cotizacion/imagen';
+import { LISTA_MARCAS, MARCAS, marcaDe, recordarMarca, textoCotizacionMarca, ultimaMarca, type Marca } from '../cotizacion/marcas';
+import { datosCliente, descargarPdf, type DatosDocumento } from '../cotizacion/pdf';
 import { backend, calcularTotales } from '../datos';
 import { useApp } from '../store/useApp';
 import { IcoWsp } from './Iconos';
@@ -43,6 +46,49 @@ function CampoPesos({ valor, onCambio, etiqueta, ayuda }: { valor: number; onCam
   );
 }
 
+/** La cotización sin la imagen grande (para guardarla como cotización en edición o borrador). */
+function sinImagen<T extends { imagen?: string | null }>(c: T): Omit<T, 'imagen'> {
+  const { imagen: _imagen, ...resto } = c;
+  return resto;
+}
+
+/** Logo de la marca: el distintivo rosado DTO o la casa de colores de Molina. */
+export function LogoMarca({ marca }: { marca: Marca }) {
+  if (marca === 'molina') return <img className="logo logo-molina" src={MARCAS.molina.logo} alt="" width={40} height={40} />;
+  return (
+    <span className="logo" aria-hidden="true">
+      DTO
+    </span>
+  );
+}
+
+/** Elección de la marca con la que se emite la cotización. */
+function SelectorMarca({ marca, onCambio }: { marca: Marca; onCambio: (m: Marca) => void }) {
+  return (
+    <fieldset className="selector-marca">
+      <legend className="campo-etiqueta">Marca de la cotización</legend>
+      <div className="selector-marca-opciones" role="radiogroup" aria-label="Marca de la cotización">
+        {LISTA_MARCAS.map((m) => (
+          <label key={m.id} className={`opcion-marca${marca === m.id ? ' activa' : ''}`}>
+            <input type="radio" name="marca-cotizacion" value={m.id} checked={marca === m.id} onChange={() => onCambio(m.id)} />
+            <LogoMarca marca={m.id} />
+            <span>{m.nombre}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+/** Descarga la hoja para el maestro y avisa si algo falla. */
+function hojaMaestro(datos: DatosHojaMaestro, avisar: (texto: string, tipo?: 'ok' | 'error' | 'info') => void) {
+  try {
+    descargarHojaMaestro(datos);
+  } catch (e) {
+    avisar(`No se pudo generar la hoja para el maestro: ${(e as Error).message}`, 'error');
+  }
+}
+
 // ---------- Documento (vista en lista) ----------
 
 export function datosDocumento(c: Cotizacion): DatosDocumento {
@@ -58,19 +104,24 @@ export function datosDocumento(c: Cotizacion): DatosDocumento {
     estado: c.estado,
     venta: c.venta,
     miniatura: c.miniatura,
+    imagen: c.imagen ?? null,
+    marca: marcaDe(c),
   };
 }
 
 export function DocumentoCotizacion({ datos, acciones }: { datos: DatosDocumento; acciones?: ReactNode }) {
   const c = datos.cliente;
+  const marca = datos.marca ?? 'dto';
+  const m = MARCAS[marca];
+  const imagen = datos.imagen || datos.miniatura;
   return (
-    <article className="documento-cotizacion">
+    <article className="documento-cotizacion" data-marca={marca}>
       <header className="documento-cabeza">
         <div className="marca">
-          <span className="logo">DTO</span>
+          <LogoMarca marca={marca} />
           <span className="marca-texto">
-            <strong>De Todito Outlet</strong>
-            <small>Muebles a medida</small>
+            <strong>{m.nombre}</strong>
+            <small>{[m.lema, m.web].filter(Boolean).join(' · ')}</small>
           </span>
         </div>
         <div className="documento-numero">
@@ -78,27 +129,17 @@ export function DocumentoCotizacion({ datos, acciones }: { datos: DatosDocumento
           {datos.estado && <Estado estado={datos.estado} />}
         </div>
       </header>
+      {imagen && <img className="documento-imagen" src={imagen} alt="Vista 3D del mueble cotizado" />}
       <h3 className="documento-titulo">Cotización {c.nombre || '…'}</h3>
-      {datos.miniatura && <img className="documento-imagen" src={datos.miniatura} alt="Vista 3D del mueble cotizado" />}
+      <dl className="documento-cliente">
+        {datosCliente({ cliente: { ...c, nombre: c.nombre || '—' } }).map((l) => (
+          <div key={l.etiqueta}>
+            <dt>{l.etiqueta}:</dt>
+            <dd>{l.valor}</dd>
+          </div>
+        ))}
+      </dl>
       <ul className="documento-lista">
-        <li>
-          <span>Cliente:</span> {c.nombre || '—'}
-        </li>
-        {c.telefono && (
-          <li>
-            <span>Teléfono:</span> {c.telefono}
-          </li>
-        )}
-        {c.email && (
-          <li>
-            <span>Correo:</span> {c.email}
-          </li>
-        )}
-        {c.direccion && (
-          <li>
-            <span>Dirección / comuna:</span> {c.direccion}
-          </li>
-        )}
         {datos.detalle.map((l) => (
           <li key={l.etiqueta}>
             <span>{l.etiqueta}:</span> {l.valor}
@@ -148,7 +189,7 @@ export function DocumentoCotizacion({ datos, acciones }: { datos: DatosDocumento
 
 // ---------- Descargar, imprimir y enviar (al final de la cotización) ----------
 
-function AccionesEnvio({ c }: { c: Cotizacion }) {
+function AccionesEnvio({ c, onHojaMaestro }: { c: Cotizacion; onHojaMaestro?: () => void }) {
   const avisar = useApp((s) => s.avisar);
   const [menuCorreo, setMenuCorreo] = useState(false);
   const menu = useRef<HTMLDivElement>(null);
@@ -236,6 +277,11 @@ function AccionesEnvio({ c }: { c: Cotizacion }) {
             Compartir PDF
           </button>
         )}
+        {onHojaMaestro && (
+          <button type="button" className="boton secundario" onClick={onHojaMaestro}>
+            Hoja para el maestro
+          </button>
+        )}
       </div>
     </section>
   );
@@ -247,16 +293,43 @@ export function ModalRegistrarCotizacion() {
   const s = useApp();
   const actual =
     s.cotizacionActual && s.cotizacionActual.estado === 'cotizada' && s.cotizacionActual.vendedor.id === s.usuario?.id ? s.cotizacionActual : null;
-  const referencial = precioReferencial(s.diseno, s.producto, s.disenoBase);
+  const precio = precioDiseno(s.diseno, s.producto, s.disenoBase);
+  const referencial = precio?.total ?? null;
   const [cliente, setCliente] = useState<Cliente>(actual?.cliente ?? { nombre: '', telefono: '', email: '', direccion: '' });
   const [observaciones, setObservaciones] = useState(actual?.observaciones ?? '');
   const [valor, setValor] = useState<number>(actual?.valor ?? referencial ?? 0);
   const [fecha, setFecha] = useState(actual?.fecha ?? hoy());
+  const [marca, setMarca] = useState<Marca>(() => (actual ? marcaDe(actual) : ultimaMarca(s.usuario?.id)));
+  // La imagen del mueble se toma una vez al abrir (el diseño no cambia mientras se registra).
+  const [imagen] = useState<string | null>(() => s.capturar?.() ?? null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const detalle = useMemo(() => detalleCotizacion(s.diseno, s.producto, s.unidad, s.materiales), [s.diseno, s.producto, s.unidad, s.materiales]);
   const modelo = s.producto?.modelo ?? (s.diseno.nombreModelo || NOMBRE_PLANTILLA[s.diseno.plantilla]);
   const set = (k: keyof Cliente, v: string) => setCliente((c) => ({ ...c, [k]: v }));
+  const elegirMarca = (m: Marca) => {
+    setMarca(m);
+    recordarMarca(s.usuario?.id, m);
+  };
+  const hoja = () =>
+    hojaMaestro(
+      {
+        marca,
+        numero: actual?.numero ?? null,
+        cliente: { ...cliente, nombre: cliente.nombre.trim() || 'Cliente por definir' },
+        fecha,
+        vendedor: s.usuario?.nombre ?? '',
+        vendedorTelefono: s.usuario?.telefono,
+        modelo,
+        imagen,
+        diseno: s.diseno,
+        producto: s.producto,
+        materiales: s.materiales,
+        unidad: s.unidad,
+        observaciones: observaciones.trim() || null,
+      },
+      s.avisar,
+    );
 
   const registrar = async (comoNueva: boolean) => {
     if (!s.usuario?.esVendedor) {
@@ -273,12 +346,15 @@ export function ModalRegistrarCotizacion() {
         modelo,
         config: s.diseno,
         detalle,
-        miniatura: s.capturar?.() ?? null,
+        miniatura: imagen ? await reducirImagen(imagen, 480) : null,
+        imagen,
+        marca,
         valor,
         fecha,
       };
       const r = actual && !comoNueva ? await backend.actualizarCotizacion(actual.id, datos) : await backend.crearCotizacion(datos);
-      const { config: _c, miniatura: _m, ...resumen } = r;
+      const { config: _c, miniatura: _m, imagen: _i, ...resumen } = r;
+      recordarMarca(s.usuario?.id, marca);
       s.set({ cotizacionActual: resumen, cotizacionVista: r, modal: 'documento' });
       s.avisar(actual && !comoNueva ? `Cotización ${r.numero} actualizada` : `Cotización ${r.numero} registrada`);
     } catch (err) {
@@ -298,6 +374,7 @@ export function ModalRegistrarCotizacion() {
             registrar(false);
           }}
         >
+          <SelectorMarca marca={marca} onCambio={elegirMarca} />
           <h3 className="subtitulo">Datos del cliente</h3>
           <label>
             Nombre del cliente
@@ -327,7 +404,7 @@ export function ModalRegistrarCotizacion() {
               etiqueta="Valor mueble"
               valor={valor}
               onCambio={setValor}
-              ayuda={referencial ? `Referencial del diseñador: ${formatoPrecio(referencial)}` : undefined}
+              ayuda={precio ? `${precio.metodo === 'oficial' ? 'Precio oficial' : 'Referencial'} del diseñador: ${formatoPrecio(precio.total)}` : undefined}
             />
             <label>
               Fecha cotización
@@ -349,6 +426,9 @@ export function ModalRegistrarCotizacion() {
                 Registrar como nueva
               </button>
             )}
+            <button type="button" className="boton fantasma" onClick={hoja} title="Ficha de fabricación sin precios, con el esquema acotado de cada tramo">
+              Hoja para el maestro
+            </button>
           </div>
         </form>
         <div className="registro-vista-previa">
@@ -363,6 +443,8 @@ export function ModalRegistrarCotizacion() {
               vendedorTelefono: s.usuario?.telefono,
               fecha,
               valor,
+              imagen,
+              marca,
             }}
           />
         </div>
@@ -377,6 +459,24 @@ export function ModalDocumento() {
   const s = useApp();
   const c = s.cotizacionVista;
   const [trabajando, setTrabajando] = useState(false);
+  // La lista no trae el diseño ni la imagen grande: se piden al abrir la cotización.
+  const incompleta = c && !c.config ? c.id : null;
+  useEffect(() => {
+    if (incompleta == null) return;
+    let vigente = true;
+    backend
+      .cotizacion(incompleta)
+      .then((completa) => {
+        const vista = useApp.getState().cotizacionVista;
+        if (vigente && vista?.id === completa.id) useApp.getState().set({ cotizacionVista: { ...completa, miniatura: vista.miniatura ?? completa.miniatura } });
+      })
+      .catch(() => {
+        // Sin el diseño completo se muestra lo que trae la lista (la hoja para el maestro lo vuelve a pedir).
+      });
+    return () => {
+      vigente = false;
+    };
+  }, [incompleta]);
   if (!c) return null;
   // La administración ve las cotizaciones de todos, pero solo el vendedor las gestiona.
   const propia = s.usuario?.esVendedor && c.vendedor.id === s.usuario.id;
@@ -384,8 +484,38 @@ export function ModalDocumento() {
   const abrir = async () => {
     setTrabajando(true);
     try {
-      s.cargarCotizacion(await backend.cotizacion(c.id));
+      s.cargarCotizacion(sinImagen(c.config ? c : await backend.cotizacion(c.id)));
       s.avisar(`Diseño de ${c.numero} cargado`, 'info');
+    } catch (e) {
+      s.avisar((e as Error).message, 'error');
+    } finally {
+      setTrabajando(false);
+    }
+  };
+  const hoja = async () => {
+    setTrabajando(true);
+    try {
+      const completa = c.config ? c : await backend.cotizacion(c.id);
+      if (!completa.config) throw new Error('La cotización no tiene el diseño guardado');
+      const producto = completa.productoId != null ? (s.catalogo?.productos.find((p) => p.id === completa.productoId) ?? null) : null;
+      hojaMaestro(
+        {
+          marca: marcaDe(completa),
+          numero: completa.numero,
+          cliente: completa.cliente,
+          fecha: completa.fecha,
+          vendedor: completa.vendedor.nombre,
+          vendedorTelefono: completa.vendedor.telefono,
+          modelo: completa.modelo,
+          imagen: completa.imagen || completa.miniatura,
+          diseno: completa.config,
+          producto,
+          materiales: s.materiales,
+          unidad: s.unidad,
+          observaciones: completa.observaciones,
+        },
+        s.avisar,
+      );
     } catch (e) {
       s.avisar((e as Error).message, 'error');
     } finally {
@@ -397,7 +527,7 @@ export function ModalDocumento() {
     setTrabajando(true);
     try {
       const r = await backend.cambiarEstado(c.id, estado);
-      s.set({ cotizacionVista: { ...r, miniatura: c.miniatura } });
+      s.set({ cotizacionVista: { ...r, miniatura: c.miniatura, config: c.config, imagen: c.imagen } });
       if (s.cotizacionActual?.id === c.id) s.set({ cotizacionActual: { ...s.cotizacionActual, estado: r.estado, venta: null } });
       s.avisar(estado === 'anulada' ? 'Cotización anulada' : 'Cotización reactivada', 'info');
     } catch (e) {
@@ -407,7 +537,7 @@ export function ModalDocumento() {
     }
   };
   const copiar = () =>
-    navigator.clipboard?.writeText(textoCotizacion(c)).then(
+    navigator.clipboard?.writeText(textoCotizacionMarca(c)).then(
       () => s.avisar('Cotización copiada'),
       () => s.avisar('No se pudo copiar', 'error'),
     );
@@ -446,7 +576,7 @@ export function ModalDocumento() {
         </div>
       }
     >
-      <DocumentoCotizacion datos={datosDocumento(c)} acciones={<AccionesEnvio c={c} />} />
+      <DocumentoCotizacion datos={datosDocumento(c)} acciones={<AccionesEnvio c={c} onHojaMaestro={trabajando ? undefined : hoja} />} />
     </Modal>
   );
 }
@@ -469,7 +599,7 @@ export function ModalVenta() {
     setError(null);
     try {
       const r = await backend.registrarVenta(c.id, { fecha, valor, medioPago, nota: nota.trim() || null });
-      s.set({ cotizacionVista: { ...r, miniatura: c.miniatura }, modal: 'documento' });
+      s.set({ cotizacionVista: { ...r, miniatura: c.miniatura, config: c.config, imagen: c.imagen }, modal: 'documento' });
       if (s.cotizacionActual?.id === c.id) s.set({ cotizacionActual: { ...s.cotizacionActual, estado: 'vendida', venta: r.venta } });
       s.avisar(`Venta de ${c.numero} registrada`);
     } catch (err) {
@@ -536,7 +666,7 @@ export function ModalCotizaciones() {
 
   const abrir = async (c: Cotizacion) => {
     try {
-      s.cargarCotizacion(await backend.cotizacion(c.id));
+      s.cargarCotizacion(sinImagen(await backend.cotizacion(c.id)));
       s.avisar(`Diseño de ${c.numero} cargado`, 'info');
     } catch (e) {
       s.avisar((e as Error).message, 'error');
@@ -547,7 +677,7 @@ export function ModalCotizaciones() {
   const visibles = (lista ?? []).filter(
     (c) =>
       (filtro === 'todas' || c.estado === filtro) &&
-      (!q || `${c.numero} ${c.cliente.nombre} ${c.modelo} ${c.vendedor.nombre}`.toLowerCase().includes(q)),
+      (!q || `${c.numero} ${c.cliente.nombre} ${c.modelo} ${c.vendedor.nombre} ${MARCAS[marcaDe(c)].nombre}`.toLowerCase().includes(q)),
   );
   const cierre = totales && totales.cotizaciones ? Math.round((totales.ventas / totales.cotizaciones) * 100) : 0;
 
@@ -607,6 +737,7 @@ export function ModalCotizaciones() {
             <div key={c.id} className="fila" role="row">
               <span role="cell" className="numero">
                 {c.numero}
+                <small className={`marca-fila ${marcaDe(c)}`}>{marcaDe(c) === 'molina' ? 'Molina' : 'DTO'}</small>
               </span>
               <span role="cell">
                 <strong>{c.cliente.nombre}</strong>

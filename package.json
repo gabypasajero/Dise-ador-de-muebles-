@@ -10,13 +10,15 @@
   "scripts": {
     "dev": "vite",
     "dev:local": "VITE_BACKEND=local vite",
-    "build": "tsc -p tsconfig.json && vite build",
+    "build": "tsc -p tsconfig.json && vite build && node scripts/construir-api.mjs",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "sync:productos": "node scripts/sync-productos.mjs"
+    "sync:productos": "node scripts/sync-productos.mjs",
+    "build:api": "node scripts/construir-api.mjs"
   },
   "dependencies": {
+    "@google/genai": "^2.30.0",
     "@react-three/drei": "^9.122.0",
     "@react-three/fiber": "^8.18.0",
     "@supabase/supabase-js": "^2.117.3",

@@ -5,3 +5,5 @@ dist/
 .DS_Store
 test-results/
 .env.local
+# Motor empaquetado para la función de Vercel (lo genera npm run build)
+api/_motor.mjs

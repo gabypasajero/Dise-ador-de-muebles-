@@ -1,11 +1,12 @@
 import { useRef, useState, type PointerEvent as EventoPuntero } from 'react';
-import { LIMITES, advertencias, aUnidad, fijarAlto, fijarAncho, fijarProfundidad, formatear, formatoPrecio, precioReferencial } from '../../shared/reglas';
+import { largoPrincipalConEsquinas } from '../../shared/layout';
+import { LIMITES, advertencias, aUnidad, formatear, formatoPrecio, precioDiseno } from '../../shared/reglas';
 import type { Unidad } from '../../shared/tipos';
 import { useApp } from '../store/useApp';
 import { CampoMedida, Segmentado } from './Controles';
 import { backend } from '../datos';
 import { IcoAviso, IcoGuardar } from './Iconos';
-import { PestanaCajones, PestanaEquipamiento, PestanaModulos, PestanaPuertas, pestanasDe } from './Pestanas';
+import { AvisoRechazo, PestanaCajones, PestanaEquipamiento, PestanaModulos, PestanaPuertas, pestanasDe } from './Pestanas';
 
 /** Una de las tres líneas de medida (alto, ancho, profundidad). */
 function FilaMedida({
@@ -55,8 +56,10 @@ export function PanelInferior() {
   const producto = useApp((s) => s.producto);
   const disenoBase = useApp((s) => s.disenoBase);
   const cambiar = useApp((s) => s.cambiar);
+  const operar = useApp((s) => s.operar);
   const set = useApp((s) => s.set);
   const [verAvisos, setVerAvisos] = useState(false);
+  const [verDesglose, setVerDesglose] = useState(false);
   const plegado = useApp((s) => s.panelPlegado);
   const altoPestanas = useApp((s) => s.altoPestanas);
   const fijarVista = useApp((s) => s.fijarVista);
@@ -86,8 +89,13 @@ export function PanelInferior() {
   const pestanas = pestanasDe(d.plantilla);
   const actual = pestanas.find((p) => p.id === pestana)?.id ?? pestanas[0].id;
   const avisos = advertencias(d, unidad);
-  const precio = precioReferencial(d, producto, disenoBase);
+  const precio = precioDiseno(d, producto, disenoBase);
+  const oficial = precio?.metodo === 'oficial';
+  const esCocinaConEquipos = d.plantilla === 'cocina' || d.plantilla === 'compacto' || d.plantilla === 'cocina-infantil';
   const props = { d, unidad, cambiar };
+  // En la L y la U el ancho se mide completo, con las esquinas (como en la tienda y en el precio).
+  const esquinas = d.plantilla === 'cocina' ? largoPrincipalConEsquinas(d) - d.ancho : 0;
+  const lados = [d.lados.izq && `lado izquierdo ${formatear(d.lados.izq.largo, unidad)}`, d.lados.der && `lado derecho ${formatear(d.lados.der.largo, unidad)}`].filter(Boolean);
   const cotizacion = useApp((s) => s.cotizacionActual);
   const editable = cotizacion?.estado === 'cotizada';
   const verActual = async () => {
@@ -135,15 +143,22 @@ export function PanelInferior() {
             ]}
           />
         </div>
-        <FilaMedida nombre="Alto" icono="↕" valor={d.alto} limites={lim.alto} unidad={unidad} onCambio={(mm) => cambiar((x) => fijarAlto(x, mm), 'alto')} />
-        <FilaMedida nombre="Ancho" icono="↔" valor={d.ancho} limites={lim.ancho} unidad={unidad} onCambio={(mm) => cambiar((x) => fijarAncho(x, mm), 'ancho')} />
+        <FilaMedida nombre="Alto" icono="↕" valor={d.alto} limites={lim.alto} unidad={unidad} onCambio={(mm) => operar({ op: 'fijarAlto', alto: mm }, 'alto')} />
+        <FilaMedida
+          nombre="Ancho"
+          icono="↔"
+          valor={d.ancho + esquinas}
+          limites={[lim.ancho[0] + esquinas, lim.ancho[1] + esquinas]}
+          unidad={unidad}
+          onCambio={(mm) => operar({ op: 'fijarAncho', ancho: mm - esquinas }, 'ancho')}
+        />
         <FilaMedida
           nombre="Fondo"
           icono="⤢"
           valor={d.profundidad}
           limites={lim.profundidad}
           unidad={unidad}
-          onCambio={(mm) => cambiar((x) => fijarProfundidad(x, mm), 'profundidad')}
+          onCambio={(mm) => operar({ op: 'fijarProfundidad', profundidad: mm }, 'profundidad')}
         />
       </div>
 
@@ -185,7 +200,13 @@ export function PanelInferior() {
             </div>
           )}
         </div>
-        <div role="tabpanel" ref={panelPestanas} className={`pestana-panel${actual === 'modulos' && d.plantilla !== 'tocador' ? ' modulos' : ''}`}>
+        {/* Módulos y el equipamiento de la cocina usan el panel alto (forma, tira, editor; tarjetas de equipos). */}
+        <div
+          role="tabpanel"
+          ref={panelPestanas}
+          className={`pestana-panel${(actual === 'modulos' && d.plantilla !== 'tocador') || (actual === 'equipamiento' && esCocinaConEquipos) ? ' modulos' : ''}`}
+        >
+          <AvisoRechazo />
           {actual === 'puertas' && <PestanaPuertas {...props} />}
           {actual === 'cajones' && <PestanaCajones {...props} />}
           {actual === 'modulos' && <PestanaModulos {...props} />}
@@ -199,21 +220,54 @@ export function PanelInferior() {
             {cotizacion.numero} · {cotizacion.cliente.nombre} · <span className={`estado-cotizacion ${cotizacion.estado}`}>{cotizacion.estado}</span>
           </span>
         ) : (
-          <span className="campo-etiqueta">{precio ? 'Valor referencial' : 'Diseño a medida'}</span>
+          <span className="campo-etiqueta">{oficial ? 'Precio oficial' : precio ? 'Valor referencial' : 'Diseño a medida'}</span>
         )}
-        <strong className="precio">{cotizacion ? formatoPrecio(cotizacion.venta?.valor ?? cotizacion.valor) : precio ? formatoPrecio(precio) : 'Sin referencia'}</strong>
+        <strong className="precio">{cotizacion ? formatoPrecio(cotizacion.venta?.valor ?? cotizacion.valor) : precio ? formatoPrecio(precio.total) : 'Sin referencia'}</strong>
         <span className="resumen-medidas">
-          {formatear(d.ancho, unidad, false)} × {formatear(d.alto, unidad, false)} × {formatear(d.profundidad, unidad)}
+          {formatear(d.ancho + esquinas, unidad, false)} × {formatear(d.alto, unidad, false)} × {formatear(d.profundidad, unidad)}
         </span>
+        {lados.length > 0 && <span className="tenue chico">Con {lados.join(' y ')}</span>}
         <span className="tenue chico">
           {cotizacion
             ? precio
-              ? `Referencial con las medidas actuales: ${formatoPrecio(precio)}`
+              ? `${oficial ? 'Precio oficial' : 'Referencial'} con las medidas actuales: ${formatoPrecio(precio.total)}`
               : 'Valor registrado en la cotización.'
-            : precio
-              ? 'Calculado desde el precio de la tienda; lo ajustas al cotizar.'
-              : 'Ingresa el valor al registrar la cotización.'}
+            : oficial
+              ? 'Precio de la tienda: metro lineal según el fondo, equipamiento y aéreo.'
+              : precio
+                ? 'Calculado desde el precio de la tienda; lo ajustas al cotizar.'
+                : 'Ingresa el valor al registrar la cotización.'}
         </span>
+        {precio && precio.lineas.length > 0 && (
+          <div className="desglose-precio">
+            <button type="button" className="boton-desglose" aria-expanded={verDesglose} onClick={() => setVerDesglose((v) => !v)}>
+              {verDesglose ? '▾ Ocultar desglose' : '▸ Ver desglose'}
+            </button>
+            {verDesglose && (
+              <div className="desglose-lista" role="region" aria-label="Desglose del precio oficial">
+                <table>
+                  <tbody>
+                    {precio.lineas.map((l, i) => (
+                      <tr key={i}>
+                        <th scope="row">
+                          {l.concepto}
+                          <span>{l.detalle}</span>
+                        </th>
+                        <td>{formatoPrecio(l.valor)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <th scope="row">Total</th>
+                      <td>{formatoPrecio(precio.total)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
         <div className="acciones-precio">
           <button type="button" className="boton primario" onClick={() => set({ modal: 'registrarCotizacion' })}>
             <IcoGuardar /> {editable ? `Actualizar ${cotizacion!.numero}` : 'Registrar cotización'}

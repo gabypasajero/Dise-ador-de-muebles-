@@ -1,9 +1,9 @@
 // Ensambla los muebles basados en cuerpos: cocinas, clósets, cómodas,
 // clóset escritorio y cocina infantil.
 import { useEffect, useMemo } from 'react';
-import { altoBaseInfantil, calcularLayout, centroCuerpo, esCocina, type Layout, type LayoutCuerpo, type Rect } from '../../shared/layout';
-import { equipoLegado, formatear } from '../../shared/reglas';
-import type { Diseno, Unidad } from '../../shared/tipos';
+import { altoBaseInfantil, calcularLayout, esCocina, type EquipoUbicado, type Layout, type LayoutCuerpo, type Rect } from '../../shared/layout';
+import { formatear } from '../../shared/reglas';
+import type { Diseno, Equipo, Unidad } from '../../shared/tipos';
 import { Cilindro, Panel, useMats } from './base3d';
 import { Cubierta, Encimera, EspacioLibre, Horno, Lavaplatos, huecosLavaplatos, medidasEncimera, type Hueco } from './Cocina3D';
 import { Cajon, Puerta, Tirador, materialFrente, type ContextoFrente } from './Frentes';
@@ -14,14 +14,22 @@ interface Props {
   abierto: boolean;
   etiquetas: boolean;
   unidad: Unidad;
-  /** Cocina en L: la cubierta del tramo principal se alarga sobre la esquina (mm a la izquierda y a la derecha). */
+  /** Cocina en L o U: la cubierta del tramo principal se alarga sobre las esquinas (mm a la izquierda y a la derecha). */
   extensionCubierta?: [number, number];
+  /** Encimeras y lavaplatos de este tramo (ubicarEquipos, x local de este layout) con su configuración. */
+  equipos?: EquipoDibujo[];
 }
 
-export function MuebleCuerpos({ diseno: d, abierto, etiquetas, unidad, extensionCubierta = [0, 0] }: Props) {
+/** Un equipo ubicado por el motor junto con su configuración (platos, modelo, llave). */
+export interface EquipoDibujo {
+  u: EquipoUbicado;
+  e: Equipo;
+}
+
+export function MuebleCuerpos({ diseno: d, abierto, etiquetas, unidad, extensionCubierta = [0, 0], equipos = [] }: Props) {
   const l = useMemo(() => calcularLayout(d), [d]);
   const m = useMats();
-  // El retorno de la L llega sin imagen: la imagen del cliente va solo en el tramo principal.
+  // Los lados de la L/U llegan sin imagen: la imagen del cliente va solo en el tramo principal.
   const matFrente = d.imagenFrontal ? materialFrente(m) : m.frente;
   const totalFrentes = useMemo<Rect | null>(() => {
     if (!d.imagenFrontal || l.frentes.length === 0) return null;
@@ -73,6 +81,7 @@ export function MuebleCuerpos({ diseno: d, abierto, etiquetas, unidad, extension
               material={matFrente}
               interior={anchoInterior(f.cuerpo)}
               fondoCaja={Math.max(120, l.profundidadCasco - 40)}
+              pisos={f.especiero ? l.cuerpos[f.cuerpo]?.especiero?.pisos : undefined}
             />
           );
         return (
@@ -90,8 +99,8 @@ export function MuebleCuerpos({ diseno: d, abierto, etiquetas, unidad, extension
           />
         );
       })}
-      {d.plantilla === 'cocina' && <EquipoCocina d={d} l={l} extension={extensionCubierta} />}
-      {d.plantilla === 'cocina-infantil' && <CocinaInfantil d={d} l={l} />}
+      {d.plantilla === 'cocina' && <EquipoCocina d={d} l={l} extension={extensionCubierta} equipos={equipos} />}
+      {d.plantilla === 'cocina-infantil' && <CocinaInfantil d={d} l={l} equipos={equipos} />}
       {d.plantilla === 'comoda' && d.mudador && <Mudador d={d} />}
     </group>
   );
@@ -235,46 +244,45 @@ function FilaSuperior({ d, l }: { d: Diseno; l: Layout }) {
 
 // ---------- Equipamiento de cocina ----------
 
-function EquipoCocina({ d, l, extension }: { d: Diseno; l: Layout; extension: [number, number] }) {
+function EquipoCocina({ d, l, extension, equipos }: { d: Diseno; l: Layout; extension: [number, number]; equipos: EquipoDibujo[] }) {
   const m = useMats();
-  const eq = equipoLegado(d);
   const ct = d.cocina.espesorCubierta;
   const D = d.profundidad;
   const r = ct / 2;
   const huecos: Hueco[] = [];
   const W = d.ancho;
+  // Límites de la cubierta (con las esquinas): el equipo nunca se sale de ella.
+  const cx0 = -W / 2 - extension[0];
+  const cx1 = W / 2 + extension[1];
+  const limitar = (x: number, media: number) => Math.max(cx0 + media, Math.min(cx1 - media, x));
 
-  let lavaplatos: JSX.Element | null = null;
-  if (eq.lavaplatos !== 'ninguno' && d.cuerpos.length) {
-    const tipo = eq.lavaplatos;
-    const ancho = tipo === 'doble' ? 770 : 400;
-    const fondo = tipo === 'doble' ? 380 : 360;
-    const escala = Math.min(1, (D - r - 120) / (fondo + 76), (W - 60) / (ancho + 76));
-    let cx = centroCuerpo(l, eq.lavaplatosCuerpo);
-    const media = (ancho * escala) / 2 + 45;
-    cx = Math.max(-W / 2 + media, Math.min(W / 2 - media, cx));
-    const cz = Math.max((D - r) * 0.55, 14 + 70 + (fondo * escala) / 2);
-    const h = huecosLavaplatos(tipo, cx, Math.min(cz, D - r - 45 - (fondo * escala) / 2), escala);
-    huecos.push(...h);
-    lavaplatos = <Lavaplatos huecos={h} yTop={d.alto} profundidadCuba={170} grifo={d.cocina.grifo} escala={escala} />;
-  }
-
-  let encimera: JSX.Element | null = null;
-  if (eq.encimera !== 'ninguna' && d.cuerpos.length) {
-    const tipo = eq.encimera;
-    const def = medidasEncimera(tipo);
-    const escala = Math.min(1, (D - r - 30) / def.fondo, (W - 40) / def.ancho);
-    let cx = centroCuerpo(l, eq.encimeraCuerpo);
-    const media = (def.ancho * escala) / 2 + 20;
-    cx = Math.max(-W / 2 + media, Math.min(W / 2 - media, cx));
-    const cz = (14 + D - r) / 2;
-    encimera = <Encimera cx={cx} cz={cz} yTop={d.alto} tipo={tipo} escala={escala} />;
+  const lavaplatos: JSX.Element[] = [];
+  const encimeras: JSX.Element[] = [];
+  for (const { u, e } of equipos) {
+    if (e.tipo === 'lavaplatos') {
+      const tipo = e.modelo;
+      const ancho = tipo === 'doble' ? 770 : 400;
+      const fondo = tipo === 'doble' ? 380 : 360;
+      const escala = Math.min(1, (D - r - 120) / (fondo + 76), (W - 60) / (ancho + 76));
+      // El motor ya lo corre al borde elegido con su margen: solo se cuida no salir de la cubierta.
+      const cx = limitar(u.x, (ancho * escala) / 2 + 40);
+      const cz = Math.max((D - r) * 0.55, 14 + 70 + (fondo * escala) / 2);
+      const h = huecosLavaplatos(tipo, cx, Math.min(cz, D - r - 45 - (fondo * escala) / 2), escala);
+      huecos.push(...h);
+      lavaplatos.push(<Lavaplatos key={u.id} huecos={h} yTop={d.alto} profundidadCuba={170} grifo={d.cocina.grifo} escala={escala} llave={e.llave !== false} />);
+    } else {
+      const def = medidasEncimera(e.platos);
+      const escala = Math.min(1, (D - r - 30) / def.fondo, (W - 40) / def.ancho);
+      const cx = limitar(u.x, (def.ancho * escala) / 2 + 20);
+      const cz = (14 + D - r) / 2;
+      encimeras.push(<Encimera key={u.id} cx={cx} cz={cz} yTop={d.alto} tipo={e.platos} escala={escala} />);
+    }
   }
 
   return (
     <group>
-      <Cubierta x0={-W / 2 - extension[0]} x1={W / 2 + extension[1]} yTop={d.alto} espesor={ct} profundidad={D} huecos={huecos} copete={d.cocina.copete} />
-      {/* Cocina en L: copete sobre el muro lateral en la esquina (el del retorno parte en z = D). */}
+      <Cubierta x0={cx0} x1={cx1} yTop={d.alto} espesor={ct} profundidad={D} huecos={huecos} copete={d.cocina.copete} sinBorde={extension} />
+      {/* Cocina en L o U: copete sobre el muro lateral en cada esquina (el del lado parte en z = D). */}
       {d.cocina.copete &&
         [-1, 1].map((s) => {
           const e = s < 0 ? extension[0] : extension[1];
@@ -288,7 +296,7 @@ function EquipoCocina({ d, l, extension }: { d: Diseno; l: Layout; extension: [n
           );
         })}
       {lavaplatos}
-      {encimera}
+      {encimeras}
       {l.cuerpos
         .filter((c) => c.horno)
         .map((c) => (
@@ -300,9 +308,8 @@ function EquipoCocina({ d, l, extension }: { d: Diseno; l: Layout; extension: [n
 
 // ---------- Cocina infantil ----------
 
-function CocinaInfantil({ d, l }: { d: Diseno; l: Layout }) {
+function CocinaInfantil({ d, l, equipos }: { d: Diseno; l: Layout; equipos: EquipoDibujo[] }) {
   const m = useMats();
-  const eq = equipoLegado(d);
   const t = d.espesor;
   const D = d.profundidad;
   const hb = altoBaseInfantil(d);
@@ -315,20 +322,20 @@ function CocinaInfantil({ d, l }: { d: Diseno; l: Layout }) {
   const ySup = d.alto - t;
   const yRepisa = hb + (d.alto - hb) * 0.55;
   const huecos: Hueco[] = [];
-  let lav: JSX.Element | null = null;
-  if (eq.lavaplatos !== 'ninguno') {
-    const cx = centroCuerpo(l, Math.max(1, eq.lavaplatosCuerpo));
-    const escala = Math.min(0.5, (D - 60) / 460);
-    const h = huecosLavaplatos('simple', cx, D * 0.55, escala);
-    huecos.push(...h);
-    lav = <Lavaplatos huecos={h} yTop={hb} profundidadCuba={70} grifo={d.cocina.grifo} escala={escala} />;
-  }
-  let enc: JSX.Element | null = null;
-  if (eq.encimera !== 'ninguna') {
-    const cx = centroCuerpo(l, Math.max(1, eq.encimeraCuerpo));
-    const tipo = eq.encimera;
-    const escala = Math.min(0.45, (D - 40) / medidasEncimera(tipo).fondo);
-    enc = <Encimera cx={cx} cz={D * 0.52} yTop={hb} tipo={tipo} escala={escala} />;
+  const lav: JSX.Element[] = [];
+  const enc: JSX.Element[] = [];
+  // Juguete: equipos a escala reducida, siempre dentro de la cubierta baja.
+  const limitar = (x: number, media: number) => Math.max(xb0 + media, Math.min(xb1 - media, x));
+  for (const { u, e } of equipos) {
+    if (e.tipo === 'lavaplatos') {
+      const escala = Math.min(0.5, (D - 60) / 460);
+      const h = huecosLavaplatos('simple', limitar(u.x, 240 * escala), D * 0.55, escala);
+      huecos.push(...h);
+      lav.push(<Lavaplatos key={u.id} huecos={h} yTop={hb} profundidadCuba={70} grifo={d.cocina.grifo} escala={escala} />);
+    } else {
+      const escala = Math.min(0.45, (D - 40) / medidasEncimera(e.platos).fondo);
+      enc.push(<Encimera key={u.id} cx={limitar(u.x, (medidasEncimera(e.platos).ancho * escala) / 2 + 10)} cz={D * 0.52} yTop={hb} tipo={e.platos} escala={escala} />);
+    }
   }
   const anchoMicro = Math.min(320, (xb1 - xb0) * 0.45);
   return (

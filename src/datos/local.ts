@@ -53,9 +53,30 @@ function filas(): FilaCotizacion[] {
   return leer<FilaCotizacion[]>(CLAVES.cotizaciones, []);
 }
 
-function guardar(f: FilaCotizacion[]) {
-  escribir(CLAVES.cotizaciones, f);
+/**
+ * Guarda las cotizaciones. Si el navegador se queda sin espacio, quita la imagen grande de las
+ * cotizaciones más antiguas (conservan su miniatura) hasta que quepa; la de `conservar` no se toca.
+ */
+function guardar(f: FilaCotizacion[], conservar?: number) {
+  try {
+    escribir(CLAVES.cotizaciones, f);
+  } catch (e) {
+    const conImagen = f.filter((x) => x.imagen && x.id !== conservar).sort((a, b) => a.id - b.id);
+    for (const x of conImagen) {
+      x.imagen = null;
+      try {
+        escribir(CLAVES.cotizaciones, f);
+        return;
+      } catch {
+        // Sigue con la siguiente.
+      }
+    }
+    throw e;
+  }
 }
+
+/** Lo que devuelve la lista y los cambios de estado: sin el diseño ni la imagen grande. */
+const resumida = (f: FilaCotizacion) => aCotizacion({ ...f, config: undefined, imagen: undefined });
 
 function propia(id: number): { todas: FilaCotizacion[]; fila: FilaCotizacion } {
   const u = exigirSesion();
@@ -120,7 +141,7 @@ export const backendLocal: Backend = {
     return filas()
       .filter((f) => f.vendedor_id === u.id)
       .sort((a, b) => b.fecha.localeCompare(a.fecha) || b.id - a.id)
-      .map((f) => aCotizacion({ ...f, config: undefined }));
+      .map(resumida);
   },
 
   async cotizacion(id) {
@@ -145,7 +166,7 @@ export const backendLocal: Backend = {
       actualizado_en: ahora(),
       vendedor: { id: u.id, nombre: u.nombre, telefono: u.telefono },
     };
-    guardar([...todas, fila]);
+    guardar([...todas, fila], fila.id);
     return aCotizacion(fila);
   },
 
@@ -155,7 +176,7 @@ export const backendLocal: Backend = {
     const error = validarDatos(d);
     if (error) throw new Error(error);
     Object.assign(fila, aFila(d), { actualizado_en: ahora() });
-    guardar(todas);
+    guardar(todas, fila.id);
     return aCotizacion(fila);
   },
 
@@ -172,13 +193,13 @@ export const backendLocal: Backend = {
       actualizado_en: ahora(),
     });
     guardar(todas);
-    return aCotizacion({ ...fila, config: undefined });
+    return resumida(fila);
   },
 
   async cambiarEstado(id, estado) {
     const { todas, fila } = propia(id);
     Object.assign(fila, { estado, fecha_venta: null, valor_venta: null, medio_pago: null, nota_venta: null, actualizado_en: ahora() });
     guardar(todas);
-    return aCotizacion({ ...fila, config: undefined });
+    return resumida(fila);
   },
 };

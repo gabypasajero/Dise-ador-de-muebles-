@@ -2,9 +2,18 @@
 // El muro trasero está en z = 0 y el mueble se apoya en él, centrado en x = 0.
 import { useEffect, useMemo, type ReactNode } from 'react';
 import * as THREE from 'three';
-import { calcularLayout, calcularLayoutAereos, centroCuerpo, disenoBase, extremosPrincipal, retornoDe } from '../../shared/layout';
-import { equipoLegado } from '../../shared/reglas';
-import type { Diseno, Escenario } from '../../shared/tipos';
+import {
+  calcularLayout,
+  calcularLayoutAereos,
+  centroCuerpo,
+  dimensionesTotales,
+  disenoBase,
+  extremosPrincipal,
+  LADOS,
+  ladoAereoActivo,
+  ubicarEquipos,
+} from '../../shared/layout';
+import type { Diseno, Escenario, LadoId } from '../../shared/tipos';
 import { texturaAlfombra, texturaAzulejo, texturaBaldosas, texturaParquet, texturaPared } from '../furniture/texturas';
 
 // ---------- Utilidades ----------
@@ -166,10 +175,15 @@ function Rodapie({ ancho, color = '#f3f2ee' }: { ancho: number; color?: string }
   return <Caja pos={[0, 0.04, 0.007]} tam={[ancho, 0.08, 0.014]} color={color} rugosidad={0.5} />;
 }
 
-function Luces({ lado, intensidad = 2.4, color = '#fff6ea' }: { lado: number; intensidad?: number; color?: string }) {
+/**
+ * Luces calibradas con el tono neutro del visor: un frente recibe una irradiancia ≈ 1, así una melamina
+ * se ve del color de su muestra (ΔE2000 ≤ 6) y el blanco queda blanco (≈ 235) sin quemarse. Colores casi
+ * neutros: una luz cálida amarilleaba el blanco y verdeaba los grises.
+ */
+function Luces({ lado, fondo = 0, intensidad = 2.1, color = '#fffcf6' }: { lado: number; fondo?: number; intensidad?: number; color?: string }) {
   return (
     <>
-      <hemisphereLight args={['#fffaf2', '#c9bba8', 0.55]} />
+      <hemisphereLight args={['#fdfcfa', '#dcd8d0', 0.5]} />
       <directionalLight
         position={[-2.8, 4.6, 4.2]}
         intensity={intensidad}
@@ -179,51 +193,25 @@ function Luces({ lado, intensidad = 2.4, color = '#fff6ea' }: { lado: number; in
         shadow-camera-left={-lado}
         shadow-camera-right={lado}
         shadow-camera-top={3.2}
-        shadow-camera-bottom={-0.5}
+        shadow-camera-bottom={-Math.max(0.5, fondo * 0.75)}
         shadow-camera-near={0.5}
         shadow-camera-far={14}
         shadow-bias={-0.0004}
         shadow-normalBias={0.02}
       />
-      <directionalLight position={[3, 2.5, 5]} intensity={0.45} color="#e8eefc" />
+      <directionalLight position={[3, 2.5, 5]} intensity={0.42} color="#f3f6fc" />
     </>
   );
 }
 
 // ---------- Escenario de cocina ----------
 
-function posicionEncimera(d: Diseno): number | null {
-  if (d.plantilla !== 'cocina' || equipoLegado(d).encimera === 'ninguna' || !d.cuerpos.length) return null;
-  const l = calcularLayout(d);
-  const media = 0.32;
-  const cx = centroCuerpo(l, equipoLegado(d).encimeraCuerpo) / 1000;
-  const W = d.ancho / 1000;
-  return Math.max(-W / 2 + media, Math.min(W / 2 - media, cx));
-}
-
-function Campana({ x, y }: { x: number; y: number }) {
-  const geo = useGeo(() => {
-    const g = new THREE.CylinderGeometry(0.17, 0.43, 0.16, 4, 1);
-    g.rotateY(Math.PI / 4);
-    g.scale(1, 1, 0.78);
-    return g;
-  }, []);
-  const acero = useMemo(() => new THREE.MeshStandardMaterial({ color: '#cfd2d6', metalness: 1, roughness: 0.3 }), []);
-  useEffect(() => () => acero.dispose(), [acero]);
-  return (
-    <group position={[x, y, 0]}>
-      <mesh geometry={geo} material={acero} position={[0, 0.08, 0.26]} castShadow />
-      <Caja pos={[0, -0.015, 0.25]} tam={[0.6, 0.03, 0.48]} material={acero} />
-      <Caja pos={[0, (2.7 - y) / 2 + 0.08, 0.13]} tam={[0.26, 2.7 - y, 0.24]} material={acero} />
-    </group>
-  );
-}
-
-function Refrigerador({ x }: { x: number }) {
+/** Refrigerador de 70 × 66 cm con el respaldo contra un muro (rotY gira el muro: 0 el principal). */
+function Refrigerador({ x, z = 0, rotY = 0 }: { x: number; z?: number; rotY?: number }) {
   const acero = useMemo(() => new THREE.MeshStandardMaterial({ color: '#c9ccd0', metalness: 0.9, roughness: 0.35 }), []);
   useEffect(() => () => acero.dispose(), [acero]);
   return (
-    <group position={[x, 0, 0]}>
+    <group position={[x, 0, z]} rotation={[0, rotY, 0]}>
       <Caja pos={[0, 0.93, 0.34]} tam={[0.7, 1.82, 0.66]} material={acero} />
       <Caja pos={[0, 1.24, 0.675]} tam={[0.7, 0.008, 0.01]} color="#3a3b3e" />
       <Caja pos={[-0.29, 1.5, 0.71]} tam={[0.025, 0.35, 0.03]} color="#3a3b3e" metal={0.6} rugosidad={0.4} />
@@ -262,36 +250,48 @@ function EscenaCocina({ d }: { d: Diseno }) {
   const base = disenoBase(d);
   const [ex0, ex1] = extremosPrincipal(d).map((v) => v / 1000);
   const H = base.alto / 1000;
-  const r = retornoDe(d);
   const la = calcularLayoutAereos(d);
   const mural = la?.montaje === 'mural';
   // Los aéreos pueden ser más largos que el mueble base: el refrigerador va al lado de ambos.
   const xa0 = la && mural ? Math.min(ex0, la.x0 / 1000) : ex0;
   const xa1 = la && mural ? Math.max(ex1, la.x1 / 1000) : ex1;
+  const caja = dimensionesTotales(d);
+  const fondoTotal = caja.fondo / 1000;
   const mitad = Math.max(2.8, Math.max(-xa0, xa1) + 1.7);
   const piso = texturaBaldosas('#d8d4cd', '#b9b4ab', 2, 1200);
   const pared = texturaPared('#f1ede6');
   const azulejo = texturaAzulejo('#f7f6f2', '#d9d6cf');
-  const xEnc = posicionEncimera(d);
-  const lav =
-    d.plantilla === 'cocina' && equipoLegado(d).lavaplatos !== 'ninguno' && d.cuerpos.length
-      ? centroCuerpo(calcularLayout(d), equipoLegado(d).lavaplatosCuerpo) / 1000
-      : null;
   // Cerámica entre la cubierta y los aéreos (o 62 cm sin aéreos); el compacto ya tiene respaldo.
   const altoAz = la && mural ? Math.max(0.3, la.y0 / 1000 - H) : 0.62;
   const anchoAz = ex1 - ex0;
   const geoAz = useGeo(() => planoUV(anchoAz, altoAz), [anchoAz, altoAz]);
-  // Cerámica del muro lateral: todo el retorno, desde la esquina.
-  const largoL = r ? r.largo / 1000 : 0;
-  const geoAzL = useGeo(() => planoUV(Math.max(0.01, largoL), altoAz), [largoL, altoAz]);
-  // Muros laterales: la L se apoya en uno de ellos.
-  const xMuroIzq = r?.lado === 'izq' ? ex0 : -mitad;
-  const xMuroDer = r?.lado === 'der' ? ex1 : null;
-  const zL = largoL / 2;
-  const xRefri = r?.lado === 'der' ? xa0 - 0.05 - 0.35 : xa1 + 0.05 + 0.35;
+  // Cada lado de la L o la U (o del aéreo) se apoya en su muro lateral, en el extremo del tramo principal.
+  const muro = (lado: LadoId) => !!(d.lados?.[lado] || ladoAereoActivo(d, lado));
+  const largoLado = (lado: LadoId) => Math.max(d.lados?.[lado]?.largo ?? 0, ladoAereoActivo(d, lado)?.largo ?? 0) / 1000;
+  const conIzq = muro('izq');
+  const conDer = muro('der');
+  const xMuroIzq = conIzq ? ex0 : -mitad;
+  // Repisa decorativa sobre el lavaplatos del tramo principal cuando no hay aéreos (lejos de la campana).
+  const ubicados = ubicarEquipos(d);
+  const lav = ubicados.find((u) => u.tipo === 'lavaplatos' && u.tramo === 'base');
+  const campanasBase = ubicados.filter((u) => u.tipo === 'campana' && u.tramo === 'base').map((u) => u.x / 1000);
+  const xLav = lav ? lav.x / 1000 : null;
+  const repisa = !la && xLav !== null && campanasBase.every((x) => Math.abs(xLav - x) > 0.85);
+  // Refrigerador fuera de los muebles, al lado libre del tramo principal. En la U no cabe: los dos extremos
+  // tienen muro y frente a las puntas taparía el mueble desde la cámara; se omite (y la planta también).
+  let refri: { x: number; z: number; rotY: number } | null = null;
+  let planta: [number, number, number] | null = null;
+  if (!conIzq || !conDer) {
+    // Separado 22 cm: deja ver la cota de alto, que va a ese lado del mueble.
+    const x = conDer ? xa0 - 0.22 - 0.35 : xa1 + 0.22 + 0.35;
+    refri = { x, z: 0, rotY: 0 };
+    if (!conIzq) planta = conDer ? [x - 0.35 - 0.4, 0, 0.28] : [ex0 - 1.25, 0, 0.28];
+  }
+  // La ventana va en el muro izquierdo, después del lado izquierdo si lo hay.
+  const zVentana = conIzq ? Math.max(1.6, largoLado('izq') + 0.8) : 1.6;
   return (
     <group>
-      <Luces lado={mitad} />
+      <Luces lado={mitad} fondo={fondoTotal} />
       <Piso textura={piso} ancho={mitad * 2 + 6} />
       <Muro textura={pared} ancho={mitad * 2 + 6} />
       {d.plantilla !== 'compacto' && (
@@ -299,30 +299,36 @@ function EscenaCocina({ d }: { d: Diseno }) {
           <meshStandardMaterial map={azulejo} roughness={0.18} />
         </mesh>
       )}
-      {r && largoL > 0 && (
-        <mesh
-          geometry={geoAzL}
-          position={[r.lado === 'der' ? ex1 - 0.002 : ex0 + 0.002, H + altoAz / 2, zL]}
-          rotation={[0, r.lado === 'der' ? -Math.PI / 2 : Math.PI / 2, 0]}
-          receiveShadow
-        >
-          <meshStandardMaterial map={azulejo} roughness={0.18} />
-        </mesh>
+      {LADOS.map((lado) =>
+        d.lados?.[lado] ? (
+          <AzulejoLado
+            key={lado}
+            x={lado === 'der' ? ex1 - 0.002 : ex0 + 0.002}
+            rotY={lado === 'der' ? -Math.PI / 2 : Math.PI / 2}
+            largo={d.lados[lado]!.largo / 1000}
+            y0={H}
+            alto={ladoAereoActivo(d, lado) && la && mural ? altoAz : 0.62}
+            textura={azulejo}
+          />
+        ) : null,
       )}
       <Muro textura={pared} ancho={6} pos={[xMuroIzq, 0, 3]} rot={[0, Math.PI / 2, 0]} />
-      {xMuroDer !== null && <Muro textura={pared} ancho={6} pos={[xMuroDer, 0, 3]} rot={[0, -Math.PI / 2, 0]} />}
-      <Ventana
-        pos={[xMuroIzq + 0.005, 1.45, r?.lado === 'izq' ? Math.max(1.6, r.largo / 1000 + 0.8) : 1.6]}
-        ancho={1.1}
-        alto={1.1}
-        rotY={Math.PI / 2}
-      />
-      {!la && xEnc !== null && <Campana x={xEnc} y={H + 0.68} />}
-      {!la && lav !== null && (xEnc === null || Math.abs(lav - xEnc) > 0.85) && <Repisa x={lav} y={H + 0.95} ancho={0.8} />}
-      <Refrigerador x={xRefri} />
-      {/* Con la L derecha la planta va junto al refrigerador, sin pasar el muro izquierdo. */}
-      {r?.lado !== 'izq' && <Planta pos={[r?.lado === 'der' ? xRefri - 0.35 - 0.4 : ex0 - 1.25, 0, 0.28]} escala={0.85} />}
+      {conDer && <Muro textura={pared} ancho={6} pos={[ex1, 0, 3]} rot={[0, -Math.PI / 2, 0]} />}
+      <Ventana pos={[xMuroIzq + 0.005, 1.45, zVentana]} ancho={1.1} alto={1.1} rotY={Math.PI / 2} />
+      {repisa && <Repisa x={xLav!} y={H + 0.95} ancho={0.8} />}
+      {refri && <Refrigerador {...refri} />}
+      {planta && <Planta pos={planta} escala={0.85} />}
     </group>
+  );
+}
+
+/** Cerámica del muro lateral: todo el lado, desde la esquina. */
+function AzulejoLado({ x, rotY, largo, y0, alto, textura }: { x: number; rotY: number; largo: number; y0: number; alto: number; textura: THREE.Texture }) {
+  const geo = useGeo(() => planoUV(Math.max(0.01, largo), alto), [largo, alto]);
+  return (
+    <mesh geometry={geo} position={[x, y0 + alto / 2, largo / 2]} rotation={[0, rotY, 0]} receiveShadow>
+      <meshStandardMaterial map={textura} roughness={0.18} />
+    </mesh>
   );
 }
 
@@ -409,25 +415,28 @@ function Pouf({ pos, color }: { pos: [number, number, number]; color: string }) 
 }
 
 function EscenaDormitorio({ d }: { d: Diseno }) {
-  const W = d.ancho / 1000;
-  const mitad = Math.max(3.2, W / 2 + 2.6);
+  // Todo el conjunto (una cocina en U también puede verse aquí): la cama y la ventana quedan fuera de él.
+  const caja = dimensionesTotales(d);
+  const cx0 = caja.x0 / 1000;
+  const cx1 = caja.x1 / 1000;
+  const mitad = Math.max(3.2, Math.max(-cx0, cx1) + 2.6);
   const piso = texturaParquet('#c8a27a', '#946f4a');
   const pared = texturaPared('#e9e2d8');
   const alfombra = texturaAlfombra('#e8e1d6', '#d3c6b4', '#b9a991');
-  const xCama = -W / 2 - 0.6 - 0.75;
+  const xCama = cx0 - 0.6 - 0.75;
   return (
     <group>
-      <Luces lado={mitad} intensidad={2.2} />
+      <Luces lado={mitad} fondo={caja.fondo / 1000} intensidad={1.95} />
       <Piso textura={piso} ancho={mitad * 2 + 6} />
       <Muro textura={pared} ancho={mitad * 2 + 6} />
       <Rodapie ancho={mitad * 2 + 6} />
       <Cama x={xCama} ancho={1.5} color="#b9b2a8" colorFunda="#8c9a8e" />
       <Alfombra pos={[xCama + 0.2, 0.004, 1.6]} ancho={2.3} largo={1.6} textura={alfombra} />
-      <Velador x={-W / 2 - 0.36} />
+      <Velador x={cx0 - 0.36} />
       <Cuadro pos={[xCama, 1.62, 0]} ancho={0.9} alto={0.6} colores={['#efe9df', '#c88f6b', '#8a9d8a']} />
-      <Ventana pos={[W / 2 + 1.05, 1.5, 0]} ancho={1.0} alto={1.2} cortinas="#efe8dc" />
+      <Ventana pos={[cx1 + 1.05, 1.5, 0]} ancho={1.0} alto={1.2} cortinas="#efe8dc" />
       {d.plantilla === 'tocador' && <Pouf pos={[0, 0, d.profundidad / 1000 + 0.32]} color="#e3bfc0" />}
-      <Planta pos={[W / 2 + 1.95, 0, 0.3]} escala={0.9} />
+      <Planta pos={[cx1 + 1.95, 0, 0.3]} escala={0.9} />
     </group>
   );
 }
@@ -488,12 +497,15 @@ function Silla({ pos }: { pos: [number, number, number] }) {
 }
 
 function EscenaInfantil({ d }: { d: Diseno }) {
-  const W = d.ancho / 1000;
-  const mitad = Math.max(3, W / 2 + 2.3);
+  const caja = dimensionesTotales(d);
+  const cx0 = caja.x0 / 1000;
+  const cx1 = caja.x1 / 1000;
+  const fondo = caja.fondo / 1000;
+  const mitad = Math.max(3, Math.max(-cx0, cx1) + 2.3);
   const piso = texturaParquet('#d8bc98', '#a98a63');
   const paredAlta = texturaPared('#f4ece4');
   const alfombra = texturaAlfombra('#f6e7d8', '#f2b8c6', '#9fd1d9');
-  const xCama = -W / 2 - 0.55 - 0.48;
+  const xCama = cx0 - 0.55 - 0.48;
   const escritorio = d.cuerpos.findIndex((c) => c.tipo === 'escritorio');
   let xSilla: number | null = null;
   if (escritorio >= 0 && d.plantilla === 'escritorio') {
@@ -502,26 +514,26 @@ function EscenaInfantil({ d }: { d: Diseno }) {
   }
   return (
     <group>
-      <Luces lado={mitad} intensidad={2.2} />
+      <Luces lado={mitad} fondo={fondo} intensidad={1.95} />
       <Piso textura={piso} ancho={mitad * 2 + 6} />
       <Muro textura={paredAlta} ancho={mitad * 2 + 6} pos={[0, 1.0, 0]} alto={1.7} />
       <Muro ancho={mitad * 2 + 6} alto={1.0} color="#bfdcd2" pos={[0, 0, 0.001]} />
       <Caja pos={[0, 1.0, 0.012]} tam={[mitad * 2 + 6, 0.035, 0.024]} color="#f7f4ee" rugosidad={0.5} />
       <Rodapie ancho={mitad * 2 + 6} />
       <Cama x={xCama} ancho={0.96} color="#f0e3d3" colorFunda="#f2b8c6" />
-      <Alfombra pos={[0.1, 0.004, d.profundidad / 1000 + 0.75]} ancho={1.6} largo={1.6} textura={alfombra} redonda />
-      <Bloques pos={[0.75, 0.005, d.profundidad / 1000 + 0.7]} />
+      <Alfombra pos={[0.1, 0.004, fondo + 0.75]} ancho={1.6} largo={1.6} textura={alfombra} redonda />
+      <Bloques pos={[0.75, 0.005, fondo + 0.7]} />
       {xSilla !== null && <Silla pos={[xSilla, 0, d.profundidad / 1000 + 0.12]} />}
       {[
         [xCama - 0.3, 1.75, '#f6d860', 0.08],
         [xCama + 0.1, 1.95, '#f2a6b5', 0.06],
         [xCama + 0.42, 1.68, '#9fd1d9', 0.07],
-        [W / 2 + 0.6, 2.05, '#f6d860', 0.07],
-        [W / 2 + 0.95, 1.8, '#f2a6b5', 0.05],
+        [cx1 + 0.6, 2.05, '#f6d860', 0.07],
+        [cx1 + 0.95, 1.8, '#f2a6b5', 0.05],
       ].map(([x, y, c, r], i) => (
         <Estrella key={i} pos={[x as number, y as number, 0.004]} r={r as number} color={c as string} />
       ))}
-      <Planta pos={[W / 2 + 1.5, 0, 0.3]} escala={0.8} />
+      <Planta pos={[cx1 + 1.5, 0, 0.3]} escala={0.8} />
     </group>
   );
 }
@@ -540,7 +552,7 @@ function EscenaEstudio() {
   }, []);
   return (
     <group>
-      <Luces lado={4} intensidad={2.0} />
+      <Luces lado={4} intensidad={1.8} />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, zPiso + 4]} receiveShadow>
         <planeGeometry args={[14, 8]} />
         <meshStandardMaterial color="#ecebe8" roughness={0.9} />

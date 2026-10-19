@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { clasificarProducto, disenoInicial, disenoLibre } from '../../shared/catalogo';
-import { retornoDe } from '../../shared/layout';
-import { cuerposDe, normalizar, type Tramo } from '../../shared/reglas';
+import { cuerposDe, ejecutar, normalizar, tramosDe, type Operacion, type Resultado, type TramoId } from '../../shared/reglas';
 import type { CatalogoMateriales, Cotizacion, Diseno, Escenario, Plantilla, ProductoCatalogo, Unidad, Usuario } from '../../shared/tipos';
 import { obtenerCatalogo, obtenerMateriales, type RespuestaCatalogo } from '../datos/catalogo';
 import { backend } from '../datos';
@@ -17,6 +16,14 @@ interface Aviso {
   id: number;
   texto: string;
   tipo: 'ok' | 'error' | 'info';
+}
+
+/** Operación que el motor rechazó: el motivo se muestra tal cual y, si hay, la forma de hacerla igual. */
+export interface Rechazo {
+  id: number;
+  motivo: string;
+  /** La misma operación agrandando o achicando el mueble (que sí se puede). */
+  alternativa?: Operacion;
 }
 
 interface Estado {
@@ -39,8 +46,10 @@ interface Estado {
   pestana: Pestana | null;
   /** Módulo seleccionado en la pestaña «Módulos y espacios» (índice dentro del tramo activo). */
   moduloActivo: number;
-  /** Tramo que se edita: principal, retorno de la L o aéreos. */
-  tramoActivo: Tramo;
+  /** Tramo que se edita: principal, lados de la L/U, aéreos y sus lados. */
+  tramoActivo: TramoId;
+  /** Último rechazo del motor (se borra con el siguiente cambio válido o al cerrarlo). */
+  rechazo: Rechazo | null;
   /** Panel de medidas plegado (más espacio para el 3D). */
   panelPlegado: boolean;
   /** Alto elegido para las pestañas del panel (px); null = automático. */
@@ -67,6 +76,11 @@ interface Estado {
   elegirProducto: (p: ProductoCatalogo) => void;
   empezarLibre: (plantilla: Plantilla) => void;
   cambiar: (f: (d: Diseno) => Diseno, grupo?: string) => void;
+  /**
+   * Ejecuta una operación del motor: si se hace entra al historial (deshacer) y muestra sus
+   * avisos; si se rechaza, guarda el motivo y la alternativa para mostrarlos sin tocar el diseño.
+   */
+  operar: (op: Operacion, grupo?: string) => Resultado;
   deshacer: () => void;
   rehacer: () => void;
   restablecer: () => void;
@@ -103,9 +117,8 @@ function leerVista(): VistaGuardada {
 }
 
 /** Al deshacer o rehacer, el tramo y el módulo elegidos deben existir en el diseño. */
-function seleccionValida(d: Diseno, tramo: Tramo, modulo: number): { tramoActivo: Tramo; moduloActivo: number } {
-  const valido = tramo === 'retorno' ? !!retornoDe(d) : tramo === 'aereos' ? d.aereos.activo : true;
-  const t = valido ? tramo : 'base';
+function seleccionValida(d: Diseno, tramo: TramoId, modulo: number): { tramoActivo: TramoId; moduloActivo: number } {
+  const t = tramosDe(d).includes(tramo) ? tramo : 'base';
   return { tramoActivo: t, moduloActivo: Math.max(0, Math.min(modulo, cuerposDe(d, t).length - 1)) };
 }
 
@@ -134,7 +147,13 @@ function escribirBorrador(productoId: number | null, diseno: Diseno, unidad: Uni
   }
 }
 
+/** Deshacer y rehacer también actualizan el borrador: al recargar vuelve el diseño que se ve. */
+function guardarActual(s: { producto: ProductoCatalogo | null; diseno: Diseno; unidad: Unidad; cotizacionActual: CotizacionEnEdicion | null }) {
+  escribirBorrador(s.producto?.id ?? null, s.diseno, s.unidad, s.cotizacionActual);
+}
+
 let idAviso = 0;
+let idRechazo = 0;
 
 export const useApp = create<Estado>((set, get) => ({
   catalogo: null,
@@ -156,6 +175,7 @@ export const useApp = create<Estado>((set, get) => ({
   pestana: 'modulos',
   moduloActivo: 0,
   tramoActivo: 'base',
+  rechazo: null,
   ...leerVista(),
   vista: 'perspectiva',
   encuadre: 0,
@@ -215,6 +235,7 @@ export const useApp = create<Estado>((set, get) => ({
       vista: 'perspectiva',
       moduloActivo: 0,
       tramoActivo: 'base',
+      rechazo: null,
       modal: null,
     });
     escribirBorrador(producto.id, d, get().unidad, null);
@@ -234,6 +255,7 @@ export const useApp = create<Estado>((set, get) => ({
       vista: 'perspectiva',
       moduloActivo: 0,
       tramoActivo: 'base',
+      rechazo: null,
       modal: null,
     });
     escribirBorrador(null, d, get().unidad, null);
@@ -250,21 +272,38 @@ export const useApp = create<Estado>((set, get) => ({
       pasado: mismoGrupo ? pasado : [...pasado.slice(-59), diseno],
       futuro: [],
       ultimoGrupo: grupo ? { clave: grupo, t: ahora } : null,
+      rechazo: null,
+      // Si el cambio quita el tramo que se editaba (forma lineal, sin aéreos), se vuelve al principal.
+      ...seleccionValida(nuevo, get().tramoActivo, get().moduloActivo),
     });
     escribirBorrador(producto?.id ?? null, nuevo, unidad, cotizacionActual);
+  },
+
+  operar(op, grupo) {
+    const r = ejecutar(get().diseno, op);
+    if (!r.ok) {
+      set({ rechazo: { id: ++idRechazo, motivo: r.motivo ?? 'No se pudo hacer ese cambio.', alternativa: r.alternativa } });
+      return r;
+    }
+    if (r.diseno !== get().diseno) get().cambiar(() => r.diseno, grupo);
+    else if (get().rechazo) set({ rechazo: null });
+    for (const a of r.avisos) get().avisar(a, 'info');
+    return r;
   },
 
   deshacer() {
     const { pasado, diseno, futuro } = get();
     if (!pasado.length) return;
     const anterior = pasado[pasado.length - 1];
-    set({ diseno: anterior, pasado: pasado.slice(0, -1), futuro: [diseno, ...futuro], ultimoGrupo: null, ...seleccionValida(anterior, get().tramoActivo, get().moduloActivo) });
+    set({ diseno: anterior, pasado: pasado.slice(0, -1), futuro: [diseno, ...futuro], ultimoGrupo: null, rechazo: null, ...seleccionValida(anterior, get().tramoActivo, get().moduloActivo) });
+    guardarActual(get());
   },
 
   rehacer() {
     const { pasado, diseno, futuro } = get();
     if (!futuro.length) return;
-    set({ diseno: futuro[0], futuro: futuro.slice(1), pasado: [...pasado, diseno], ultimoGrupo: null, ...seleccionValida(futuro[0], get().tramoActivo, get().moduloActivo) });
+    set({ diseno: futuro[0], futuro: futuro.slice(1), pasado: [...pasado, diseno], ultimoGrupo: null, rechazo: null, ...seleccionValida(futuro[0], get().tramoActivo, get().moduloActivo) });
+    guardarActual(get());
   },
 
   restablecer() {
@@ -291,6 +330,7 @@ export const useApp = create<Estado>((set, get) => ({
       abierto: false,
       moduloActivo: 0,
       tramoActivo: 'base',
+      rechazo: null,
       encuadre: get().encuadre + 1,
     });
     escribirBorrador(c.productoId, d, get().unidad, resumen);
@@ -319,9 +359,12 @@ export const useApp = create<Estado>((set, get) => ({
   },
 
   avisar(texto, tipo = 'ok') {
+    // El mismo aviso repetido (al arrastrar un deslizador, por ejemplo) no se apila.
+    if (get().avisos.some((a) => a.texto === texto)) return;
     const id = ++idAviso;
-    set({ avisos: [...get().avisos, { id, texto, tipo }] });
-    setTimeout(() => set({ avisos: get().avisos.filter((a) => a.id !== id) }), 3800);
+    set({ avisos: [...get().avisos.slice(-3), { id, texto, tipo }] });
+    // Los avisos largos del motor quedan a la vista el tiempo justo para leerlos.
+    setTimeout(() => set({ avisos: get().avisos.filter((a) => a.id !== id) }), Math.min(9000, Math.max(3800, texto.length * 55)));
   },
 
   async revisarSesion() {

@@ -3,6 +3,7 @@ import { NOMBRE_ESCENARIO } from '../../shared/catalogo';
 import { formatear } from '../../shared/reglas';
 import type { Escenario } from '../../shared/tipos';
 import { escenarioActual, useApp, type Vista } from '../store/useApp';
+import { BotonAsistente } from './Asistente';
 import { IcoArriba, IcoCamara, IcoCentrar, IcoCubo, IcoFoto, IcoFrente, IcoPuerta, IcoRegla, IcoX } from './Iconos';
 
 export function BarraVisor() {
@@ -40,6 +41,7 @@ export function BarraVisor() {
       </div>
 
       <div className="barra-visor derecha" role="toolbar" aria-label="Herramientas del visor">
+        <BotonAsistente />
         <div className="segmentado oscuro" role="radiogroup" aria-label="Vista">
           {vistas.map((x) => (
             <button

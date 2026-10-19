@@ -8,7 +8,7 @@ import { Mueble3D } from '../furniture/Mueble3D';
 import { Escenario3D } from '../scenes/Escenarios';
 import { escenarioActual, useApp, type Vista } from '../store/useApp';
 import { cuerposDe, nombreModulo } from '../../shared/reglas';
-import { dimensionesTotales, extremosPrincipal, retornoDe } from '../../shared/layout';
+import { dimensionesTotales, extremosPrincipal, formaDe, LADOS, ladoAereoActivo, ubicarEquipos } from '../../shared/layout';
 import type { Diseno } from '../../shared/tipos';
 
 function Entorno() {
@@ -17,7 +17,8 @@ function Entorno() {
     const pmrem = new THREE.PMREMGenerator(gl);
     const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     scene.environment = env;
-    scene.environmentIntensity = 0.42;
+    // Junto con las luces de Escenarios da una irradiancia ≈ 1 en un frente: el color se ve como la muestra.
+    scene.environmentIntensity = 0.35;
     return () => {
       scene.environment = null;
       env.dispose();
@@ -35,29 +36,37 @@ const ANGULOS: Record<Vista, { az: number; el: number }> = {
 
 function objetivoCamara(d: Diseno, vista: Vista, size: { width: number; height: number }) {
   const aspecto = size.width / Math.max(1, size.height);
-  // En los dormitorios la cama queda a la izquierda: la cámara mira desde la derecha.
-  // En la cocina en L mira desde el lado abierto, de frente a las puertas del retorno.
   const s = useApp.getState();
-  const r = retornoDe(d);
-  const lado = r ? (r.lado === 'izq' ? -1 : 1) : escenarioActual(s.escenario, s.producto, d) === 'cocina' ? 1 : -0.85;
-  // Todo el conjunto: tramo principal, L y aéreos.
+  const izq = d.lados?.izq ?? null;
+  const der = d.lados?.der ?? null;
+  const conLados = !!(izq || der);
+  const enU = !!(izq && der);
+  // En los dormitorios la cama queda a la izquierda: la cámara mira desde la derecha.
+  // En la L mira desde el lado abierto, de frente a las puertas del lado; en la U casi de frente y desde
+  // arriba, corrida hacia el lado más corto: así se ven las puertas de los dos lados (las del largo, mejor).
+  const lado = enU ? (izq!.largo <= der!.largo ? 0.4 : -0.4) : izq ? -1 : der ? 1 : escenarioActual(s.escenario, s.producto, d) === 'cocina' ? 1 : -0.85;
+  // Todo el conjunto: tramo principal, lados y aéreos.
   const caja = dimensionesTotales(d);
+  // La campana mural (sin aéreo encima) sobresale del mueble: su cuerpo también debe verse.
+  const mural = ubicarEquipos(d).some((u) => u.tipo === 'campana' && u.montaje === 'mural');
+  if (mural) caja.alto = Math.max(caja.alto, d.aereos.elevacion + 260);
   const W = (caja.x1 - caja.x0) / 1000;
   const H = caja.alto / 1000 + (d.plantilla === 'comoda' && d.mudador ? 0.1 : 0);
   const D = caja.fondo / 1000;
   const cx = (caja.x0 + caja.x1) / 2000;
-  // En la L el objetivo va a la mitad del retorno, que puede ser mucho más profundo que el mueble.
-  const objetivo = new THREE.Vector3(cx, H * 0.53, r ? D / 2 : Math.min(D, 0.7) * 0.55);
+  // Con lados el objetivo va a la mitad de su largo, que puede ser mucho más que el fondo del mueble.
+  const objetivo = new THREE.Vector3(cx, H * 0.53, conLados ? D / 2 : Math.min(D, 0.7) * 0.55);
   const fov = THREE.MathUtils.degToRad(38);
   // Distancia justa para que entren ancho (con cotas) y alto: el mueble se ve grande.
   const anchoVisible = W + (aspecto < 1 ? 0.2 : 0.4);
   const altoVisible = H + 0.42;
   const distV = altoVisible / 2 / Math.tan(fov / 2);
   const distH = anchoVisible / 2 / Math.tan(fov / 2) / Math.max(0.5, aspecto);
-  // En la L se parte más cerca y el ajuste de abajo aleja la cámara solo lo necesario: el retorno puede ser muy profundo.
-  const inicio = r ? Math.max(distV, distH, 1.1) * 0.6 : Math.max(distV, distH, 1.1) * 1.04 + Math.min(D, 1.2) * 0.8;
+  // Con lados se parte más cerca y el ajuste de abajo aleja la cámara solo lo necesario: los lados pueden ser muy largos.
+  const inicio = conLados ? Math.max(distV, distH, 1.1) * 0.6 : Math.max(distV, distH, 1.1) * 1.04 + Math.min(D, 1.2) * 0.8;
   let dist = inicio;
-  const { el } = ANGULOS[vista];
+  // En la U se mira un poco más desde arriba para que el interior no quede tapado por las puntas.
+  const el = enU && vista === 'perspectiva' ? 0.46 : ANGULOS[vista].el;
   const az = ANGULOS[vista].az * lado;
   const posicion = () =>
     new THREE.Vector3(
@@ -65,27 +74,46 @@ function objetivoCamara(d: Diseno, vista: Vista, size: { width: number; height: 
       objetivo.y + Math.sin(el) * dist,
       objetivo.z + Math.cos(az) * Math.cos(el) * dist,
     );
-  // Puntos que deben quedar en el cuadro. Sin L es solo un resguardo y el encuadre de siempre no cambia: aleja
+  // Puntos que deben quedar en el cuadro. Sin lados es solo un resguardo y el encuadre de siempre no cambia: aleja
   // la cámara solo si la caja del mueble se sale del cuadro (cocinas lineales anchas en 3D), no si apenas lo toca;
-  // en la L cuentan el tramo principal y el retorno por separado (no el rincón libre) y sus cotas (ver Mueble3D).
-  const limite = r ? 0.9 : 1;
+  // con lados cuentan el tramo principal y cada lado por separado (no el rincón libre) y sus cotas (ver Mueble3D).
+  const limite = conLados ? 0.9 : 1;
   // Las etiquetas de las cotas no deben quedar bajo los botones del visor (unos 60 px arriba).
   const reserva = Math.min(0.3, Math.max(0, limite - 1 + 60 / Math.max(1, size.height / 2)));
   const puntos: { p: THREE.Vector3; extra: number }[] = [];
   const pieza = (x0: number, x1: number, y1: number, z1: number) => {
     for (const x of [x0, x1]) for (const y of [0, y1]) for (const z of [0, z1]) puntos.push({ p: new THREE.Vector3(x, y, z), extra: 0 });
   };
-  if (r) {
+  const cota = (x: number, y: number, z: number) => puntos.push({ p: new THREE.Vector3(x, y, z), extra: reserva });
+  if (conLados) {
     const [e0, e1] = extremosPrincipal(d).map((x) => x / 1000);
     const hb = d.alto / 1000;
     const dm = d.profundidad / 1000;
-    const xr = r.lado === 'der' ? e1 - r.profundidad / 1000 : e0;
-    const xMuro = r.lado === 'der' ? e1 : e0;
-    const xAlto = r.lado === 'der' ? e0 - 0.14 : e1 + 0.14;
     pieza(caja.x0 / 1000, caja.x1 / 1000, H, dm);
-    pieza(xr, xr + r.profundidad / 1000, hb, D);
-    for (const [x, y, z] of [[e0, hb + 0.14, dm], [e1, hb + 0.14, dm], [xAlto, 0, dm], [xAlto, hb + 0.14, 0], [xMuro, hb + 0.28, D / 2], [xMuro, hb + 0.32, D]])
-      puntos.push({ p: new THREE.Vector3(x, y, z), extra: reserva });
+    for (const ld of LADOS) {
+      const r = d.lados[ld];
+      const ra = ladoAereoActivo(d, ld);
+      if (!r && !ra) continue;
+      const prof = Math.max(r?.profundidad ?? 0, ra?.profundidad ?? 0) / 1000;
+      const largo = Math.max(r?.largo ?? 0, ra?.largo ?? 0) / 1000;
+      const xMuro = ld === 'der' ? e1 : e0;
+      pieza(ld === 'der' ? e1 - prof : e0, ld === 'der' ? e1 : e0 + prof, ra || mural ? H : hb, largo);
+      if (r) {
+        cota(xMuro, hb + 0.28, r.largo / 2000);
+        cota(xMuro, hb + 0.32, r.largo / 1000);
+      }
+    }
+    cota(e0, hb + 0.14, dm);
+    cota(e1, hb + 0.14, dm);
+    if (enU) {
+      const xP = e0 + izq!.profundidad / 2000;
+      cota(xP, 0, izq!.largo / 1000 + 0.14);
+      cota(xP, hb, izq!.largo / 1000 + 0.14);
+    } else {
+      const xAlto = der ? e0 - 0.14 : e1 + 0.14;
+      cota(xAlto, 0, dm);
+      cota(xAlto, hb + 0.14, 0);
+    }
   } else {
     pieza(caja.x0 / 1000, caja.x1 / 1000, H, D);
   }
@@ -95,7 +123,7 @@ function objetivoCamara(d: Diseno, vista: Vista, size: { width: number; height: 
   const ajustar = () => {
     dist = inicio;
     let [x0, x1, y0, y1] = [0, 0, 0, 0];
-    for (let k = 0; k < 50; k++) {
+    for (let k = 0; k < 60; k++) {
       camara.position.copy(posicion());
       camara.lookAt(objetivo);
       camara.updateMatrixWorld();
@@ -113,8 +141,8 @@ function objetivoCamara(d: Diseno, vista: Vista, size: { width: number; height: 
     return { mx: (x0 + x1) / 2, my: (y0 + y1) / 2 };
   };
   let centro = ajustar();
-  // La L no es simétrica: se centra en el cuadro moviendo el objetivo (y la cámara con él) y se vuelve a ajustar.
-  for (let k = 0; r && k < 4 && Math.max(Math.abs(centro.mx), Math.abs(centro.my)) >= 0.02; k++) {
+  // La L y la U no llenan el cuadro de forma pareja: se centran moviendo el objetivo (y la cámara con él) y se vuelve a ajustar.
+  for (let k = 0; conLados && k < 4 && Math.max(Math.abs(centro.mx), Math.abs(centro.my)) >= 0.02; k++) {
     const t = Math.tan(fov / 2) * dist;
     objetivo.add(new THREE.Vector3().setFromMatrixColumn(camara.matrixWorld, 0).multiplyScalar(centro.mx * t * aspecto));
     objetivo.add(new THREE.Vector3().setFromMatrixColumn(camara.matrixWorld, 1).multiplyScalar(centro.my * t));
@@ -129,8 +157,8 @@ function Camara() {
   const encuadre = useApp((s) => s.encuadre);
   const vista = useApp((s) => s.vista);
   const escenario = useApp((s) => s.escenario);
-  // Al cambiar la L de lado la cámara pasa al otro lado.
-  const ladoL = useApp((s) => retornoDe(s.diseno)?.lado ?? null);
+  // Al cambiar la forma (lineal, L a un lado u otro, U) la cámara pasa al lado abierto.
+  const forma = useApp((s) => formaDe(s.diseno.lados ?? { izq: null, der: null }));
   const animando = useRef(0);
   const destino = useRef<{ objetivo: THREE.Vector3; pos: THREE.Vector3 } | null>(null);
   // Una L grande en el teléfono puede necesitar más de 9 m: el control no debe acercar la cámara y cortarla.
@@ -145,10 +173,10 @@ function Camara() {
   useEffect(() => {
     encuadrar(useApp.getState().diseno, vista);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [encuadre, vista, escenario, ladoL]);
+  }, [encuadre, vista, escenario, forma]);
 
   // Reencuadra si el mueble cambia mucho de tamaño.
-  // Tamaño de todo el conjunto (incluye la L y los aéreos).
+  // Tamaño de todo el conjunto (incluye los lados y los aéreos).
   const ancho = useApp((s) => {
     const c = dimensionesTotales(s.diseno);
     return c.x1 - c.x0;
@@ -156,10 +184,16 @@ function Camara() {
   const alto = useApp((s) => dimensionesTotales(s.diseno).alto);
   const fondo = useApp((s) => dimensionesTotales(s.diseno).fondo);
   const previo = useRef({ ancho, alto, fondo });
+  // También al cambiar mucho la forma del visor (mostrar u ocultar el panel de medidas): el encuadre
+  // calculado para el visor bajo y ancho cortaría el mueble en el alto.
+  const aspecto = size.width / Math.max(1, size.height);
+  const aspectoPrevio = useRef(aspecto);
   useEffect(() => {
     const p = previo.current;
-    if (Math.abs(ancho - p.ancho) / p.ancho > 0.18 || Math.abs(alto - p.alto) / p.alto > 0.18 || Math.abs(fondo - p.fondo) / p.fondo > 0.3) {
+    const cambioVisor = Math.abs(Math.log(aspecto / aspectoPrevio.current)) > 0.12;
+    if (cambioVisor || Math.abs(ancho - p.ancho) / p.ancho > 0.18 || Math.abs(alto - p.alto) / p.alto > 0.18 || Math.abs(fondo - p.fondo) / p.fondo > 0.3) {
       previo.current = { ancho, alto, fondo };
+      aspectoPrevio.current = aspecto;
       encuadrar(useApp.getState().diseno, useApp.getState().vista);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -192,7 +226,14 @@ function Camara() {
   );
 }
 
-/** Registra la función para capturar una miniatura del visor. */
+/** Ancho en px de la imagen del mueble para los documentos (≈ 230 ppp a todo el ancho de una hoja A4). */
+const ANCHO_CAPTURA = 1600;
+
+/**
+ * Registra la función para capturar la imagen del visor (sin cotas ni ayudas). Se dibuja una vez
+ * a mayor resolución para que la imagen de los documentos salga nítida; la miniatura de la lista
+ * se saca de esta misma imagen.
+ */
 function Capturador() {
   const { gl, scene, camera } = useThree();
   useEffect(() => {
@@ -202,19 +243,45 @@ function Capturador() {
         scene.traverse((o) => {
           if ((o.name === 'cotas' || o.name === 'ayudas') && o.visible) ocultas.push(o);
         });
+        const proporcion = gl.getPixelRatio();
+        const tam = gl.getSize(new THREE.Vector2());
+        const maximo = gl.capabilities.maxTextureSize || 4096;
+        const objetivo = Math.min(ANCHO_CAPTURA, maximo) / Math.max(1, tam.x);
         ocultas.forEach((o) => (o.visible = false));
-        gl.render(scene, camera);
-        ocultas.forEach((o) => (o.visible = true));
-        const origen = gl.domElement;
-        const escala = 480 / origen.width;
-        const c = document.createElement('canvas');
-        c.width = 480;
-        c.height = Math.round(origen.height * escala);
-        c.getContext('2d')!.drawImage(origen, 0, 0, c.width, c.height);
-        return c.toDataURL('image/jpeg', 0.82);
+        try {
+          if (objetivo > proporcion) gl.setPixelRatio(objetivo);
+          gl.render(scene, camera);
+          const origen = gl.domElement;
+          const escala = Math.min(1, ANCHO_CAPTURA / origen.width);
+          const c = document.createElement('canvas');
+          c.width = Math.round(origen.width * escala);
+          c.height = Math.round(origen.height * escala);
+          const g = c.getContext('2d')!;
+          g.imageSmoothingQuality = 'high';
+          g.drawImage(origen, 0, 0, c.width, c.height);
+          return c.toDataURL('image/jpeg', 0.86);
+        } finally {
+          ocultas.forEach((o) => (o.visible = true));
+          if (gl.getPixelRatio() !== proporcion) gl.setPixelRatio(proporcion);
+          gl.render(scene, camera);
+        }
       },
     });
     return () => useApp.getState().set({ capturar: null });
+  }, [gl, scene, camera]);
+  return null;
+}
+
+/** Solo en desarrollo: deja la escena y la cámara en window.__three para las pruebas de color y encuadre. */
+function Depuracion() {
+  const { gl, scene, camera } = useThree();
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const w = window as unknown as { __three?: unknown };
+    w.__three = { gl, scene, camera };
+    return () => {
+      delete w.__three;
+    };
   }, [gl, scene, camera]);
   return null;
 }
@@ -250,8 +317,10 @@ export function Visor3D() {
       gl={{ antialias: true, preserveDrawingBuffer: true }}
       camera={{ fov: 38, near: 0.03, far: 60, position: [-1.6, 1.6, 3.2] }}
       onCreated={({ gl }) => {
-        gl.toneMapping = THREE.ACESFilmicToneMapping;
-        gl.toneMappingExposure = 1.05;
+        // Neutral (Khronos PBR Neutral) no altera el tono ni la saturación bajo ~0,76: los colores de las
+        // melaminas quedan fieles a la muestra; ACES los aclaraba y desaturaba (Verde Salvia casi blanco).
+        gl.toneMapping = THREE.NeutralToneMapping;
+        gl.toneMappingExposure = 1.02;
       }}
       onPointerMissed={() => (document.body.style.cursor = '')}
     >
@@ -263,6 +332,7 @@ export function Visor3D() {
       </Suspense>
       <Camara />
       <Capturador />
+      <Depuracion />
     </Canvas>
   );
 }

@@ -1,15 +1,30 @@
 // Muebles aéreos de cocina (colgados del muro) y mueble superior del
-// compacto (apoyado sobre la cubierta con costados y respaldo).
-import { calcularLayoutAereos, type LayoutAereoCuerpo, type LayoutAereos } from '../../shared/layout';
+// compacto (apoyado sobre la cubierta con costados y respaldo). Se dibuja un
+// tramo aéreo a la vez (principal o un lado de la L/U) en sus coordenadas locales.
+import type { EquipoUbicado, LayoutAereoCuerpo, LayoutAereos } from '../../shared/layout';
 import type { Diseno, Unidad } from '../../shared/tipos';
-import { Cilindro, Panel, useMats } from './base3d';
-import { Cubierta } from './Cocina3D';
+import { Panel, useMats } from './base3d';
+import { CampanaAlojada, Cubierta } from './Cocina3D';
 import { Puerta, type ContextoFrente } from './Frentes';
 
-export function Aereos3D({ d, abierto, etiquetas, unidad }: { d: Diseno; abierto: boolean; etiquetas: boolean; unidad: Unidad }) {
-  const la = calcularLayoutAereos(d);
+export function Aereos3D({
+  d,
+  la,
+  campanas = [],
+  abierto,
+  etiquetas,
+  unidad,
+}: {
+  d: Diseno;
+  /** Layout del tramo (calcularLayoutAereos o calcularLayoutAereosLado). */
+  la: LayoutAereos;
+  /** Campanas alojadas en este tramo (ubicarEquipos, x local de este layout). */
+  campanas?: EquipoUbicado[];
+  abierto: boolean;
+  etiquetas: boolean;
+  unidad: Unidad;
+}) {
   const m = useMats();
-  if (!la) return null;
   const ctx: ContextoFrente = {
     zFrente: la.zFrente,
     espesor: la.espesor,
@@ -27,7 +42,7 @@ export function Aereos3D({ d, abierto, etiquetas, unidad }: { d: Diseno; abierto
     <group>
       {la.montaje === 'apoyado' && <Estructura d={d} la={la} />}
       {la.cuerpos.map((lc) => (
-        <Modulo key={lc.cuerpo.id} d={d} la={la} lc={lc} />
+        <Modulo key={lc.cuerpo.id} d={d} la={la} lc={lc} campana={campanas.find((u) => u.indice === lc.indice) ?? null} />
       ))}
       {la.frentes.map((f) => (
         <Puerta key={`a-${f.cuerpo}-${f.indice}-${la.cuerpos[f.cuerpo]?.cuerpo.id}`} frente={f} ctx={ctx} material={matFrente} />
@@ -57,7 +72,7 @@ function Estructura({ d, la }: { d: Diseno; la: LayoutAereos }) {
   );
 }
 
-function Modulo({ d, la, lc }: { d: Diseno; la: LayoutAereos; lc: LayoutAereoCuerpo }) {
+function Modulo({ d, la, lc, campana }: { d: Diseno; la: LayoutAereos; lc: LayoutAereoCuerpo; campana: EquipoUbicado | null }) {
   const m = useMats();
   const t = d.espesor;
   const c = lc.cuerpo;
@@ -68,11 +83,14 @@ function Modulo({ d, la, lc }: { d: Diseno; la: LayoutAereos; lc: LayoutAereoCue
   const ix0 = apoyado ? lc.x0 + (lc.indice === 0 ? t : t / 2) : lc.x0 + t;
   const ix1 = apoyado ? lc.x1 - (lc.indice === la.cuerpos.length - 1 ? t : t / 2) : lc.x1 - t;
   const piezas: JSX.Element[] = [];
+  // El módulo de la campana ocupa todo el alto del aéreo: puertas arriba y la campana bajo ellas.
+  const esCampana = c.tipo === 'campana';
+  const yCaja = esCampana ? la.y0 : lc.y0;
   if (!apoyado) {
-    piezas.push(<Panel key="li" x0={lc.x0} x1={lc.x0 + t} y0={lc.y0} y1={lc.y1} z0={0} z1={Dz} mat={m.casco} />);
-    piezas.push(<Panel key="ld" x0={lc.x1 - t} x1={lc.x1} y0={lc.y0} y1={lc.y1} z0={0} z1={Dz} mat={m.casco} />);
+    piezas.push(<Panel key="li" x0={lc.x0} x1={lc.x0 + t} y0={yCaja} y1={lc.y1} z0={0} z1={Dz} mat={m.casco} />);
+    piezas.push(<Panel key="ld" x0={lc.x1 - t} x1={lc.x1} y0={yCaja} y1={lc.y1} z0={0} z1={Dz} mat={m.casco} />);
     piezas.push(<Panel key="techo" x0={ix0} x1={ix1} y0={lc.y1 - t} y1={lc.y1} z0={0} z1={Dz} mat={m.casco} />);
-    piezas.push(<Panel key="fondo" x0={ix0} x1={ix1} y0={lc.y0 + t} y1={lc.y1 - t} z0={0} z1={4} mat={m.fondo} sombra={false} />);
+    piezas.push(<Panel key="fondo" x0={ix0} x1={ix1} y0={yCaja + (esCampana ? 0 : t)} y1={lc.y1 - t} z0={0} z1={4} mat={m.fondo} sombra={false} />);
   }
 
   if (c.tipo === 'nicho' && lc.nicho) {
@@ -107,13 +125,11 @@ function Modulo({ d, la, lc }: { d: Diseno; la: LayoutAereos; lc: LayoutAereoCue
     const y = lc.y0 + t + (alto * k) / (c.repisas + 1) - t / 2;
     piezas.push(<Panel key={`rep${k}`} x0={ix0} x1={ix1} y0={y} y1={y + t} z0={8} z1={Dz - 20} mat={m.casco} />);
   }
-  if (c.tipo === 'campana' && !apoyado) {
-    // Campana empotrada bajo el mueble.
-    const w = Math.min(600, lc.x1 - lc.x0 - 2 * t - 10);
-    const cx = (lc.x0 + lc.x1) / 2;
-    piezas.push(<Panel key="campana" x0={cx - w / 2} x1={cx + w / 2} y0={lc.y0 - 70} y1={lc.y0} z0={20} z1={Math.max(280, Dz)} mat={m.aceroCepillado} />);
-    piezas.push(<Panel key="filtro" x0={cx - w / 2 + 20} x1={cx + w / 2 - 20} y0={lc.y0 - 72} y1={lc.y0 - 70} z0={40} z1={Math.max(260, Dz - 20)} mat={m.grisOscuro} sombra={false} />);
-    piezas.push(<Cilindro key="luz" r={14} largo={3} pos={[cx, lc.y0 - 73, Math.max(260, Dz - 20) - 40]} mat={m.luz} />);
+  if (esCampana) {
+    // Centrada sobre su encimera (u.x lo da el motor); sin dato, al centro del módulo.
+    const w = Math.min(campana?.ancho ?? 600, ix1 - ix0 - 4);
+    const cx = Math.max(ix0 + w / 2 + 2, Math.min(ix1 - w / 2 - 2, campana?.x ?? (lc.x0 + lc.x1) / 2));
+    piezas.push(<CampanaAlojada key="campana" cx={cx} ancho={w} y0={la.y0} y1={lc.y0} zFrente={la.zFrente} espesorFrente={la.espesor} />);
   }
   return <group>{piezas}</group>;
 }

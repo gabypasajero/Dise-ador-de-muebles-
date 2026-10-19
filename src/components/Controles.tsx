@@ -195,7 +195,8 @@ export function Selector<T extends string | number>({
   etiqueta,
 }: {
   valor: T;
-  opciones: { valor: T; texto: string }[];
+  /** `deshabilitada`: se muestra pero no se puede elegir (por ejemplo, un destino donde el equipo no cabe). */
+  opciones: { valor: T; texto: string; deshabilitada?: boolean }[];
   onCambio: (v: T) => void;
   etiqueta: string;
 }) {
@@ -214,7 +215,7 @@ export function Selector<T extends string | number>({
         }}
       >
         {opciones.map((o) => (
-          <option key={String(o.valor)} value={String(o.valor)}>
+          <option key={String(o.valor)} value={String(o.valor)} disabled={o.deshabilitada}>
             {o.texto}
           </option>
         ))}
