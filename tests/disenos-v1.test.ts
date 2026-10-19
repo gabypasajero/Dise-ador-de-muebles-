@@ -2,7 +2,7 @@
 // `retorno`, la encimera y el lavaplatos por índice y sin especiero ni U).
 import { describe, expect, it } from 'vitest';
 import { bisagraDe, retornoDe, ubicarEquipos } from '../shared/layout';
-import { activarAereos, advertencias, ejecutar, fijarForma, normalizar } from '../shared/reglas';
+import { activarAereos, advertencias, agregarModulo, ejecutar, fijarForma, normalizar, presetsModulo } from '../shared/reglas';
 import { precioCocina } from '../shared/tarifas';
 import { validarDiseno } from '../shared/validar';
 import type { Diseno, DisenoGuardado, Encimera, Lavaplatos } from '../shared/tipos';
@@ -99,14 +99,15 @@ describe('diseños guardados con la versión anterior', () => {
     expect(validarDiseno(d)).toEqual([]);
   });
 
-  it('una cajonera de más de 90 cm se divide en cajoneras iguales sin mover lo demás', () => {
+  it('una cajonera de más de 90 cm se divide en cajoneras iguales y el espacio libre queda en 50 cm', () => {
     const v = viejo('cajoneraAncha');
     const d = abrir('cajoneraAncha');
     expect(d.cuerpos.map((c) => [c.tipo, c.ancho, c.cajones])).toEqual([
-      ['frentes', 500, 3],
-      ['frentes', 500, 3],
+      ['frentes', 550, 3],
+      ['frentes', 550, 3],
       ['frentes', 600, 0],
-      ['hueco', 600, 0],
+      // El espacio libre mide como máximo 50 cm: los 10 cm que sobran los toman las cajoneras.
+      ['hueco', 500, 0],
     ]);
     expect(d.ancho).toBe(v.ancho);
     expect(encimera(d)!.modulo).toBe(v.cuerpos[1].id);
@@ -148,8 +149,22 @@ describe('diseños guardados con la versión anterior', () => {
     d = fijarForma(d, 'U');
     d = activarAereos(d, true);
     expect(validarDiseno(d)).toEqual([]);
+    // En la cocina solo ceden las cajoneras: se agrega una de 90 cm agrandando el lado y el especiero la achica.
+    d = agregarModulo(d, { ...presetsModulo('cocina', 'der').find((p) => p.id === 'cajonera')!, ancho: 900 }, 0, 'der', true);
     const r = ejecutar(d, { op: 'agregarModulo', tramo: 'der', preset: 'especiero', posicion: 0 });
     expect(r.ok).toBe(true);
+    const der = r.diseno.lados.der!.cuerpos;
+    expect(der[0]).toMatchObject({ tipo: 'especiero', ancho: 200 });
+    // Solo cedieron las cajoneras, de 60 a 90 cm; los demás módulos conservan su ancho.
+    const antes = new Map(d.lados.der!.cuerpos.map((c) => [c.id, c.ancho]));
+    for (const c of der.slice(1)) {
+      if (c.cajones > 0 && c.puertas === 0) {
+        // (una cajonera que ya medía menos de 60 cm no baja de lo que medía)
+        expect(c.ancho).toBeGreaterThanOrEqual(Math.min(600, antes.get(c.id)!));
+        expect(c.ancho).toBeLessThanOrEqual(900);
+      } else expect(c.ancho).toBe(antes.get(c.id));
+    }
+    expect(r.diseno.lados.der!.largo).toBe(d.lados.der!.largo);
     expect(validarDiseno(r.diseno)).toEqual([]);
   });
 });

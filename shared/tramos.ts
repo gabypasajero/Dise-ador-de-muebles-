@@ -5,7 +5,9 @@ import type { Limite } from './reparto';
 import type { Cuerpo, Diseno, Lado, Plantilla, Tramo, TramoAereo, TramoBase, TramoId } from './tipos';
 
 export const ANCHO_MIN_CUERPO = 150;
-export const ANCHO_MIN_HUECO = 100;
+export const ANCHO_MIN_HUECO = 200;
+/** Espacio libre: de 20 a 50 cm (la dueña lo pidió así). */
+export const ANCHO_MAX_HUECO = 500;
 /** El horno empotrado mide siempre 60 cm (cocina y compacto). */
 export const ANCHO_HORNO = 600;
 /** El especiero mide siempre 20 cm. */
@@ -111,6 +113,8 @@ export function esCajonera(c: Cuerpo): boolean {
 export function anchoFijo(p: Plantilla, c: Pick<Cuerpo, 'tipo'>): number | null {
   if (c.tipo === 'horno' && (p === 'cocina' || p === 'compacto')) return ANCHO_HORNO;
   if (c.tipo === 'especiero') return ANCHO_ESPECIERO;
+  // La campana y el nicho del microondas miden siempre 60 cm.
+  if ((c.tipo === 'campana' || c.tipo === 'nicho') && (p === 'cocina' || p === 'compacto')) return ANCHO_CAMPANA;
   return null;
 }
 
@@ -140,6 +144,6 @@ export function limitesModulo(d: Diseno, t: TramoId, c: Cuerpo): Limite {
     return { min: Math.min(ANCHO_CAMPANA, Math.max(ANCHO_MIN_CUERPO, largoObjetivo(d, t))), max: Infinity };
   }
   const min = c.tipo === 'hueco' ? ANCHO_MIN_HUECO : ANCHO_MIN_CUERPO;
-  const max = !esTramoAereo(t) && esCocinaAdulta(d) && esCajonera(c) ? ANCHO_MAX_CAJONERA : Infinity;
+  const max = c.tipo === 'hueco' ? ANCHO_MAX_HUECO : !esTramoAereo(t) && esCocinaAdulta(d) && esCajonera(c) ? ANCHO_MAX_CAJONERA : Infinity;
   return { min, max };
 }

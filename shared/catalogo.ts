@@ -1,4 +1,5 @@
 // Traduce los productos de la tienda a plantillas 3D paramétricas.
+import { ANCHO_CAMPANA } from './tramos';
 import type {
   Cuerpo,
   Diseno,
@@ -409,7 +410,9 @@ export function disenoInicial(p: ProductoCatalogo): Diseno {
           cuerpo({ ancho: b, cajones: 3 }),
           cuerpo({ ancho: c, puertas: 2, repisas: 1 }),
         ];
-        const [s1, s2, s3] = repartir(util, [830, 410, 560]);
+        // El nicho del microondas mide siempre 60 cm: los demás superiores se reparten el resto.
+        const [s1, s2] = repartir(util - ANCHO_CAMPANA, [830, 410]);
+        const s3 = ANCHO_CAMPANA;
         d.aereos.cuerpos = [
           cuerpo({ ancho: s1, puertas: 2, repisas: 1 }),
           cuerpo({ ancho: s2, puertas: 1, bisagra: 'der', repisas: 1 }),
@@ -424,8 +427,8 @@ export function disenoInicial(p: ProductoCatalogo): Diseno {
           cuerpo({ ancho: b, cajones: 1, puertas: 1, cajonesArriba: true, bisagra: 'der', repisas: 1 }),
         ];
         d.aereos.cuerpos = [
-          cuerpo({ ancho: a, puertas: 2, repisas: 1 }),
-          cuerpo({ tipo: 'nicho', ancho: b, puertas: 1, abatible: true, repisas: 0 }),
+          cuerpo({ ancho: util - ANCHO_CAMPANA, puertas: 2, repisas: 1 }),
+          cuerpo({ tipo: 'nicho', ancho: ANCHO_CAMPANA, puertas: 1, abatible: true, repisas: 0 }),
         ];
         d.materiales.frente = 'verde-salvia';
         d.materiales.cubierta = 'calacatta';

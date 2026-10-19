@@ -29,6 +29,7 @@ import {
 import { detalleCotizacion, fichaFabricacion, textoFicha } from '../shared/resumen';
 import { TARIFAS } from '../shared/tarifas';
 import { validarDiseno } from '../shared/validar';
+import { conCajoneras } from './cocinas';
 import type { Diseno, Encimera, Lavaplatos, ProductoTienda } from '../shared/tipos';
 
 const productos = JSON.parse(fs.readFileSync('public/datos/productos-respaldo.json', 'utf8')) as ProductoTienda[];
@@ -88,11 +89,13 @@ describe('horno entre tramos', () => {
 
 describe('la campana siempre centrada sobre la encimera', () => {
   it('en la punta del mueble la encimera con campana se separa lo que pide la campana', () => {
-    let d = agregarModulo(fijarAncho(full(), 2400), preset('puerta'));
+    // En la cocina la puerta nueva (35 cm) la absorben las cajoneras: se parte de una con dos de 90 cm.
+    let d = agregarModulo(conCajoneras(fijarAncho(full(), 2400), [900]), preset('puerta'));
+    expect(d.cuerpos.map((c) => c.ancho)).toEqual([600, 725, 900, 725, 350]);
     d = activarAereos(d, true);
     d = moverEquipo(d, encimera(d).id, 'base', d.cuerpos.length - 1);
     d = agregarEquipo(d, 'campana');
-    expect(centroEncimera(d, encimera(d))).toBe(2400 - 300);
+    expect(centroEncimera(d, encimera(d))).toBe(d.ancho - 300);
     expect(desfaseCampanas(d)).toEqual([0]);
     expect(validarDiseno(d)).toEqual([]);
   });
@@ -171,9 +174,10 @@ describe('encimera y lavaplatos no se topan', () => {
   });
 
   it('el lavaplatos nuevo prefiere un módulo de puertas y que le dé el ancho', () => {
-    let d = fijarLado(enU(), 'izq', { largo: 2000 });
-    d = agregarModulo(d, preset('cajonera'), 0, 'izq');
-    d = ejecutar(d, { op: 'fijarAnchoModulo', tramo: 'izq', modulo: 0, ancho: 900 }).diseno;
+    // Lado de 50 cm útiles con su módulo de puertas, y una cajonera de 90 cm agregada agrandando el lado.
+    let d = fijarLado(enU(), 'izq', { largo: 1100 });
+    d = agregarModulo(d, { ...preset('cajonera'), ancho: 900 }, 0, 'izq', true);
+    expect(d.lados.izq!.largo).toBe(2000);
     expect(cuerposDe(d, 'izq').map((c) => [c.cajones, c.puertas, c.ancho])).toEqual([
       [3, 0, 900],
       [0, 2, 500],
@@ -186,7 +190,7 @@ describe('encimera y lavaplatos no se topan', () => {
   });
 
   it('una encimera no va en un módulo angosto de la punta (se saldría de la cubierta)', () => {
-    let d = agregarModulo(fijarAncho(full(), 2400), preset('puerta'));
+    let d = agregarModulo(conCajoneras(fijarAncho(full(), 2400), [900]), preset('puerta'));
     d = ejecutar(d, { op: 'fijarAnchoModulo', tramo: 'base', modulo: d.cuerpos.length - 1, ancho: 200 }).diseno;
     expect(d.cuerpos.at(-1)!.ancho).toBe(200);
     const r = ejecutar(d, { op: 'moverEquipo', id: encimera(d).id, tramo: 'base', modulo: d.cuerpos.length - 1 });
@@ -201,15 +205,17 @@ describe('rechazos con motivo, sin ofrecer cambiar la medida del mueble', () => 
     const r = ejecutar(d, { op: 'agregarModulo', tramo: 'base', preset: 'horno' });
     expect(r.ok).toBe(false);
     expect(r.diseno).toBe(d);
-    expect(r.motivo).toMatch(/^No cabe «Horno empotrado» de 60 cm en 150 cm: /);
-    expect(r.motivo).toMatch(/\(el horno de 60 cm y el módulo 3 con el lavaplatos conservan su ancho\)/);
-    expect(r.motivo).toMatch(/Quita uno o cambia la medida del mueble\.$/);
+    expect(r.motivo).toBe(
+      'No cabe «Horno empotrado» en la medida del tramo principal (150 cm). Faltan 60 cm para que quepa: quita puertas (35 cm cada una) o una cajonera, o elige módulos más angostos.',
+    );
     expect(r.motivo).not.toMatch(/agrand|achic|crec/);
     expect(r).not.toHaveProperty('alternativa');
-    // Quitar la cajonera tampoco se puede: los que quedan conservan su ancho.
+    // Quitar la cajonera tampoco se puede: los que quedan conservan su ancho y nadie cubre sus 45 cm.
     const q = ejecutar(d, { op: 'quitarModulo', tramo: 'base', modulo: 1 });
     expect(q.ok).toBe(false);
-    expect(q.motivo).toMatch(/^No se puede quitar el módulo 2: los módulos que quedan conservan su ancho \(el horno de 60 cm y el módulo 3 con el lavaplatos\) y ninguno puede tomar sus 45 cm\./);
+    expect(q.motivo).toBe(
+      'No se puede quitar el módulo 2 sin cambiar la medida del tramo principal (150 cm). Quedarían 45 cm sin cubrir: agrega una cajonera (de 60 cm a 90 cm) o puertas (35 cm cada una).',
+    );
     expect(q.motivo).not.toMatch(/agrand|achic|crec/);
     expect(q).not.toHaveProperty('alternativa');
   });

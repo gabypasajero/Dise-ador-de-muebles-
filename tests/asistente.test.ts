@@ -20,6 +20,7 @@ import { listarEquipamiento } from '../shared/equipos';
 import { describirOperaciones } from '../shared/operaciones';
 import { OPERACIONES, cuerposDe, formaBase, largoTramo } from '../shared/reglas';
 import { validarDiseno } from '../shared/validar';
+import { conCajoneras } from './cocinas';
 import type { CatalogoMateriales, ProductoTienda } from '../shared/tipos';
 
 const productos = JSON.parse(fs.readFileSync('public/datos/productos-respaldo.json', 'utf8')) as ProductoTienda[];
@@ -70,7 +71,9 @@ describe('aplicarPlan', () => {
       d,
       plan([
         { op: 'fijarForma', forma: 'L-der' },
-        { op: 'fijarLado', lado: 'der', largo: 1600, profundidad: 600 },
+        { op: 'fijarLado', lado: 'der', largo: 1500, profundidad: 600 },
+        // En la cocina solo ceden las cajoneras: el especiero entra achicando la cajonera.
+        { op: 'actualizarModulo', tramo: 'der', modulo: 0, cambios: { puertas: 0, cajones: 3 } },
         { op: 'agregarModulo', tramo: 'der', preset: 'especiero' },
         { op: 'activarAereos', activo: true },
         { op: 'fijarAcabados', materiales: { frente: 'verde-salvia', cubierta: 'calacatta' } },
@@ -78,15 +81,16 @@ describe('aplicarPlan', () => {
       { materiales },
     );
     expect(r.rechazadas).toEqual([]);
-    expect(r.aplicadas.map((a) => a.n)).toEqual([1, 2, 3, 4, 5]);
+    expect(r.aplicadas.map((a) => a.n)).toEqual([1, 2, 3, 4, 5, 6]);
     expect(formaBase(r.diseno)).toBe('L-der');
-    expect(r.diseno.lados.der?.largo).toBe(1600);
+    expect(r.diseno.lados.der?.largo).toBe(1500);
+    expect(cuerposDe(r.diseno, 'der').map((c) => c.ancho)).toEqual([700, 200]);
     expect(cuerposDe(r.diseno, 'der').some((c) => c.tipo === 'especiero')).toBe(true);
     expect(r.diseno.aereos.activo).toBe(true);
     expect(r.diseno.materiales.frente).toBe('verde-salvia');
     expect(validarDiseno(r.diseno)).toEqual([]);
     expect(JSON.stringify(d)).toBe(antes);
-    expect(r.aplicadas[4].descripcion).toContain('Verde');
+    expect(r.aplicadas[5].descripcion).toContain('Verde');
   });
 
   it('un plan sin operaciones devuelve el mismo diseño', () => {
@@ -174,22 +178,25 @@ describe('aplicarPlan', () => {
     const d = full();
     const r = aplicarPlan(d, plan([{ op: 'agregarModulo', tramo: 'base', preset: 'horno' }]));
     expect(r.aplicadas).toEqual([]);
-    expect(r.rechazadas[0].motivo).toMatch(/^No cabe «Horno empotrado» de 60 cm en 150 cm/);
+    expect(r.rechazadas[0].motivo).toMatch(/^No cabe «Horno empotrado» en la medida del tramo principal \(150 cm\)\. Faltan 60 cm/);
+    expect(r.rechazadas[0].motivo).not.toMatch(/agrand|achic|crec/);
     expect(r.rechazadas[0]).not.toHaveProperty('alternativa');
     expect(r.diseno).toBe(d);
     expect(largoTramo(r.diseno, 'base')).toBe(d.ancho);
   });
 
   it('agregar o quitar módulos no cambia la medida del mueble aunque la IA lo pida', () => {
-    const d = full();
+    // [horno 60][cajonera 45][puerta 45 + lavaplatos][cajonera 90][cajonera 90]
+    const d = conCajoneras(full(), [900, 900]);
     const r = aplicarPlan(d, plan([{ op: 'agregarModulo', tramo: 'base', preset: 'puerta', ajustarLargo: true }]));
     expect(r.rechazadas).toEqual([]);
     expect(r.diseno.ancho).toBe(d.ancho);
-    // La cajonera y la puerta nueva se reparten parejo los 45 cm ajustables.
-    expect(r.diseno.cuerpos.map((c) => c.ancho)).toEqual([600, 225, 450, 225]);
-    const q = aplicarPlan(r.diseno, plan([{ op: 'quitarModulo', tramo: 'base', modulo: 3, ajustarLargo: true }]));
+    // La puerta nueva entra con sus 35 cm y las cajoneras se reparten parejo lo que queda.
+    expect(r.diseno.cuerpos.map((c) => c.ancho)).toEqual([600, 634, 450, 633, 633, 350]);
+    const q = aplicarPlan(r.diseno, plan([{ op: 'quitarModulo', tramo: 'base', modulo: 5, ajustarLargo: true }]));
+    expect(q.rechazadas).toEqual([]);
     expect(q.diseno.ancho).toBe(d.ancho);
-    expect(q.diseno.cuerpos.map((c) => c.ancho)).toEqual([600, 450, 450]);
+    expect(q.diseno.cuerpos.map((c) => c.ancho)).toEqual([600, 750, 450, 750, 750]);
     expect(describirOperaciones()).not.toMatch(/ajustarLargo/);
   });
 });

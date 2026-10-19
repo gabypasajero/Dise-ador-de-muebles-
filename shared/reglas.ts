@@ -34,6 +34,7 @@ import {
   ANCHO_HORNO,
   ANCHO_MAX_CAJONERA,
   ANCHO_MIN_CUERPO,
+  ANCHO_MAX_HUECO,
   ANCHO_MIN_HUECO,
   ANCHO_POR_PUERTA,
   anchoFijo,
@@ -315,11 +316,11 @@ function ajustarTramo(d: Diseno, t: TramoId, objetivo: number, conEquipados = tr
  * sube el mínimo de algún módulo. null si los ajustables no caben o no alcanzan a llenarlo.
  */
 function anchosParejos(d: Diseno, t: TramoId, cs: Cuerpo[], total: number, conservar: Cuerpo[] = [], minimos = new Map<Cuerpo, number>()): number[] | null {
-  const idx = cs.map((_, i) => i).filter((i) => !conservar.includes(cs[i]) && rolModulo(d, t, cs[i]) === 'ajustable');
+  const idx = cs.map((_, i) => i).filter((i) => !conservar.includes(cs[i]) && absorbe(d, t, cs[i]));
   const espacio = total - sumar(cs.filter((_, i) => !idx.includes(i)).map((c) => c.ancho));
   if (!idx.length) return espacio === 0 ? cs.map((c) => c.ancho) : null;
   const lims = idx.map((i) => {
-    const l = limitesModulo(d, t, cs[i]);
+    const l = limitesReparto(d, t, cs[i]);
     return { min: Math.max(l.min, minimos.get(cs[i]) ?? 0), max: l.max };
   });
   const parejos = repartirParejo(espacio, lims);
@@ -329,30 +330,48 @@ function anchosParejos(d: Diseno, t: TramoId, cs: Cuerpo[], total: number, conse
   return out;
 }
 
-/** Módulos del tramo que conservan su ancho al repartir: «el horno de 60 cm y el módulo 3 con el lavaplatos». */
-function quienesConservan(d: Diseno, t: TramoId, cs: Cuerpo[], excluir: Cuerpo[] = []): { texto: string; cuantos: number } {
-  const partes: string[] = [];
-  cs.forEach((c, i) => {
-    if (excluir.includes(c)) return;
-    const rol = rolModulo(d, t, c);
-    if (rol === 'fijo') partes.push(`${c.tipo === 'horno' ? 'el horno' : 'el especiero'} de ${cm(c.ancho)}`);
-    else if (rol === 'equipado') partes.push(c.tipo === 'hueco' ? `el espacio libre de ${cm(c.ancho)}` : `el ${nombreModuloEn(d, t, i)} con ${equipoDeModulo(d, t, c)}`);
-  });
-  const texto = partes.length > 4 ? `${partes.slice(0, 3).join(', ')} y ${partes.length - 3} módulos más` : listaY(partes);
-  return { texto, cuantos: partes.length };
+/** En cocinas, lo único que se ajusta al agregar o quitar módulos: cajoneras (base) y abatibles (aéreos), de 60 a 90 cm. */
+const AJUSTE_COCINA = { min: 600, max: ANCHO_MAX_CAJONERA };
+
+/**
+ * Si el módulo cede o toma espacio al agregar o quitar otros. En las cocinas la medida del
+ * cliente no cambia y las puertas (35 cm cada una), el nicho, la campana, el horno y el
+ * especiero conservan su medida: solo se ajustan las cajoneras del mueble y los abatibles de
+ * los aéreos. En los demás muebles se ajustan todos los módulos ajustables.
+ */
+export function absorbe(d: Diseno, t: TramoId, c: Cuerpo): boolean {
+  if (rolModulo(d, t, c) !== 'ajustable') return false;
+  if (!esCocinaAdulta(d) || (t === 'aereos' && d.plantilla === 'compacto')) return true;
+  return esTramoAereo(t) ? c.tipo === 'frentes' && !!c.abatible : esCajonera(c);
 }
 
-/** «(el horno de 60 cm conserva su ancho)», o nada si todos los módulos se ajustan. */
-function notaConservan(d: Diseno, t: TramoId, cs: Cuerpo[], excluir: Cuerpo[] = []): string {
-  const q = quienesConservan(d, t, cs, excluir);
-  return q.cuantos ? ` (${q.texto} ${q.cuantos > 1 ? 'conservan' : 'conserva'} su ancho)` : '';
+/** Límites de un módulo al repartir: en cocinas, de 60 a 90 cm (o su medida actual si ya es menor). */
+export function limitesReparto(d: Diseno, t: TramoId, c: Cuerpo): Limite {
+  const l = limitesModulo(d, t, c);
+  if (!esCocinaAdulta(d) || (t === 'aereos' && d.plantilla === 'compacto')) return l;
+  return { min: Math.max(l.min, Math.min(AJUSTE_COCINA.min, c.ancho || AJUSTE_COCINA.min)), max: Math.min(l.max, AJUSTE_COCINA.max) };
 }
 
-/** «en 250 cm», «en el lado izquierdo (150 cm)», «en los aéreos (240 cm)». */
-function enLargo(d: Diseno, t: TramoId): string {
-  const largo = cm(largoTramo(d, t));
-  return t === 'base' ? `en ${largo}` : `${enTramo(d, t)} (${largo})`;
+/**
+ * Qué recomendarle al cliente cuando un cambio no cabe en su medida: cuánto sobra o falta y qué
+ * módulos agregar o quitar (cajones o puertas) para cuadrar.
+ */
+function recomendacion(d: Diseno, t: TramoId, cs: Cuerpo[], total: number): string {
+  const ajustan = cs.filter((c) => absorbe(d, t, c));
+  const fijos = sumar(cs.filter((c) => !ajustan.includes(c)).map((c) => c.ancho));
+  const lims = ajustan.map((c) => limitesReparto(d, t, c));
+  const resto = total - fijos;
+  if (!esCocinaAdulta(d)) return 'Quita un módulo o achica alguno a mano.';
+  const que = esTramoAereo(t) ? 'un abatible' : 'una cajonera';
+  const puertas = `puertas (${cm(ANCHO_POR_PUERTA)} cada una)`;
+  if (resto < sumar(lims.map((l) => l.min))) {
+    const sobra = sumar(lims.map((l) => l.min)) - resto;
+    return `Faltan ${cm(sobra)} para que quepa: quita ${puertas} o ${que}, o elige módulos más angostos.`;
+  }
+  const falta = resto - sumar(lims.map((l) => l.max));
+  return `Quedarían ${cm(falta)} sin cubrir: agrega ${que} (de ${cm(AJUSTE_COCINA.min)} a ${cm(AJUSTE_COCINA.max)}) o ${puertas}.`;
 }
+
 
 /** «a, b y c» */
 function listaY(xs: string[]): string {
@@ -476,7 +495,7 @@ const P = {
   cajonPuerta: (ancho = ANCHO_POR_PUERTA): PresetModulo => ({ id: 'cajon-puerta', texto: 'Cajón y puerta', ayuda: '1 cajón arriba y 1 puerta abajo', tipo: 'frentes', ancho, cambios: { cajones: 1, puertas: 1, bisagra: 'der', cajonesArriba: true, repisas: 1 } }),
   especiero: (): PresetModulo => ({ id: 'especiero', texto: 'Especiero', ayuda: 'Cajón extraíble de 20 cm de alto completo, con 2 pisos', tipo: 'especiero', ancho: 200, anchoMinimo: 200, cambios: { pisos: 2 } }),
   horno: (): PresetModulo => ({ id: 'horno', texto: 'Horno empotrado', ayuda: 'Módulo de 60 cm para horno', tipo: 'horno', ancho: 600, anchoMinimo: 600, cambios: {} }),
-  hueco: (): PresetModulo => ({ id: 'hueco', texto: 'Espacio libre', ayuda: 'Para refrigerador, lavadora u otro equipo', tipo: 'hueco', ancho: 600, cambios: {} }),
+  hueco: (): PresetModulo => ({ id: 'hueco', texto: 'Espacio libre', ayuda: 'Espacio sin mueble, de 20 a 50 cm', tipo: 'hueco', ancho: 500, cambios: {} }),
 };
 
 /** Módulos y espacios que se pueden agregar según el tipo de mueble y el tramo. */
@@ -489,7 +508,7 @@ export function presetsModulo(p: Plantilla, tramo: Tramo = 'base'): PresetModulo
       { id: 'nicho', texto: 'Nicho microondas', ayuda: 'Abatible arriba y nicho abierto con repisa', tipo: 'nicho', ancho: 600, cambios: { puertas: 1, abatible: true, repisas: 0 } },
     ];
     if (p === 'compacto') return aereos;
-    return [...aereos, { id: 'hueco', texto: 'Espacio libre', ayuda: 'Sin mueble (ventana, extractor…)', tipo: 'hueco', ancho: 600, cambios: {} }];
+    return [...aereos, { id: 'hueco', texto: 'Espacio libre', ayuda: 'Sin mueble, de 20 a 50 cm', tipo: 'hueco', ancho: 500, cambios: {} }];
   }
   if (tramo !== 'base') return [P.puerta(), P.dosPuertas(), P.cajonera(), P.cajonPuerta(), P.especiero(), P.horno(), P.hueco()];
   switch (p) {
@@ -527,7 +546,8 @@ export function presetsModulo(p: Plantilla, tramo: Tramo = 'base'): PresetModulo
 function anchoPorDefecto(d: Diseno, c: Cuerpo): number {
   const fijo = anchoFijo(d.plantilla, c);
   if (fijo != null) return fijo;
-  if (c.tipo === 'hueco' || c.tipo === 'campana' || c.tipo === 'nicho' || c.abatible) return 600;
+  if (c.tipo === 'hueco') return ANCHO_MAX_HUECO;
+  if (c.tipo === 'campana' || c.tipo === 'nicho' || c.abatible) return 600;
   if (c.tipo === 'frentes' && esCocinaAdulta(d) && c.puertas > 0) return ANCHO_POR_PUERTA * c.puertas;
   return d.plantilla === 'cocina-infantil' ? 300 : 450;
 }
@@ -603,7 +623,13 @@ export function anchoDisponible(d: Diseno, tipo: Cuerpo['tipo'], deseado: number
     return libre < minimo ? null : (fijo ?? Math.min(deseado, libre));
   }
   const nuevo = nuevoCuerpo({ tipo, ancho: fijo ?? 0 });
-  const anchos = anchosParejos(d, t, [...cs, nuevo], largoTramo(d, t) - sepDe(d, t) * cs.length, [], new Map([[nuevo, minimo]]));
+  const total = largoTramo(d, t) - sepDe(d, t) * cs.length;
+  if (fijo == null && esCocinaAdulta(d) && !absorbe(d, t, nuevo)) {
+    // En las cocinas el nuevo conserva su medida (como en opAgregar) y ceden las cajoneras.
+    nuevo.ancho = Math.max(minimo, deseado);
+    return anchosParejos(d, t, [...cs, nuevo], total, [nuevo]) ? nuevo.ancho : null;
+  }
+  const anchos = anchosParejos(d, t, [...cs, nuevo], total, [], new Map([[nuevo, minimo]]));
   return anchos ? anchos[cs.length] : null;
 }
 
@@ -623,6 +649,8 @@ function repararAnchos(d: Diseno, t: TramoId, ctx: Ctx) {
     const l = limitesModulo(d, t, c);
     if (l.min === l.max) c.ancho = l.min;
     else if (c.ancho < l.min) c.ancho = l.min;
+    // Un espacio libre más ancho que su máximo se acota (no se divide): el resto lo toma el tramo.
+    else if (c.ancho > l.max && c.tipo === 'hueco') c.ancho = l.max;
     else if (c.ancho > l.max) {
       const k = Math.ceil(c.ancho / l.max);
       const partes = repartir(c.ancho, Array(k).fill(1));
@@ -940,30 +968,25 @@ function opAgregar(out: Diseno, ctx: CtxOp, tramo: Tramo, tipo: Cuerpo['tipo'], 
     nuevo.ancho = Math.max(minimo, largoObjetivo(out, t));
     cs.splice(0, 0, nuevo);
   } else {
-    // El largo del tramo no cambia: el nuevo y los ajustables se reparten parejo lo que dejan
-    // libre los que conservan su ancho (horno, especiero, módulos con encimera, lavaplatos o campana).
-    const total = largoTramo(out, t) - sep * n;
-    const hayAjustables = cs.some((c) => rolModulo(out, t, c) === 'ajustable');
-    const minAjustable = Math.max(fijo == null ? minimo : 0, ...cs.filter((c) => rolModulo(out, t, c) === 'ajustable').map((c) => limitesModulo(out, t, c).min));
-    const sinEspacio =
-      fijo != null
-        ? `No cabe «${texto}» de ${cm(fijo)} ${enLargo(out, t)}: ${hayAjustables ? `los demás módulos necesitan al menos ${cm(minAjustable)} cada uno` : 'no hay módulos que puedan achicarse para hacerle espacio'}${notaConservan(out, t, cs)}. Quita uno o cambia la medida del mueble.`
-        : `No caben más módulos ${enLargo(out, t)}: cada módulo necesita al menos ${cm(minAjustable)}${notaConservan(out, t, cs)}. Quita uno o cambia la medida del mueble.`;
+    // La medida del cliente no cambia: el nuevo conserva su medida (puertas de 35 cm, nicho,
+    // horno…) y lo absorben las cajoneras (o los abatibles en los aéreos), parejas de 60 a 90 cm.
+    const largo = largoTramo(out, t);
+    const total = largo - sep * n;
     const minimos = new Map([[nuevo, minimo]]);
     nuevo.ancho = fijo ?? 0;
     cs.splice(i, 0, nuevo);
     let anchos: number[] | null = null;
-    if (fijo == null && (o.ancho != null || rolModulo(out, t, nuevo) !== 'ajustable')) {
-      // Con un ancho pedido, o si es un espacio libre (mide lo que el equipo que va en él), el nuevo
-      // lo conserva (si cabe) y los demás ajustables se reparten parejo el resto.
-      const resto = cs.filter((c) => c !== nuevo && rolModulo(out, t, c) === 'ajustable');
-      const libre = total - sumar(cs.filter((c) => c !== nuevo && !resto.includes(c)).map((c) => c.ancho)) - sumar(resto.map((c) => limitesModulo(out, t, c).min));
-      nuevo.ancho = Math.max(minimo, Math.min(deseado, libre));
+    if (fijo == null && (o.ancho != null || !absorbe(out, t, nuevo))) {
+      if (esCocinaAdulta(out)) nuevo.ancho = deseado;
+      else {
+        const resto = cs.filter((c) => c !== nuevo && absorbe(out, t, c));
+        const libre = total - sumar(cs.filter((c) => c !== nuevo && !resto.includes(c)).map((c) => c.ancho)) - sumar(resto.map((c) => limitesReparto(out, t, c).min));
+        nuevo.ancho = Math.max(minimo, Math.min(deseado, libre));
+      }
       anchos = anchosParejos(out, t, cs, total, [nuevo]);
-      if (anchos && nuevo.ancho < deseado) ctx.avisos.push(`Se agregó «${texto}» con ${cm(nuevo.ancho)}: es el espacio que dejaban los demás módulos.`);
     }
     anchos = anchos ?? anchosParejos(out, t, cs, total, [], minimos);
-    if (!anchos) rechazar(sinEspacio);
+    if (!anchos) rechazar(`No cabe «${texto}» en la medida ${delTramo(out, t)} (${cm(largo)}). ${recomendacion(out, t, cs, total)}`);
     cs.forEach((c, k) => (c.ancho = anchos[k]));
   }
   ctx.id = nuevo.id;
@@ -998,12 +1021,8 @@ function opQuitar(out: Diseno, ctx: CtxOp, tramo: Tramo, ref: RefModulo, ajustar
   const sep = t === 'base' ? out.separacionCuerpos : 0;
   const libera = c.ancho + sep;
   // Los motivos nombran los módulos con la numeración que ve el vendedor (antes de quitar).
-  const quedanAjustables = cs.filter((x) => x !== c && rolModulo(out, t, x) === 'ajustable');
-  const conservan = quienesConservan(out, t, cs, [c]);
-  const sinQuien = !quedanAjustables.length
-    ? `No se puede quitar el ${nombre}: los módulos que quedan conservan su ancho (${conservan.texto}) y ninguno puede tomar sus ${cm(libera)}. Cambia la medida del mueble o pon otro módulo en su lugar.`
-    : `No se puede quitar el ${nombre}: los módulos que quedan no alcanzan a tomar sus ${cm(libera)} (las cajoneras miden como máximo ${cm(ANCHO_MAX_CAJONERA)}${conservan.cuantos ? ` y ${conservan.texto} ${conservan.cuantos > 1 ? 'conservan' : 'conserva'} su ancho` : ''}). Cambia la medida del mueble o pon otro módulo en su lugar.`;
-  const total = largoTramo(out, t) - sep * Math.max(0, cs.length - 2);
+  const largo = largoTramo(out, t);
+  const total = largo - sep * Math.max(0, cs.length - 2);
   for (const e of out.equipos) if (e.tramo === t && e.modulo === c.id) ctx.cerca.set(e.id, { tramo: t as TramoBase, indice: Math.min(i, cs.length - 2) });
   cs.splice(i, 1);
   const fijoTramo = t === 'aereos' && out.plantilla === 'compacto';
@@ -1018,7 +1037,7 @@ function opQuitar(out: Diseno, ctx: CtxOp, tramo: Tramo, ref: RefModulo, ajustar
   } else {
     // Los ajustables que quedan se reparten parejo el largo del tramo.
     const anchos = anchosParejos(out, t, cs, total);
-    if (!anchos) rechazar(sinQuien);
+    if (!anchos) rechazar(`No se puede quitar el ${nombre} sin cambiar la medida ${delTramo(out, t)} (${cm(largo)}). ${recomendacion(out, t, cs, total)}`);
     cs.forEach((x, k) => (x.ancho = anchos[k]));
   }
 }

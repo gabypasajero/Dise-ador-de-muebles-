@@ -75,23 +75,31 @@ describe('cocina en L', () => {
   it('agregar, quitar y mover módulos de la L conserva su largo y no toca la encimera', () => {
     let d = fijarForma(disenoLibre('cocina'), 'izq');
     const enc = d.equipos.find((e) => e.tipo === 'encimera')!.modulo;
-    const cajonera = preset('cocina', 'retorno', 'cajonera');
+    const cajonera = { ...preset('cocina', 'retorno', 'cajonera'), ancho: 900 };
+    // Dos cajoneras de 90 cm (agrandando la L a propósito) para que haya de dónde ceder.
+    d = agregarModulo(d, cajonera, 0, 'retorno', true);
+    d = agregarModulo(d, cajonera, 0, 'retorno', true);
+    expect(d.lados.izq!.cuerpos.map((c) => c.ancho)).toEqual([900, 900, 600]);
     const antes = d.lados.izq!.largo;
-    d = agregarModulo(d, cajonera, 0, 'retorno');
+    d = agregarModulo(d, preset('cocina', 'retorno', 'puerta'), 1, 'retorno');
+    // La puerta entra con sus 35 cm, el módulo de 2 puertas conserva los suyos y las cajoneras ceden parejo.
+    expect(d.lados.izq!.cuerpos.map((c) => c.ancho)).toEqual([725, 350, 725, 600]);
     expect(d.lados.izq!.cuerpos[0]).toMatchObject({ cajones: 3 });
     expect(d.lados.izq!.largo).toBe(antes);
     expect(largoTramo(d, 'retorno')).toBe(util(d));
     expect(d.equipos.find((e) => e.tipo === 'encimera')!.modulo).toBe(enc);
-    const m = moverCuerpo(d, 0, 1, 'retorno');
-    expect(m.lados.izq!.cuerpos[1].id).toBe(d.lados.izq!.cuerpos[0].id);
-    // La cajonera y el módulo que había se reparten parejo los 60 cm útiles de la L.
-    expect(m.lados.izq!.cuerpos.map((c) => c.ancho)).toEqual([300, 300]);
-    const q = quitarCuerpo(m, 1, 'retorno');
-    expect(q.lados.izq!.cuerpos).toHaveLength(1);
-    expect(q.lados.izq!.cuerpos[0].ancho).toBe(util(q));
+    const m = moverCuerpo(d, 1, 1, 'retorno');
+    expect(m.lados.izq!.cuerpos[2].id).toBe(d.lados.izq!.cuerpos[1].id);
+    const q = quitarCuerpo(m, 2, 'retorno');
+    expect(q.lados.izq!.cuerpos.map((c) => c.ancho)).toEqual([900, 900, 600]);
     expect(largoTramo(q, 'retorno')).toBe(util(q));
+    expect(q.lados.izq!.largo).toBe(antes);
+    // Sin el módulo de puertas las cajoneras no alcanzan a cubrir: se rechaza con una recomendación.
+    const r = ejecutar(q, { op: 'quitarModulo', tramo: 'retorno', modulo: 2 });
+    expect(r.ok).toBe(false);
+    expect(r.motivo).toMatch(/sin cubrir: agrega una cajonera/);
     // Solo con ajustarLargo (uso programático, no se ofrece en la interfaz) la L crece.
-    const larga = agregarModulo(fijarForma(disenoLibre('cocina'), 'izq'), cajonera, 0, 'izq', true);
+    const larga = agregarModulo(fijarForma(disenoLibre('cocina'), 'izq'), preset('cocina', 'retorno', 'cajonera'), 0, 'izq', true);
     expect(larga.lados.izq!.largo).toBe(1200 + 450);
     expect(validarDiseno(larga)).toEqual([]);
   });
@@ -148,8 +156,13 @@ describe('muebles aéreos', () => {
   });
 
   it('el nicho lleva una puerta abatible y la campana deja espacio libre abajo', () => {
-    let d = agregarEquipo(activarAereos(disenoLibre('cocina'), true), 'campana');
+    let d = agregarEquipo(activarAereos(fijarAncho(disenoLibre('cocina'), 3000), true), 'campana');
+    // En las cocinas el nicho entra con sus 60 cm fijos y lo absorben los abatibles.
+    for (const i of [1, 2]) d = actualizarCuerpo(d, i, { puertas: 1, abatible: true }, 'aereos');
+    d = quitarCuerpo(d, 4, 'aereos');
+    expect(d.aereos.cuerpos.map((c) => c.ancho)).toEqual([600, 900, 900, 600]);
     d = agregarModulo(d, preset('cocina', 'aereos', 'nicho'), undefined, 'aereos');
+    expect(d.aereos.cuerpos.find((c) => c.tipo === 'nicho')!.ancho).toBe(600);
     const la = calcularLayoutAereos(d)!;
     const iNicho = d.aereos.cuerpos.findIndex((c) => c.tipo === 'nicho');
     const puertasNicho = la.frentes.filter((f) => f.cuerpo === iNicho);
@@ -216,8 +229,10 @@ describe('cocina compacta', () => {
     let d = disenoLibre('compacto');
     d = fijarAncho(d, 1500);
     expect(largoTramo(d, 'aereos')).toBe(1500);
+    // El nicho del microondas mide siempre 60 cm: el otro superior no tiene con quién ceder.
+    expect(d.aereos.cuerpos.map((c) => c.ancho)).toEqual([900, 600]);
     d = fijarAnchoCuerpo(d, 0, 700, 'aereos');
-    expect(d.aereos.cuerpos[0].ancho).toBe(700);
+    expect(d.aereos.cuerpos.map((c) => c.ancho)).toEqual([900, 600]);
     expect(largoTramo(d, 'aereos')).toBe(1500);
     d = agregarModulo(d, presetsModulo('compacto', 'aereos')[0], undefined, 'aereos');
     expect(largoTramo(d, 'aereos')).toBe(1500);
@@ -337,13 +352,15 @@ describe('correcciones de la revisión de tramos', () => {
 
   it('3 y 29: en el compacto el base no queda más angosto que lo mínimo del superior', () => {
     let d = c3();
-    for (let i = 0; i < 3; i++) d = agregarModulo(d, preset('compacto', 'aereos', 'aereo-puerta'), undefined, 'aereos');
-    expect(d.aereos.cuerpos.length).toBe(5);
+    // El nicho del superior mide 60 cm fijos: en 110 cm caben 2 aéreos más (4 en total).
+    for (let i = 0; i < 2; i++) d = agregarModulo(d, preset('compacto', 'aereos', 'aereo-puerta'), undefined, 'aereos');
+    expect(d.aereos.cuerpos.length).toBe(4);
+    expect(d.aereos.cuerpos.find((c) => c.tipo === 'nicho')!.ancho).toBe(600);
     for (const m of [fijarAncho(d, 600), quitarCuerpo(d, 1, 'base', true)]) {
       expect(Math.min(...anchos(m, 'aereos'))).toBeGreaterThanOrEqual(150);
       expect(largoTramo(m, 'aereos')).toBe(m.ancho);
       expect(largoTramo(m, 'base')).toBe(m.ancho);
-      expect(m.ancho).toBeGreaterThanOrEqual(5 * 150);
+      expect(m.ancho).toBeGreaterThanOrEqual(3 * 150 + 600);
     }
     const q = fijarAnchoCuerpo(quitarCuerpo(quitarCuerpo(c5(), 0), 0), 0, 150);
     expect(q.ancho).toBeGreaterThanOrEqual(LIMITES.compacto.ancho[0]);
@@ -368,7 +385,8 @@ describe('correcciones de la revisión de tramos', () => {
     d = fijarAncho(d, 1350);
     expect(Math.min(...anchos(d, 'base'))).toBeGreaterThanOrEqual(150);
     expect(largoTramo(d, 'base')).toBe(1350);
-    let a = agregarModulo(activarAereos(full(), true), preset('cocina', 'aereos', 'aereo-puerta'), undefined, 'aereos');
+    // En la cocina las puertas de los aéreos no ceden: el aéreo se agrega agrandando el tramo (uso programático).
+    let a = agregarModulo(activarAereos(full(), true), preset('cocina', 'aereos', 'aereo-puerta'), undefined, 'aereos', true);
     a = fijarAnchoAereos(a, 450);
     expect(anchos(a, 'aereos')).toEqual([150, 150, 150]);
     let e = c5();
@@ -407,7 +425,8 @@ describe('correcciones de la revisión de tramos', () => {
   });
 
   it('8: avisa si el nicho del microondas queda muy bajo', () => {
-    const d = agregarModulo(activarAereos(full(), true), preset('cocina', 'aereos', 'nicho'), undefined, 'aereos');
+    const d = agregarModulo(activarAereos(full(), true), preset('cocina', 'aereos', 'nicho'), undefined, 'aereos', true);
+    expect(d.aereos.cuerpos.some((c) => c.tipo === 'nicho')).toBe(true);
     expect(textos(d).some((t) => t.includes('nicho'))).toBe(false);
     const i = d.aereos.cuerpos.findIndex((c) => c.tipo === 'nicho');
     expect(textos(fijarAereos(d, { alto: 400 })).some((t) => t.includes(`El nicho del aéreo ${i + 1}`))).toBe(true);

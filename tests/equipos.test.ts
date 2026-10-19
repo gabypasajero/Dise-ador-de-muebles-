@@ -6,6 +6,7 @@ import { clasificarProducto, disenoInicial, disenoLibre } from '../shared/catalo
 import { ubicarEquipos } from '../shared/layout';
 import {
   activarAereos,
+  actualizarCuerpo,
   agregarEquipo,
   agregarModulo,
   configurarEquipo,
@@ -27,6 +28,7 @@ import {
   quitarEquipo,
 } from '../shared/reglas';
 import { validarDiseno } from '../shared/validar';
+import { conCajoneras } from './cocinas';
 import type { Diseno, Encimera, Lavaplatos, ProductoTienda, Tramo } from '../shared/tipos';
 
 const productos = JSON.parse(fs.readFileSync('public/datos/productos-respaldo.json', 'utf8')) as ProductoTienda[];
@@ -90,8 +92,10 @@ describe('agregar y quitar equipamiento', () => {
   });
 
   it('el equipamiento solo va sobre módulos que lo pueden llevar', () => {
-    let d = agregarModulo(fijarAncho(full(), 3000), preset('hueco'), 3, 'base', true);
+    // [horno][cajonera 90][puerta 70 + lavaplatos][espacio libre 50]: el especiero lo absorbe la cajonera.
+    let d = agregarModulo(fijarAncho(full(), 2200), preset('hueco'), 3, 'base', true);
     d = agregarModulo(d, preset('especiero'), 1);
+    expect(d.cuerpos.map((c) => c.tipo)).toEqual(['horno', 'especiero', 'frentes', 'frentes', 'hueco']);
     const iHueco = d.cuerpos.findIndex((c) => c.tipo === 'hueco');
     const iEsp = d.cuerpos.findIndex((c) => c.tipo === 'especiero');
     const motivo = (op: Parameters<typeof ejecutar>[1]) => ejecutar(d, op).motivo;
@@ -123,9 +127,9 @@ describe('agregar y quitar equipamiento', () => {
 describe('equipamiento en los lados de la L y la U', () => {
   it('se mueve de forma independiente a cualquier módulo de cualquier lado', () => {
     let d = fijarLado(fijarLado(fijarForma(fijarAncho(full(), 2400), 'U'), 'izq', { largo: 1800 }), 'der', { largo: 1800 });
-    // El lado izquierdo queda con tres módulos: [ajustable][ajustable][puerta].
-    d = agregarModulo(d, preset('puerta', 'izq'), undefined, 'izq');
-    d = agregarModulo(d, preset('puerta', 'izq'), undefined, 'izq');
+    // El lado izquierdo queda con tres módulos: [2 puertas][puerta][puerta] (agrandando el lado).
+    d = agregarModulo(d, preset('puerta', 'izq'), undefined, 'izq', true);
+    d = agregarModulo(d, preset('puerta', 'izq'), undefined, 'izq', true);
     expect(d.lados.izq!.cuerpos).toHaveLength(3);
     d = moverEquipo(d, encimera(d).id, 'der', 0);
     expect(encimera(d)).toMatchObject({ tramo: 'der', modulo: d.lados.der!.cuerpos[0].id });
@@ -183,6 +187,17 @@ describe('lavaplatos centrado o pegado a un borde', () => {
 
 describe('la campana queda siempre sobre la encimera', () => {
   const conCampana = () => agregarEquipo(activarAereos(fijarAncho(full(), 2400), true), 'campana');
+  /**
+   * En la cocina solo ceden las cajoneras y los abatibles: con cajoneras de 90 cm en el base y
+   * dos abatibles de 90 cm en los aéreos (además de la campana) hay de dónde agregar y quitar.
+   */
+  const conCampanaAjustable = () => {
+    let d = agregarEquipo(activarAereos(conCajoneras(fijarAncho(full(), 2400), [900, 900]), true), 'campana');
+    for (const i of [1, 2]) d = actualizarCuerpo(d, i, { puertas: 1, abatible: true }, 'aereos');
+    d = quitarCuerpo(d, 3, 'aereos');
+    expect(d.aereos.cuerpos.filter((c) => c.abatible && c.tipo === 'frentes').map((c) => c.ancho)).toEqual([900, 900]);
+    return d;
+  };
 
   it('se ubica sola sobre la encimera al agregarla', () => {
     const r = ejecutar(activarAereos(fijarAncho(full(), 2400), true), { op: 'agregarEquipo', equipo: 'campana' });
@@ -197,16 +212,16 @@ describe('la campana queda siempre sobre la encimera', () => {
   });
 
   it('se agreguen, quiten o muevan los módulos que sea', () => {
-    let d = conCampana();
+    let d = conCampanaAjustable();
     const pasos: ((x: Diseno) => Diseno)[] = [
       (x) => agregarModulo(x, preset('puerta'), 0),
       (x) => agregarModulo(x, preset('especiero'), 0),
       (x) => moverCuerpo(x, 2, -1),
       (x) => moverCuerpo(x, 0, 1),
       (x) => quitarCuerpo(x, 1),
-      (x) => agregarModulo(x, preset('aereo-dos', 'aereos'), 0, 'aereos'),
+      (x) => agregarModulo(x, preset('aereo-puerta', 'aereos'), 0, 'aereos'),
       (x) => moverCuerpo(x, x.aereos.cuerpos.findIndex((c) => c.tipo !== 'campana'), 1, 'aereos'),
-      (x) => quitarCuerpo(x, x.aereos.cuerpos.length - 1, 'aereos'),
+      (x) => quitarCuerpo(x, x.aereos.cuerpos.findIndex((c) => c.ancho === 350), 'aereos'),
       (x) => fijarAncho(x, 3000),
       (x) => fijarAereos(x, { profundidad: 350 }),
       // El último módulo tiene el lavaplatos (no caben juntos): la encimera va al penúltimo.
@@ -255,9 +270,13 @@ describe('la campana queda siempre sobre la encimera', () => {
   });
 
   it('quitar el módulo de la campana quita la campana; quitar la encimera también', () => {
-    const d = conCampana();
+    // Tres abatibles de 60 cm toman los 60 cm de la campana al quitarla.
+    const d = agregarModulo(conCampanaAjustable(), preset('abatible', 'aereos'), undefined, 'aereos');
+    expect(d.aereos.cuerpos.filter((c) => c.abatible && c.tipo === 'frentes').map((c) => c.ancho)).toEqual([600, 600, 600]);
     const i = d.aereos.cuerpos.findIndex((c) => c.tipo === 'campana');
     const q = ejecutar(d, { op: 'quitarModulo', tramo: 'aereos', modulo: i });
+    expect(q.ok).toBe(true);
+    expect(q.diseno.aereos.cuerpos.filter((c) => c.abatible && c.tipo === 'frentes').map((c) => c.ancho)).toEqual([800, 800, 800]);
     expect(encimera(q.diseno).campana).toBe(false);
     expect(q.avisos.join(' ')).toMatch(/Se quitó la campana/);
     const sin = ejecutar(d, { op: 'quitarEquipo', id: encimera(d).id });

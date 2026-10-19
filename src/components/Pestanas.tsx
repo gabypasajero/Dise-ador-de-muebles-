@@ -35,6 +35,7 @@ import {
   opcionesEquipo,
   posicionMinima,
   presetsModulo,
+  absorbe,
   rolModulo,
   tiposPermitidos,
   tramosDe,
@@ -709,7 +710,8 @@ function MedidasTramo({ d, tramo, unidad }: { d: Diseno; tramo: TramoId; unidad:
 const TEXTO_ROL = { fijo: 'Fijo', equipado: 'Equipado', ajustable: 'Ajustable' } as const;
 
 /** Texto del chip de rol: el espacio libre no lleva equipamiento, queda reservado para un equipo. */
-function textoRol(rol: keyof typeof TEXTO_ROL, c: Cuerpo): string {
+function textoRol(rol: keyof typeof TEXTO_ROL, c: Cuerpo, conserva = false): string {
+  if (conserva) return 'Medida fija';
   return c.tipo === 'hueco' && rol === 'equipado' ? 'Reservado' : TEXTO_ROL[rol];
 }
 
@@ -722,7 +724,13 @@ function ayudaRol(d: Diseno, tramo: TramoId, c: Cuerpo, unidad: Unidad): string 
     return esAereo(tramo)
       ? 'Aloja la campana: va siempre centrado sobre su encimera.'
       : 'Lleva equipamiento: conserva su ancho cuando agregas, quitas o mueves otros módulos.';
+  if (!absorbe(d, tramo, c))
+    return d.plantilla === 'cocina' || d.plantilla === 'compacto'
+      ? 'Conserva su medida cuando agregas o quitas módulos (35 cm por puerta). Puedes cambiarla a mano.'
+      : 'Se reparte parejo con los demás módulos cuando agregas o quitas módulos.';
   const l = limitesModulo(d, tramo, c);
+  if (d.plantilla === 'cocina' || d.plantilla === 'compacto')
+    return `Se ajusta (de ${formatear(600, unidad)} a ${formatear(900, unidad)}) para mantener la medida del cliente cuando agregas o quitas módulos.`;
   return `Se reparte parejo con los demás ajustables cuando agregas o quitas módulos (mínimo ${formatear(l.min, unidad)}${Number.isFinite(l.max) ? `, máximo ${formatear(l.max, unidad)}` : ''}).`;
 }
 
@@ -791,7 +799,7 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
             {prefijo} {activo + 1}
           </strong>
           <span className={`chip-rol ${rol}`} title={ayudaRol(d, tramo, c, unidad)}>
-            {textoRol(rol, c)}
+            {textoRol(rol, c, rol === 'ajustable' && !absorbe(d, tramo, c))}
           </span>
           <span className="acciones-cuerpo">
             <button type="button" className="boton-icono" aria-label="Mover a la izquierda" title="Mover a la izquierda" disabled={activo - 1 < minPos} onClick={() => mover(-1)}>

@@ -1,21 +1,22 @@
 // Secuencias aleatorias de operaciones (como las haría un cliente indeciso o el asistente):
 // después de cada una el diseño debe seguir siendo válido, estable al guardarlo y abrirlo,
-// un rechazo no debe cambiar nada y agregar o quitar módulos reparte parejo sin cambiar el largo.
+// un rechazo no debe cambiar nada y agregar o quitar módulos no cambia el largo: lo absorben parejo
+// los módulos que se ajustan (en las cocinas, las cajoneras y los abatibles).
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { clasificarProducto, disenoInicial, disenoLibre } from '../shared/catalogo';
 import { calcularLayout, calcularLayoutAereos, calcularLayoutAereosLado, disenoLado, ubicarEquipos } from '../shared/layout';
 import {
+  absorbe,
   cuerposDe,
   ejecutar,
   largoTramo,
-  limitesModulo,
+  limitesReparto,
   listarEquipamiento,
   normalizar,
   precioDiseno,
   presetsModulo,
   resolverTramo,
-  rolModulo,
   tiposPermitidos,
   tramosDe,
   type Operacion,
@@ -118,8 +119,9 @@ function revisarGeometria(d: Diseno) {
 }
 
 /**
- * Agregar o quitar un módulo no cambia el largo del tramo y deja parejos sus ajustables (salvo
- * los que topan su mínimo o máximo; en los aéreos con campana, esta se centra sobre su encimera).
+ * Agregar o quitar un módulo no cambia el largo del tramo y deja parejos los módulos que absorben
+ * el cambio (salvo los que topan su mínimo o máximo de reparto; en los aéreos con campana, esta se
+ * centra sobre su encimera).
  */
 function revisarReparto(antes: Diseno, despues: Diseno, tramo: Tramo, donde: string) {
   const t = resolverTramo(antes, tramo);
@@ -128,10 +130,13 @@ function revisarReparto(antes: Diseno, despues: Diseno, tramo: Tramo, donde: str
   if (t === 'base') expect(despues.ancho, donde).toBe(antes.ancho);
   const cs = cuerposDe(despues, t);
   if (t.startsWith('aereos') && cs.some((c) => c.tipo === 'campana' && c.campanaDe)) return;
+  // Solo se reparten los que absorben (en las cocinas, las cajoneras del base y los abatibles de
+  // los aéreos, de 60 a 90 cm o desde lo que medían si ya eran más angostas).
+  const previos = new Map(cuerposDe(antes, t).map((c) => [c.id, c]));
   const libres = cs
     .filter((c) => {
-      if (rolModulo(despues, t, c) !== 'ajustable') return false;
-      const l = limitesModulo(despues, t, c);
+      if (!absorbe(despues, t, c)) return false;
+      const l = limitesReparto(despues, t, previos.get(c.id) ?? c);
       return c.ancho > l.min && c.ancho < l.max;
     })
     .map((c) => c.ancho);
