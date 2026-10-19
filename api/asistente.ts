@@ -126,7 +126,7 @@ export default {
     const ai = new GoogleGenAI({ apiKey: clave });
     const respaldo = process.env.GEMINI_MODEL_RESPALDO?.trim() || MODELO_RESPALDO;
     // Si Google está saturado: un reintento con el mismo modelo y, si sigue, el modelo de respaldo.
-    const intentos = [modelo, modelo, ...(respaldo !== modelo ? [respaldo] : [])];
+    const intentos = [modelo, ...(respaldo !== modelo ? [respaldo] : []), 'gemini-2.5-flash-lite'].filter((m, i, xs) => xs.indexOf(m) === i);
     const pedir = (modelo: string) =>
       ai.models.generateContent({
         model: modelo,
@@ -156,6 +156,7 @@ export default {
         break;
       } catch (e) {
         // Si el respaldo no existe o falla distinto, se informa el error del modelo principal.
+        console.error(`Gemini intento ${i + 1} (${m}):`, e instanceof Error ? e.message.slice(0, 200) : e);
         if (i < intentos.length - 1 || !fallo) fallo = e;
         if (!saturado(e)) break;
       }
