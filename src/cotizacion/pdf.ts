@@ -250,7 +250,8 @@ export function crearPdf(d: DatosDocumento): jsPDF {
   // (nunca menos de 62 mm) si así la cotización completa cabe en una sola hoja.
   const imagen = d.imagen || d.miniatura;
   if (imagen) {
-    const libre = limite - y - 9 - altoContenido;
+    // 2 mm de resguardo: si la imagen llena justo el espacio, el redondeo no debe mandar el cierre a otra hoja.
+    const libre = limite - y - 9 - altoContenido - 2;
     const alto = dibujarImagen(doc, imagen, MARGEN, y, ancho, libre >= 62 ? Math.min(100, libre) : 100);
     if (alto) y += alto + 9;
   }

@@ -3,9 +3,19 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { NOMBRE_PLANTILLA } from '../../shared/catalogo';
 import { formatoPrecio, precioDiseno } from '../../shared/reglas';
 import { detalleCotizacion, formatoFecha, hoy } from '../../shared/resumen';
+import type { SeccionFicha, TablaFicha } from '../../shared/resumen';
 import type { Cliente, Cotizacion, DatosCotizacion, EstadoCotizacion } from '../../shared/tipos';
 import { compartirPdf, enlaceCorreo, enlaceWhatsapp, puedeCompartirArchivos, type ServicioCorreo } from '../cotizacion/enviar';
-import { descargarHojaMaestro, type DatosHojaMaestro } from '../cotizacion/hojaMaestro';
+import {
+  contenidoHoja,
+  descargarHojaMaestro,
+  esquemaSvg,
+  hojaMaestroComoArchivo,
+  leyendaEsquema,
+  renglonesCelda,
+  tablaDeLineas,
+  type DatosHojaMaestro,
+} from '../cotizacion/hojaMaestro';
 import { reducirImagen } from '../cotizacion/imagen';
 import { LISTA_MARCAS, MARCAS, marcaDe, recordarMarca, textoCotizacionMarca, ultimaMarca, type Marca } from '../cotizacion/marcas';
 import { datosCliente, descargarPdf, type DatosDocumento } from '../cotizacion/pdf';
@@ -187,6 +197,224 @@ export function DocumentoCotizacion({ datos, acciones }: { datos: DatosDocumento
   );
 }
 
+// ---------- Hoja del maestro dentro de la aplicación (mismo contenido que el PDF) ----------
+
+function TablaHoja({ tabla }: { tabla: TablaFicha }) {
+  const total = tabla.anchos.reduce((a, b) => a + b, 0);
+  const conTitulos = tabla.columnas.length > 0;
+  return (
+    <div className="hoja-tabla-caja">
+      <table className={`hoja-tabla${conTitulos ? '' : tabla.anchos[0] < 0.1 ? ' datos numerada' : ' datos'}`}>
+        <colgroup>
+          {tabla.anchos.map((a, i) => (
+            <col key={i} style={{ width: `${(a / total) * 100}%` }} />
+          ))}
+        </colgroup>
+        {conTitulos && (
+          <thead>
+            <tr>
+              {tabla.columnas.map((c) => (
+                <th key={c} scope="col">
+                  {c}
+                </th>
+              ))}
+            </tr>
+          </thead>
+        )}
+        <tbody>
+          {tabla.filas.map((f, k) => (
+            <tr key={k}>
+              {f.celdas.map((celda, i) => {
+                const renglones = renglonesCelda(tabla, i, celda).map((r, j) => (
+                  <span key={j} className={`renglon${r.negrita ? ' negrita' : ''}${r.gris ? ' gris' : ''}`}>
+                    {r.texto}
+                  </span>
+                ));
+                return !conTitulos && i === 0 ? (
+                  <th key={i} scope="row">
+                    {renglones}
+                  </th>
+                ) : (
+                  <td key={i} data-col={tabla.columnas[i]}>
+                    {renglones}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SeccionHoja({ s }: { s: SeccionFicha }) {
+  return (
+    <section className="hoja-seccion">
+      <h4>{s.titulo}</h4>
+      {s.lineas.length > 0 && <TablaHoja tabla={tablaDeLineas(s.lineas)} />}
+      {s.tabla && <TablaHoja tabla={s.tabla} />}
+    </section>
+  );
+}
+
+/** La hoja para el maestro en HTML: lo mismo que el PDF (datos, imagen, ficha en tablas y esquemas). */
+export function DocumentoHojaMaestro({ datos, antes }: { datos: DatosHojaMaestro; antes?: ReactNode }) {
+  const { diseno, producto, unidad, materiales, marca } = datos;
+  const contenido = useMemo(() => contenidoHoja(diseno, producto, unidad, materiales), [diseno, producto, unidad, materiales]);
+  const esquemas = useMemo(
+    () => contenido.muros.map((m) => ({ titulo: m.titulo, svg: esquemaSvg(m, contenido.escala, unidad, marca) })),
+    [contenido, unidad, marca],
+  );
+  const m = MARCAS[marca];
+  const numero = datos.numero ? `N° ${datos.numero}` : 'Borrador';
+  const [generales, ...resto] = contenido.ficha.secciones;
+  return (
+    <article className="documento-cotizacion hoja-maestro" data-marca={marca} aria-label="Hoja para el maestro">
+      {antes}
+      <header className="documento-cabeza">
+        <div className="marca">
+          <LogoMarca marca={marca} />
+          <span className="marca-texto">
+            <strong>{m.nombre}</strong>
+            <small>{[m.lema, m.web].filter(Boolean).join(' · ')}</small>
+          </span>
+        </div>
+        <div className="documento-numero">
+          <span className="hoja-tipo">Hoja para el maestro</span>
+          <span>
+            {numero} · {formatoFecha(datos.fecha)}
+          </span>
+        </div>
+      </header>
+      <dl className="hoja-orden">
+        <div>
+          <dt>Cliente</dt>
+          <dd>{datos.cliente.nombre || '…'}</dd>
+        </div>
+        <div>
+          <dt>Cotización</dt>
+          <dd>{numero}</dd>
+        </div>
+        <div>
+          <dt>Fecha</dt>
+          <dd>{formatoFecha(datos.fecha)}</dd>
+        </div>
+        <div>
+          <dt>Vendedor</dt>
+          <dd>
+            {datos.vendedor}
+            {datos.vendedorTelefono ? ` · ${datos.vendedorTelefono}` : ''}
+          </dd>
+        </div>
+        {datos.cliente.direccion && (
+          <div className="ancho">
+            <dt>Despacho / instalación</dt>
+            <dd>{datos.cliente.direccion}</dd>
+          </div>
+        )}
+      </dl>
+      <div>
+        <h3 className="documento-titulo">{datos.modelo}</h3>
+        <p className="hoja-leyenda">Documento interno para fabricar e instalar · sin precios · medidas en {unidad === 'cm' ? 'centímetros' : 'milímetros'}</p>
+      </div>
+      {datos.imagen && (
+        <figure className="hoja-imagen">
+          <img className="documento-imagen" src={datos.imagen} alt="Vista 3D del mueble" />
+          <figcaption>Imagen referencial: las medidas y la distribución que valen son las de esta hoja.</figcaption>
+        </figure>
+      )}
+      {generales && <SeccionHoja s={generales} />}
+      {esquemas.length > 0 && (
+        <section className="hoja-seccion">
+          <h4>Esquema frontal</h4>
+          <p className="hoja-leyenda">{leyendaEsquema(unidad)}</p>
+          {esquemas.map((e) => (
+            <figure key={e.titulo} className="hoja-esquema">
+              <figcaption>{e.titulo}</figcaption>
+              {/* SVG armado por esquemaSvg con números y textos fijos del motor (escapados). */}
+              <div className="hoja-esquema-dibujo" dangerouslySetInnerHTML={{ __html: e.svg }} />
+            </figure>
+          ))}
+        </section>
+      )}
+      {resto.map((s) => (
+        <SeccionHoja key={s.titulo} s={s} />
+      ))}
+      {datos.observaciones && (
+        <section className="hoja-seccion">
+          <h4>Observaciones de la cotización</h4>
+          <p className="hoja-observaciones">{datos.observaciones}</p>
+        </section>
+      )}
+    </article>
+  );
+}
+
+/** Descargar, imprimir o compartir la hoja del maestro. */
+function AccionesHoja({ datos }: { datos: DatosHojaMaestro }) {
+  const avisar = useApp((s) => s.avisar);
+  const compartible = useMemo(() => puedeCompartirArchivos(), []);
+  const imprimir = () => {
+    document.body.classList.add('imprimiendo');
+    window.print();
+    document.body.classList.remove('imprimiendo');
+  };
+  const compartir = async () => {
+    try {
+      await navigator.share({ files: [hojaMaestroComoArchivo(datos)], title: `Hoja para el maestro ${datos.numero ?? ''}`.trim() });
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') avisar('No se pudo compartir la hoja', 'error');
+    }
+  };
+  return (
+    <section className="documento-acciones hoja-acciones no-imprimir" aria-label="Descargar, imprimir o compartir la hoja del maestro">
+      <span className="campo-etiqueta">Hoja del maestro · sin precios</span>
+      <div className="fila-botones">
+        <button type="button" className="boton primario" onClick={() => hojaMaestro(datos, avisar)}>
+          Descargar PDF
+        </button>
+        <button type="button" className="boton secundario" onClick={imprimir}>
+          Imprimir
+        </button>
+        {compartible && (
+          <button type="button" className="boton secundario" onClick={compartir}>
+            Compartir PDF
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** Cotización y hoja del maestro en pestañas, para verlas sin salir de la aplicación. */
+function VisorDocumentos({ cotizacion, maestro }: { cotizacion: ReactNode; maestro: ReactNode }) {
+  const [pestana, setPestana] = useState<'cotizacion' | 'maestro'>('cotizacion');
+  return (
+    <div className="visor-documentos">
+      <div className="pestanas-documento no-imprimir" role="tablist" aria-label="Documento">
+        {(['cotizacion', 'maestro'] as const).map((p) => (
+          <button
+            key={p}
+            type="button"
+            role="tab"
+            id={`pestana-doc-${p}`}
+            aria-selected={pestana === p}
+            aria-controls="panel-documento"
+            className={pestana === p ? 'activa' : ''}
+            onClick={() => setPestana(p)}
+          >
+            {p === 'cotizacion' ? 'Cotización' : 'Hoja del maestro'}
+          </button>
+        ))}
+      </div>
+      <div id="panel-documento" role="tabpanel" aria-labelledby={`pestana-doc-${pestana}`} className="panel-documento">
+        {pestana === 'cotizacion' ? cotizacion : maestro}
+      </div>
+    </div>
+  );
+}
+
 // ---------- Descargar, imprimir y enviar (al final de la cotización) ----------
 
 function AccionesEnvio({ c, onHojaMaestro }: { c: Cotizacion; onHojaMaestro?: () => void }) {
@@ -311,25 +539,22 @@ export function ModalRegistrarCotizacion() {
     setMarca(m);
     recordarMarca(s.usuario?.id, m);
   };
-  const hoja = () =>
-    hojaMaestro(
-      {
-        marca,
-        numero: actual?.numero ?? null,
-        cliente: { ...cliente, nombre: cliente.nombre.trim() || 'Cliente por definir' },
-        fecha,
-        vendedor: s.usuario?.nombre ?? '',
-        vendedorTelefono: s.usuario?.telefono,
-        modelo,
-        imagen,
-        diseno: s.diseno,
-        producto: s.producto,
-        materiales: s.materiales,
-        unidad: s.unidad,
-        observaciones: observaciones.trim() || null,
-      },
-      s.avisar,
-    );
+  const datosHoja: DatosHojaMaestro = {
+    marca,
+    numero: actual?.numero ?? null,
+    cliente: { ...cliente, nombre: cliente.nombre.trim() || 'Cliente por definir' },
+    fecha,
+    vendedor: s.usuario?.nombre ?? '',
+    vendedorTelefono: s.usuario?.telefono,
+    modelo,
+    imagen,
+    diseno: s.diseno,
+    producto: s.producto,
+    materiales: s.materiales,
+    unidad: s.unidad,
+    observaciones: observaciones.trim() || null,
+  };
+  const hoja = () => hojaMaestro(datosHoja, s.avisar);
 
   const registrar = async (comoNueva: boolean) => {
     if (!s.usuario?.esVendedor) {
@@ -427,25 +652,30 @@ export function ModalRegistrarCotizacion() {
               </button>
             )}
             <button type="button" className="boton fantasma" onClick={hoja} title="Ficha de fabricación sin precios, con el esquema acotado de cada tramo">
-              Hoja para el maestro
+              Descargar hoja del maestro
             </button>
           </div>
         </form>
         <div className="registro-vista-previa">
-          <span className="campo-etiqueta">Así queda la cotización</span>
-          <DocumentoCotizacion
-            datos={{
-              numero: actual?.numero ?? null,
-              cliente,
-              detalle,
-              observaciones: observaciones.trim() || null,
-              vendedor: s.usuario?.nombre ?? '',
-              vendedorTelefono: s.usuario?.telefono,
-              fecha,
-              valor,
-              imagen,
-              marca,
-            }}
+          <span className="campo-etiqueta">Así quedan la cotización y la hoja del maestro</span>
+          <VisorDocumentos
+            cotizacion={
+              <DocumentoCotizacion
+                datos={{
+                  numero: actual?.numero ?? null,
+                  cliente,
+                  detalle,
+                  observaciones: observaciones.trim() || null,
+                  vendedor: s.usuario?.nombre ?? '',
+                  vendedorTelefono: s.usuario?.telefono,
+                  fecha,
+                  valor,
+                  imagen,
+                  marca,
+                }}
+              />
+            }
+            maestro={<DocumentoHojaMaestro datos={datosHoja} />}
           />
         </div>
       </div>
@@ -492,36 +722,25 @@ export function ModalDocumento() {
       setTrabajando(false);
     }
   };
-  const hoja = async () => {
-    setTrabajando(true);
-    try {
-      const completa = c.config ? c : await backend.cotizacion(c.id);
-      if (!completa.config) throw new Error('La cotización no tiene el diseño guardado');
-      const producto = completa.productoId != null ? (s.catalogo?.productos.find((p) => p.id === completa.productoId) ?? null) : null;
-      hojaMaestro(
-        {
-          marca: marcaDe(completa),
-          numero: completa.numero,
-          cliente: completa.cliente,
-          fecha: completa.fecha,
-          vendedor: completa.vendedor.nombre,
-          vendedorTelefono: completa.vendedor.telefono,
-          modelo: completa.modelo,
-          imagen: completa.imagen || completa.miniatura,
-          diseno: completa.config,
-          producto,
-          materiales: s.materiales,
-          unidad: s.unidad,
-          observaciones: completa.observaciones,
-        },
-        s.avisar,
-      );
-    } catch (e) {
-      s.avisar((e as Error).message, 'error');
-    } finally {
-      setTrabajando(false);
-    }
-  };
+  // La hoja del maestro se arma con el diseño guardado (llega con la cotización completa).
+  const producto = c.productoId != null ? (s.catalogo?.productos.find((p) => p.id === c.productoId) ?? null) : null;
+  const datosHoja: DatosHojaMaestro | null = c.config
+    ? {
+        marca: marcaDe(c),
+        numero: c.numero,
+        cliente: c.cliente,
+        fecha: c.fecha,
+        vendedor: c.vendedor.nombre,
+        vendedorTelefono: c.vendedor.telefono,
+        modelo: c.modelo,
+        imagen: c.imagen || c.miniatura,
+        diseno: c.config,
+        producto,
+        materiales: s.materiales,
+        unidad: s.unidad,
+        observaciones: c.observaciones,
+      }
+    : null;
   const cambiarEstado = async (estado: 'cotizada' | 'anulada') => {
     if (estado === 'anulada' && !confirm(`¿Anular la cotización ${c.numero}?`)) return;
     setTrabajando(true);
@@ -576,7 +795,16 @@ export function ModalDocumento() {
         </div>
       }
     >
-      <DocumentoCotizacion datos={datosDocumento(c)} acciones={<AccionesEnvio c={c} onHojaMaestro={trabajando ? undefined : hoja} />} />
+      <VisorDocumentos
+        cotizacion={<DocumentoCotizacion datos={datosDocumento(c)} acciones={<AccionesEnvio c={c} />} />}
+        maestro={
+          datosHoja ? (
+            <DocumentoHojaMaestro datos={datosHoja} antes={<AccionesHoja datos={datosHoja} />} />
+          ) : (
+            <p className="tenue">{incompleta != null ? 'Cargando el diseño de la cotización…' : 'Esta cotización no tiene el diseño guardado.'}</p>
+          )
+        }
+      />
     </Modal>
   );
 }

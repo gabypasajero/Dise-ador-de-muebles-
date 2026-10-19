@@ -17,7 +17,9 @@ import {
   largoUtilLadoAereo,
   posEnMundo,
   ubicarEquipos,
+  type EquipoUbicado,
   type Frente,
+  type FrentePuerta,
   type LayoutAereos,
 } from './layout';
 import { advertencias, formatear, formatoPrecio } from './reglas';
@@ -263,9 +265,28 @@ export function detallePrecio(d: Diseno): LineaDetalle[] {
 
 // ---------- Ficha de fabricación ----------
 
+/** Tabla ordenada de la ficha (módulos de un tramo, equipamiento, frentes para cortar). */
+export interface TablaFicha {
+  columnas: string[];
+  /** Ancho relativo de cada columna. */
+  anchos: number[];
+  filas: FilaFicha[];
+  /** Columnas en negrita y columnas cuyo primer renglón va en negrita (el resto, en gris). */
+  negrita?: number[];
+  destacar?: number[];
+}
+
+export interface FilaFicha {
+  /** Texto de cada columna; '\n' separa renglones. */
+  celdas: string[];
+  /** La misma fila como línea de texto (textoFicha). */
+  texto?: LineaDetalle;
+}
+
 export interface SeccionFicha {
   titulo: string;
   lineas: LineaDetalle[];
+  tabla?: TablaFicha;
 }
 
 /** Hoja para el maestro: todo lo necesario para fabricar e instalar el mueble. */
@@ -275,9 +296,11 @@ export interface FichaFabricacion {
   secciones: SeccionFicha[];
 }
 
+const cuantos = (k: number, uno: string, varios: string) => `${k} ${k === 1 ? uno : varios}`;
+
 /** Qué es un módulo, en una frase para el maestro ("Cajonera de 3 cajones", "2 puertas y 1 cajón arriba"…). */
 function queEsModulo(d: Diseno, c: Cuerpo, f: (mm: number) => string): string {
-  const n = (k: number, uno: string, varios: string) => `${k} ${k === 1 ? uno : varios}`;
+  const n = cuantos;
   switch (c.tipo) {
     case 'horno':
       return d.plantilla === 'cocina-infantil' ? 'Horno de juguete' : 'Horno eléctrico 58 L empotrado (hueco de 59,5 cm de alto, faja de melamina arriba)';
@@ -319,36 +342,110 @@ function entreCotas(d: Diseno, t: TramoId, s0: number, s1: number, f: (mm: numbe
   return `de ${f(Math.min(a, b), false)} a ${f(Math.max(a, b))} ${referenciaTramo(d, t)}`;
 }
 
-function detalleModulo(d: Diseno, t: TramoId, i: number, frentes: Frente[], unidad: Unidad, s0: number): LineaDetalle {
-  const c = cuerposDe(d, t)[i];
-  const f = (mm: number, conU = true) => formatear(mm, unidad, conU);
-  const etiqueta = `${prefijoModulo(d, t)} ${i + 1} · ${f(c.ancho)}`;
-  const sub: string[] = [entreCotas(d, t, s0, s0 + c.ancho, f)];
-  const propios = frentes.filter((fr) => fr.cuerpo === i);
-  const puertas = propios.filter((fr) => fr.tipo === 'puerta');
-  const cajones = propios.filter((fr) => fr.tipo === 'cajon');
-  const valor = queEsModulo(d, c, f);
-  if (c.tipo === 'especiero') {
-    if (cajones[0]) sub.push(`frente de ${f(cajones[0].rect.x1 - cajones[0].rect.x0, false)} × ${f(cajones[0].rect.y1 - cajones[0].rect.y0)}`);
-  } else {
-    puertas.forEach((fr, k) => {
-      if (fr.tipo !== 'puerta') return;
-      const ap = fr.bisagra === 'arriba' ? 'abatible (bisagras arriba)' : `bisagras a la ${fr.bisagra === 'izq' ? 'izquierda' : 'derecha'}`;
-      sub.push(`puerta ${k + 1}: ${f(fr.rect.x1 - fr.rect.x0, false)} × ${f(fr.rect.y1 - fr.rect.y0)}, ${ap}`);
-    });
-    if (cajones.length) {
-      const altos = cajones.map((fr) => f(fr.rect.y1 - fr.rect.y0, false)).join(' / ');
-      sub.push(`cajones (de arriba hacia abajo): ${altos} ${unidad} de alto, ${f(cajones[0].rect.x1 - cajones[0].rect.x0)} de ancho${c.columnasCajones === 2 && c.cajones > 1 ? ', en 2 columnas' : ''}`);
-    }
-    if ((c.tipo === 'frentes' || c.tipo === 'campana') && c.repisas > 0 && (puertas.length || !cajones.length)) sub.push(`${c.repisas} ${c.repisas === 1 ? 'repisa' : 'repisas'}`);
-    if (c.colgador) sub.push('barra para colgar');
-  }
-  const equipo = equiposDelModulo(d, t, c);
-  if (equipo.length) sub.push(`lleva ${equipo.join(' y ')}`);
-  return { etiqueta, valor, sub };
+/** Sentido de apertura de una puerta, como lo lee el maestro (mirando el mueble de frente). */
+export function textoApertura(b: FrentePuerta['bisagra']): string {
+  if (b === 'arriba') return 'abre hacia arriba (bisagras arriba)';
+  return b === 'izq' ? 'abre a la izquierda (bisagras izq.)' : 'abre a la derecha (bisagras der.)';
 }
 
-function seccionTramo(d: Diseno, t: TramoId, unidad: Unidad): SeccionFicha | null {
+/** Frentes y huecos de horno de un tramo. */
+function layoutTramo(d: Diseno, t: TramoId): { frentes: Frente[]; hornos: (Frente['rect'] | null)[] } {
+  if (t === 'base' || t === 'izq' || t === 'der') {
+    const dl = t === 'base' ? d : disenoLado(d, t);
+    if (!dl) return { frentes: [], hornos: [] };
+    const l = calcularLayout(dl);
+    return { frentes: l.frentes, hornos: l.cuerpos.map((c) => c.horno) };
+  }
+  return { frentes: layoutAereo(d, t)?.frentes ?? [], hornos: [] };
+}
+
+/** De arriba hacia abajo y de izquierda a derecha. */
+function ordenados<T extends Frente>(fs: T[]): T[] {
+  return [...fs].sort((a, b) => b.rect.y1 - a.rect.y1 || a.rect.x0 - b.rect.x0);
+}
+
+/** Cada frente de un módulo con su medida terminada (ancho × alto) y, las puertas, su apertura. */
+function frentesDelModulo(propios: Frente[], f: (mm: number, conU?: boolean) => string): string[] {
+  const medida = (fr: Frente) => `${f(fr.rect.x1 - fr.rect.x0, false)} × ${f(fr.rect.y1 - fr.rect.y0)}`;
+  const out: string[] = [];
+  const puertas = ordenados(propios.filter((fr): fr is FrentePuerta => fr.tipo === 'puerta'));
+  puertas.forEach((p, k) => {
+    const nombre = p.bisagra === 'arriba' ? `Puerta abatible${puertas.length > 1 ? ` ${k + 1}` : ''}` : `Puerta ${k + 1}`;
+    out.push(`${nombre}: ${medida(p)} · ${textoApertura(p.bisagra)}`);
+  });
+  const cajones = ordenados(propios.filter((fr) => fr.tipo === 'cajon'));
+  for (const c of cajones) if (c.tipo === 'cajon' && c.especiero) out.push(`Frente del especiero (extraíble): ${medida(c)}`);
+  const normales = cajones.filter((c) => !(c.tipo === 'cajon' && c.especiero));
+  normales.forEach((c, k) => out.push(`Cajón ${k + 1}${k === 0 && normales.length > 1 ? ' (arriba)' : ''}: ${medida(c)}`));
+  for (const fr of propios) if (fr.tipo === 'faja') out.push(`Faja fija: ${medida(fr)}`);
+  return out;
+}
+
+/** Interior del módulo y el equipamiento que lleva (encimera, lavaplatos, campana, horno). */
+function interiorModulo(
+  d: Diseno,
+  t: TramoId,
+  c: Cuerpo,
+  horno: Frente['rect'] | null,
+  propios: Frente[],
+  ubic: EquipoUbicado[],
+  f: (mm: number, conU?: boolean) => string,
+): string[] {
+  const out: string[] = [];
+  const adulta = d.plantilla !== 'cocina-infantil';
+  const puertas = propios.filter((fr) => fr.tipo === 'puerta').length;
+  const cajones = propios.filter((fr) => fr.tipo === 'cajon').length;
+  if (c.tipo === 'horno') out.push(adulta ? `Horno eléctrico 58 L (60 cm)${horno ? `; hueco ${f(horno.x1 - horno.x0, false)} × ${f(horno.y1 - horno.y0)}` : ''}` : 'Horno de juguete');
+  if (c.tipo === 'especiero') out.push(`${cuantos(c.pisos ?? 2, 'piso', 'pisos')} interiores`);
+  if (c.tipo === 'nicho') out.push('Nicho para microondas con repisa');
+  if (c.tipo === 'escritorio') out.push(`Cubierta de escritorio a ${f(c.alto || 750)}`);
+  if (c.tipo === 'hueco') out.push('Sin casco ni frentes');
+  if ((c.tipo === 'frentes' || c.tipo === 'campana') && c.repisas > 0 && (puertas || !cajones)) out.push(cuantos(c.repisas, 'repisa', 'repisas'));
+  if (c.colgador) out.push('Barra para colgar');
+  for (const e of d.equipos ?? []) {
+    if (e.tramo !== t || e.modulo !== c.id) continue;
+    const u = ubic.find((x) => x.id === e.id);
+    const corte = u ? `; corte ${f(u.ancho, false)} × ${f(u.fondo)}` : '';
+    if (e.tipo === 'encimera') {
+      out.push(`${adulta ? `Encimera a gas ${e.platos} platos (quemadores)` : `Encimera de juguete ${e.platos} platos`}${e.campana ? ', con campana' : ''}${corte}`);
+    } else {
+      const pos = e.posicion === 'centro' ? 'centrado' : `pegado al borde ${e.posicion === 'izq' ? 'izquierdo' : 'derecho'} a ${f(e.margen)}`;
+      const llave = e.llave ? `con llave ${d.cocina.grifo === 'negro' ? 'negro mate' : 'cromada'}` : 'sin llave';
+      out.push(`Lavaplatos ${e.modelo === 'doble' ? 'doble (2 cubetas)' : 'simple (1 cubeta)'}, ${pos}, ${llave}${corte}`);
+    }
+  }
+  for (const u of ubic) {
+    if (u.tipo !== 'campana' || u.tramo !== t || u.modulo !== c.id) continue;
+    out.push(u.montaje === 'aereo' ? `Aloja la campana de ${f(u.ancho)} (abajo)` : `Campana mural de ${f(u.ancho)} sobre la encimera`);
+  }
+  return out;
+}
+
+/** Fila de la tabla de un tramo: número, qué es y dónde va, ancho, frentes con medida y apertura, interior y equipo. */
+function filaModulo(d: Diseno, t: TramoId, i: number, lt: ReturnType<typeof layoutTramo>, unidad: Unidad, s0: number, ubic: EquipoUbicado[]): FilaFicha {
+  const c = cuerposDe(d, t)[i];
+  const f = (mm: number, conU = true) => formatear(mm, unidad, conU);
+  const propios = lt.frentes.filter((fr) => fr.cuerpo === i);
+  const ubicacion = entreCotas(d, t, s0, s0 + c.ancho, f);
+  const que = queEsModulo(d, c, f);
+  const frentes = frentesDelModulo(propios, f);
+  const interior = interiorModulo(d, t, c, lt.hornos[i] ?? null, propios, ubic, f);
+  // En la tabla, el horno y el especiero con un nombre corto: su detalle va en las otras columnas.
+  const corto = c.tipo === 'horno' ? (d.plantilla === 'cocina-infantil' ? 'Horno de juguete' : 'Módulo de horno empotrado') : c.tipo === 'especiero' ? 'Especiero extraíble de alto completo' : que;
+  return {
+    celdas: [String(i + 1), `${corto}\n${ubicacion}`, f(c.ancho), frentes.join('\n') || 'Sin frentes', interior.join('\n') || '—'],
+    texto: { etiqueta: `${prefijoModulo(d, t)} ${i + 1} · ${f(c.ancho)}`, valor: que, sub: [ubicacion, ...frentes, ...interior] },
+  };
+}
+
+const COLUMNAS_TRAMO = {
+  columnas: ['N°', 'Módulo y ubicación', 'Ancho', 'Frentes: ancho × alto y apertura', 'Interior y equipamiento'],
+  anchos: [0.05, 0.245, 0.1, 0.345, 0.26],
+  negrita: [0, 2],
+  destacar: [1],
+};
+
+function seccionTramo(d: Diseno, t: TramoId, unidad: Unidad, ubic: EquipoUbicado[]): SeccionFicha | null {
   const cs = cuerposDe(d, t);
   if (!cs.length) return null;
   const f = (mm: number) => formatear(mm, unidad);
@@ -363,25 +460,26 @@ function seccionTramo(d: Diseno, t: TramoId, unidad: Unidad): SeccionFicha | nul
     });
   } else if (t === 'izq' || t === 'der') {
     const r = d.lados[t]!;
-    lineas.push({ etiqueta: 'Medidas', valor: `largo desde el muro ${f(r.largo)} (con la esquina), módulos ${f(largoUtilLado(d, t))}, fondo ${f(r.profundidad)}` });
+    lineas.push({ etiqueta: 'Medidas', valor: `largo desde el muro ${f(r.largo)} (con la esquina), módulos ${f(largoUtilLado(d, t))}, alto ${f(db.alto)}, fondo ${f(r.profundidad)}` });
     lineas.push({ etiqueta: 'Orden', valor: t === 'izq' ? 'el módulo 1 queda en la punta abierta y el último junto a la esquina' : 'el módulo 1 queda junto a la esquina' });
   } else if (t === 'aereos-izq' || t === 'aereos-der') {
     const lado = t === 'aereos-izq' ? 'izq' : 'der';
     const r = d.aereos.lados[lado]!;
-    lineas.push({ etiqueta: 'Medidas', valor: `largo desde el muro ${f(r.largo)} (con la esquina del aéreo principal), módulos ${f(largoUtilLadoAereo(d, lado))}, fondo ${f(r.profundidad)}` });
+    lineas.push({ etiqueta: 'Medidas', valor: `largo desde el muro ${f(r.largo)} (con la esquina del aéreo principal), módulos ${f(largoUtilLadoAereo(d, lado))}, alto ${f(d.aereos.alto)}, fondo ${f(r.profundidad)}` });
     lineas.push({ etiqueta: 'Orden', valor: lado === 'izq' ? 'cuelga del muro izquierdo; el aéreo 1 queda en la punta abierta y el último junto a la esquina' : 'cuelga del muro derecho; el aéreo 1 queda junto a la esquina' });
   } else {
     const la = calcularLayoutAereos(d);
     if (la) lineas.push({ etiqueta: 'Medidas', valor: `largo ${f(la.x1 - la.x0)}, alto ${f(d.aereos.alto)}, fondo ${f(d.aereos.profundidad)}` });
   }
-  const frentes = frentesTramo(d, t);
+  const lt = layoutTramo(d, t);
   let cursor = 0;
   const sep = t === 'base' ? d.separacionCuerpos : 0;
-  cs.forEach((c, i) => {
-    lineas.push(detalleModulo(d, t, i, frentes, unidad, cursor));
+  const filas = cs.map((c, i) => {
+    const fila = filaModulo(d, t, i, lt, unidad, cursor, ubic);
     cursor += c.ancho + sep;
+    return fila;
   });
-  return { titulo: nombreTramo(d, t), lineas };
+  return { titulo: nombreTramo(d, t), lineas, tabla: { ...COLUMNAS_TRAMO, filas } };
 }
 
 /** Conteo de frentes de todo el conjunto (para el maestro). */
@@ -396,7 +494,7 @@ function resumenFrentes(d: Diseno): string {
       else if (fr.tipo === 'cajon') fr.especiero ? especieros++ : cajones++;
     }
   }
-  const n = (k: number, uno: string, varios: string) => `${k} ${k === 1 ? uno : varios}`;
+  const n = cuantos;
   const partes = [n(puertas, 'puerta', 'puertas')];
   if (abatibles) partes.push(n(abatibles, 'puerta abatible', 'puertas abatibles'));
   partes.push(n(cajones, 'cajón', 'cajones'));
@@ -404,11 +502,114 @@ function resumenFrentes(d: Diseno): string {
   return partes.join(', ');
 }
 
+/** Todos los frentes del conjunto agrupados por pieza y medida: la lista para cortar. */
+function seccionFrentesParaCortar(d: Diseno, unidad: Unidad): SeccionFicha | null {
+  if (d.plantilla === 'tocador') return null;
+  const f = (mm: number, conU = true) => formatear(mm, unidad, conU);
+  const PIEZAS = ['Puerta', 'Puerta abatible', 'Frente de cajón', 'Frente del especiero', 'Faja fija'];
+  const grupos = new Map<string, { pieza: string; ancho: number; alto: number; medida: string; cantidad: number; izq: number; der: number; donde: string[] }>();
+  for (const t of tramosDe(d)) {
+    if (!cuerposDe(d, t).length) continue;
+    for (const fr of layoutTramo(d, t).frentes) {
+      const pieza = fr.tipo === 'puerta' ? (fr.bisagra === 'arriba' ? PIEZAS[1] : PIEZAS[0]) : fr.tipo === 'cajon' ? (fr.especiero ? PIEZAS[3] : PIEZAS[2]) : PIEZAS[4];
+      const ancho = fr.rect.x1 - fr.rect.x0;
+      const alto = fr.rect.y1 - fr.rect.y0;
+      const medida = `${f(ancho, false)} × ${f(alto)}`;
+      const clave = `${pieza}|${medida}`;
+      const g = grupos.get(clave) ?? { pieza, ancho, alto, medida, cantidad: 0, izq: 0, der: 0, donde: [] };
+      g.cantidad++;
+      if (fr.tipo === 'puerta' && fr.bisagra !== 'arriba') g[fr.bisagra]++;
+      const lugar = nombreModuloEn(d, t, fr.cuerpo);
+      if (!g.donde.includes(lugar)) g.donde.push(lugar);
+      grupos.set(clave, g);
+    }
+  }
+  if (!grupos.size) return null;
+  const filas = [...grupos.values()]
+    .sort((a, b) => PIEZAS.indexOf(a.pieza) - PIEZAS.indexOf(b.pieza) || b.alto - a.alto || b.ancho - a.ancho)
+    .map((g): FilaFicha => {
+      const apertura =
+        g.pieza === 'Puerta'
+          ? [g.izq ? `${g.izq} a la izquierda` : '', g.der ? `${g.der} a la derecha` : ''].filter(Boolean).join(', ')
+          : g.pieza === 'Puerta abatible'
+            ? 'hacia arriba'
+            : '—';
+      const donde = g.donde.join(', ');
+      return {
+        celdas: [g.pieza, g.medida, String(g.cantidad), apertura, donde],
+        texto: { etiqueta: `${g.pieza} ${g.medida}`, valor: `${cuantos(g.cantidad, 'unidad', 'unidades')}${apertura !== '—' ? ` (abren ${apertura})` : ''} · ${donde}` },
+      };
+    });
+  return {
+    titulo: 'Frentes para cortar',
+    lineas: [
+      { etiqueta: 'Total', valor: resumenFrentes(d) },
+      { etiqueta: 'Medidas', valor: `de cada frente terminado (ancho × alto), con la luz de ${d.luzFrentes} mm ya descontada; melamina ${d.espesor} mm` },
+    ],
+    tabla: { columnas: ['Pieza', 'Ancho × alto', 'Cant.', 'Apertura', 'Dónde va'], anchos: [0.18, 0.17, 0.07, 0.2, 0.38], filas, negrita: [0, 1, 2] },
+  };
+}
+
+/** Equipamiento en tabla: qué es (tipo y modelo), dónde va y su posición acotada con el corte de la cubierta. */
+function seccionEquipamiento(d: Diseno, unidad: Unidad, ubic: EquipoUbicado[]): SeccionFicha | null {
+  const items = listarEquipamiento(d);
+  if (!items.length) return null;
+  const f = (mm: number, conU = true) => formatear(mm, unidad, conU);
+  const adulta = d.plantilla !== 'cocina-infantil';
+  const grifo = d.cocina.grifo === 'negro' ? 'negro mate' : 'cromada';
+  const donde = (u: { tramo: TramoId; s: number }) => `centro a ${f(cota(d, u.tramo, u.s))} ${referenciaTramo(d, u.tramo)}`;
+  const filas = items.map((it): FilaFicha => {
+    const u = ubic.find((x) => x.id === it.id);
+    const lugar = `${it.donde.charAt(0).toUpperCase()}${it.donde.slice(1)}\n${nombreTramo(d, it.tramo).toLowerCase()}`;
+    const pos = u ? donde(u) : '';
+    const corte = u ? `corte en la cubierta ${f(u.ancho, false)} × ${f(u.fondo)}` : '';
+    const texto: LineaDetalle = { etiqueta: it.tipo === 'llave' ? `Llave ${grifo}` : it.nombre, valor: `${it.donde} (${nombreTramo(d, it.tramo).toLowerCase()}): ${it.detalle}${pos ? `; ${pos}` : ''}` };
+    if (it.tipo === 'horno') return { celdas: ['Horno', 'Eléctrico 58 L, empotrado en módulo de 60 cm', lugar, pos], texto };
+    if (it.tipo === 'llave') return { celdas: ['Llave', `Grifería ${grifo}`, lugar, 'Junto al lavaplatos'], texto };
+    if (it.tipo === 'encimera') {
+      const e = d.equipos.find((x) => x.id === it.id) as Encimera;
+      const tipo = `${adulta ? `A gas, ${e.platos} platos (quemadores)` : `De juguete, ${e.platos} platos`}${e.campana ? ', con campana' : ', sin campana'}`;
+      return { celdas: ['Encimera', tipo, lugar, ['Centrada en su módulo', pos, corte].filter(Boolean).join('\n')], texto };
+    }
+    if (it.tipo === 'lavaplatos') {
+      const e = d.equipos.find((x) => x.id === it.id);
+      if (!e || e.tipo !== 'lavaplatos') return { celdas: ['Lavaplatos', it.nombre, lugar, pos], texto };
+      const tipo = `${e.modelo === 'doble' ? 'Doble (2 cubetas)' : 'Simple (1 cubeta)'}, ${e.llave ? `con llave ${grifo}` : 'sin llave'}`;
+      const enModulo = e.posicion === 'centro' ? 'Centrado en su módulo' : `Pegado al borde ${e.posicion === 'izq' ? 'izquierdo' : 'derecho'} del módulo, a ${f(e.margen)}`;
+      return { celdas: ['Lavaplatos', tipo, lugar, [enModulo, pos, corte].filter(Boolean).join('\n')], texto };
+    }
+    // Campana: alojada en un módulo aéreo o mural, centrada sobre su encimera.
+    const uc = ubic.find((x) => x.tipo === 'campana' && (x.id === it.id || x.encimera === it.de));
+    if (!uc) return { celdas: ['Campana', it.detalle, lugar, ''], texto };
+    const e = ubic.find((x) => x.id === uc.encimera);
+    const sobre = e ? `sobre la encimera del ${nombreModuloEn(d, e.tramo, e.indice)}` : 'sobre la encimera';
+    return {
+      celdas: [
+        'Campana',
+        uc.montaje === 'aereo' ? `De ${f(uc.ancho)}, alojada en el mueble aéreo (bajo sus puertas)` : `Mural de ${f(uc.ancho)}, sin mueble encima`,
+        lugar,
+        `Centrada ${sobre}\n${donde(uc)}`,
+      ],
+      texto: {
+        etiqueta: `Campana ${f(uc.ancho)}`,
+        valor: uc.montaje === 'aereo' ? `alojada en el ${nombreModuloEn(d, uc.tramo, uc.indice)}, centrada ${sobre}; ${donde(uc)}` : `mural, ${sobre}; ${donde(uc)}`,
+      },
+    };
+  });
+  return {
+    titulo: 'Equipamiento',
+    lineas: [],
+    tabla: { columnas: ['Equipo', 'Tipo', 'Dónde va', 'Posición y corte'], anchos: [0.13, 0.3, 0.22, 0.35], filas, negrita: [0], destacar: [2, 3] },
+  };
+}
+
 /**
- * Ficha de fabricación completa para el maestro: medidas generales, cada lado con sus
- * módulos en orden y acotados, puertas con su apertura, cajones con sus altos, especiero,
- * piezas y cortes de la cubierta, equipamiento con su módulo y posición, aéreos, campana,
- * materiales y notas.
+ * Ficha de fabricación completa para el maestro: forma y medidas generales; cada tramo
+ * (lados, principal y aéreos) con sus módulos en orden en una tabla: qué es y dónde va
+ * (cotas), ancho, cada frente con su medida terminada y la apertura de cada puerta,
+ * interior y equipamiento; equipamiento (encimera a gas y sus platos, lavaplatos simple o
+ * doble con o sin llave y su posición, horno, campana alojada o mural), cubierta con sus
+ * piezas y cortes, materiales, frentes para cortar agrupados por medida y notas.
  */
 export function fichaFabricacion(
   d: Diseno,
@@ -429,28 +630,74 @@ export function fichaFabricacion(
     { etiqueta: 'Mueble', valor: producto ? `${producto.nombre} (código ${producto.id})` : d.nombreModelo || 'Diseño a medida' },
     { etiqueta: 'Forma', valor: forma ?? 'lineal' },
     { etiqueta: 'Medidas generales', valor: `${f(x1 - x0)} de largo${forma ? ' (tramo principal con las esquinas)' : ''} × ${f(d.alto)} de alto × ${f(d.profundidad)} de fondo` },
+  ];
+  for (const lado of LADOS) {
+    const r = d.lados?.[lado];
+    if (r) generales.push({ etiqueta: `Lado ${lado === 'izq' ? 'izquierdo' : 'derecho'}`, valor: `${f(r.largo)} desde el muro principal (con la esquina) × ${f(r.profundidad)} de fondo` });
+  }
+  if (d.plantilla !== 'tocador' && d.aereos.activo && calcularLayoutAereos(d)) {
+    generales.push({ etiqueta: d.plantilla === 'compacto' ? 'Mueble superior' : 'Muebles aéreos', valor: `sí: ${f(d.aereos.alto)} de alto × ${f(d.aereos.profundidad)} de fondo (detalle más abajo)` });
+  }
+  generales.push(
     { etiqueta: 'Zócalo', valor: f(d.zocalo) },
     { etiqueta: 'Espesores', valor: `melamina ${d.espesor} mm${adulta ? `, cubierta ${d.cocina.espesorCubierta} mm` : ''}` },
     { etiqueta: 'Luz entre frentes', valor: `${d.luzFrentes} mm` },
     { etiqueta: 'Estructura', valor: d.estructura === 'modular' ? 'modular: cada módulo con sus costados' : 'casco único con divisiones' },
     { etiqueta: 'Separación entre módulos', valor: f(d.separacionCuerpos) },
-  ];
+    { etiqueta: 'Tiradores', valor: d.tirador === 'sin' ? TIRADOR.sin : `${TIRADOR[d.tirador]} ${nombreMaterial(materiales?.tiradores, m.tirador).toLowerCase()}` },
+  );
   if (d.plantilla !== 'tocador') {
     const tramos = tramosDe(d).filter((t) => cuerposDe(d, t).length);
     const modulos = tramos.reduce((x, t) => x + cuerposDe(d, t).length, 0);
     generales.push({ etiqueta: 'Frentes', valor: `${modulos} ${modulos === 1 ? 'módulo' : 'módulos'}: ${resumenFrentes(d)}` });
   }
   if (d.plantilla === 'compacto') generales.push({ etiqueta: 'Mueble base', valor: `${f(d.aereos.elevacion)} de alto hasta la cubierta` });
-  secciones.push({ titulo: 'Datos generales', lineas: generales });
+  secciones.push({ titulo: 'Forma y medidas generales', lineas: generales });
   if (d.plantilla === 'tocador') {
     secciones.push({ titulo: 'Tocador', lineas: describirCuerpos(d, unidad).map((x) => ({ etiqueta: x.split(':')[0], valor: x.split(':').slice(1).join(':').trim() || x })) });
   } else {
     for (const t of ['izq', 'base', 'der'] as TramoId[]) {
-      const sec = seccionTramo(d, t, unidad);
+      const sec = seccionTramo(d, t, unidad, ubic);
       if (sec) secciones.push(sec);
     }
   }
-  const donde = (u: { tramo: TramoId; s: number }) => `centro a ${f(cota(d, u.tramo, u.s))} ${referenciaTramo(d, u.tramo)}`;
+  const la = calcularLayoutAereos(d);
+  if (la) {
+    const a = d.aereos;
+    const formaA = formaDe({ izq: ladoAereoActivo(d, 'izq'), der: ladoAereoActivo(d, 'der') });
+    const desde = la.x0 - x0;
+    const lb = calcularLayout(disenoBase(d));
+    const sobreCubierta = la.y0 - (lb.yTope + lb.espesorCubierta);
+    secciones.push({
+      titulo: d.plantilla === 'compacto' ? 'Mueble superior' : 'Muebles aéreos',
+      lineas: [
+        {
+          etiqueta: 'Forma y medidas',
+          valor:
+            d.plantilla === 'compacto'
+              ? `apoyado sobre la cubierta con costados y respaldo, alto ${f(a.alto)}, fondo ${f(a.profundidad)}`
+              : `${FORMA[formaA]}, alto ${f(a.alto)}, fondo ${f(a.profundidad)}, borde inferior a ${f(a.elevacion)} del piso${a.cuadrado ? ', cuadrados con el mueble base' : ''}`,
+        },
+        {
+          etiqueta: 'Montaje',
+          valor:
+            la.montaje === 'apoyado'
+              ? `apoyado sobre la cubierta del mueble base (a ${f(la.y0)} del piso), con costados y respaldo`
+              : `colgados del muro, de ${f(la.y0)} a ${f(la.y1)} del piso${sobreCubierta > 0 && lb.espesorCubierta > 0 ? `; quedan ${f(sobreCubierta)} libres sobre la cubierta` : ''}`,
+        },
+        ...(Math.abs(desde) > 0.5 ? [{ etiqueta: 'Ubicación', valor: `el aéreo principal comienza a ${f(desde)} ${referenciaTramo(d, 'aereos')}` }] : []),
+      ],
+    });
+    for (const t of ['aereos-izq', 'aereos', 'aereos-der'] as TramoId[]) {
+      if (t !== 'aereos' && !ladoAereoActivo(d, t === 'aereos-izq' ? 'izq' : 'der')) continue;
+      const sec = seccionTramo(d, t, unidad, ubic);
+      if (sec) secciones.push({ ...sec, titulo: t === 'aereos' ? (d.plantilla === 'compacto' ? 'Mueble superior · módulos' : 'Aéreo principal') : sec.titulo });
+    }
+  }
+  if (cocina) {
+    const eq = seccionEquipamiento(d, unidad, ubic);
+    if (eq) secciones.push(eq);
+  }
   if (adulta) {
     const k = d.cocina;
     const piezas: string[] = [`tramo principal: ${f(x1 - x0, false)} × ${f(d.profundidad)}${forma ? ' (cubre las esquinas)' : ''}`];
@@ -458,6 +705,7 @@ export function fichaFabricacion(
       const r = d.lados?.[lado];
       if (r) piezas.push(`lado ${lado === 'izq' ? 'izquierdo' : 'derecho'}: ${f(largoUtilLado(d, lado), false)} × ${f(r.profundidad)} (desde el borde de la cubierta principal hasta la punta)`);
     }
+    const donde = (u: { tramo: TramoId; s: number }) => `centro a ${f(cota(d, u.tramo, u.s))} ${referenciaTramo(d, u.tramo)}`;
     const cortes = ubic
       .filter((u) => u.tipo === 'encimera' || u.tipo === 'lavaplatos')
       .map((u) => {
@@ -478,59 +726,6 @@ export function fichaFabricacion(
       ],
     });
   }
-  if (cocina) {
-    const items = listarEquipamiento(d);
-    if (items.length) {
-      const grifo = d.cocina.grifo === 'negro' ? 'negro mate' : 'cromada';
-      secciones.push({
-        titulo: 'Equipamiento',
-        lineas: items.map((it) => {
-          const u = ubic.find((x) => x.id === it.id);
-          const pos = u ? `; ${donde(u)}` : '';
-          const nombre = it.tipo === 'llave' ? `Llave ${grifo}` : it.nombre;
-          return { etiqueta: nombre, valor: `${it.donde} (${nombreTramo(d, it.tramo).toLowerCase()}): ${it.detalle}${pos}` };
-        }),
-      });
-    }
-  }
-  const la = calcularLayoutAereos(d);
-  if (la) {
-    const a = d.aereos;
-    const formaA = formaDe({ izq: ladoAereoActivo(d, 'izq'), der: ladoAereoActivo(d, 'der') });
-    const desde = la.x0 - x0;
-    secciones.push({
-      titulo: d.plantilla === 'compacto' ? 'Mueble superior' : 'Muebles aéreos',
-      lineas: [
-        {
-          etiqueta: 'Forma y medidas',
-          valor:
-            d.plantilla === 'compacto'
-              ? `apoyado sobre la cubierta con costados y respaldo, alto ${f(a.alto)}, fondo ${f(a.profundidad)}`
-              : `${FORMA[formaA]}, alto ${f(a.alto)}, fondo ${f(a.profundidad)}, borde inferior a ${f(a.elevacion)} del piso${a.cuadrado ? ', cuadrados con el mueble base' : ''}`,
-        },
-        ...(Math.abs(desde) > 0.5 ? [{ etiqueta: 'Ubicación', valor: `el aéreo principal comienza a ${f(desde)} ${referenciaTramo(d, 'aereos')}` }] : []),
-      ],
-    });
-    for (const t of ['aereos-izq', 'aereos', 'aereos-der'] as TramoId[]) {
-      if (t !== 'aereos' && !ladoAereoActivo(d, t === 'aereos-izq' ? 'izq' : 'der')) continue;
-      const sec = seccionTramo(d, t, unidad);
-      if (sec) secciones.push({ ...sec, titulo: t === 'aereos' ? (d.plantilla === 'compacto' ? 'Mueble superior · módulos' : 'Aéreo principal') : sec.titulo });
-    }
-  }
-  const campanas = ubic.filter((u) => u.tipo === 'campana');
-  if (campanas.length) {
-    secciones.push({
-      titulo: 'Campana',
-      lineas: campanas.map((u) => {
-        const e = ubic.find((x) => x.id === u.encimera);
-        const sobre = e ? `sobre la encimera del ${nombreModuloEn(d, e.tramo, e.indice)}` : 'sobre la encimera';
-        return {
-          etiqueta: `Campana ${f(u.ancho)}`,
-          valor: u.montaje === 'aereo' ? `alojada en el ${nombreModuloEn(d, u.tramo, u.indice)}, centrada ${sobre}; ${donde(u)}` : `mural, ${sobre}; ${donde(u)}`,
-        };
-      }),
-    });
-  }
   secciones.push({
     titulo: 'Materiales',
     lineas: [
@@ -541,8 +736,10 @@ export function fichaFabricacion(
       ...(d.imagenFrontal ? [{ etiqueta: 'Imagen', valor: 'imagen personalizada impresa en los frentes' }] : []),
     ],
   });
+  const frentes = seccionFrentesParaCortar(d, unidad);
+  if (frentes) secciones.push(frentes);
   const notas: string[] = [
-    `Medidas en ${unidad === 'cm' ? 'centímetros' : 'milímetros'}. Los módulos van numerados de izquierda a derecha mirando de frente cada tramo.`,
+    `Medidas en ${unidad === 'cm' ? 'centímetros' : 'milímetros'}. Los módulos van numerados de izquierda a derecha mirando de frente cada tramo; la apertura de cada puerta también se indica mirándola de frente.`,
     `Cotas: el tramo principal y los aéreos se miden desde el ${referenciaTramo(d, 'base').replace(/^del /, '')}; los lados, desde el muro principal.`,
   ];
   if (forma) notas.push('En la L y la U cada lado se mide completo desde el muro principal, con la esquina.');
@@ -555,14 +752,19 @@ export function fichaFabricacion(
   };
 }
 
-/** La ficha en texto plano (para imprimir o enviar). */
+/** La ficha en texto plano (para imprimir o enviar): las tablas, una línea por fila. */
 export function textoFicha(ficha: FichaFabricacion): string {
   const lineas: string[] = [ficha.titulo, ficha.subtitulo, ''];
+  const linea = (l: LineaDetalle) => {
+    lineas.push(`• ${l.etiqueta}: ${l.valor}`);
+    for (const x of l.sub ?? []) lineas.push(`   - ${x}`);
+  };
   for (const s of ficha.secciones) {
     lineas.push(s.titulo.toUpperCase());
-    for (const l of s.lineas) {
-      lineas.push(`• ${l.etiqueta}: ${l.valor}`);
-      for (const x of l.sub ?? []) lineas.push(`   - ${x}`);
+    s.lineas.forEach(linea);
+    for (const fila of s.tabla?.filas ?? []) {
+      if (fila.texto) linea(fila.texto);
+      else lineas.push(`• ${fila.celdas.map((c) => c.replace(/\n/g, ', ')).filter(Boolean).join(' · ')}`);
     }
     lineas.push('');
   }

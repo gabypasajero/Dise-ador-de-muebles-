@@ -3280,3 +3280,298 @@ h3 {
   }
 }
 /* ===================== Fin interfaz del motor v2 ===================== */
+
+/* ===================== Visor de documentos: cotización y hoja del maestro (Cotizaciones.tsx) ===================== */
+.visor-documentos {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pestanas-documento {
+  display: inline-flex;
+  align-self: flex-start;
+  max-width: 100%;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--borde);
+  border-radius: 999px;
+  background: var(--panel-2);
+}
+
+.pestanas-documento button {
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--texto-2);
+  white-space: nowrap;
+}
+
+.pestanas-documento button.activa {
+  background: var(--acento);
+  color: #fff;
+}
+
+/* Con una columna (teléfono), la vista previa no debe ensanchar el formulario. */
+.panel-documento,
+.registro-cotizacion > *,
+.hoja-maestro {
+  min-width: 0;
+}
+
+.hoja-maestro .documento-numero .hoja-tipo {
+  color: var(--acento-doc);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.hoja-maestro .documento-acciones.hoja-acciones {
+  margin: 0 0 4px;
+  padding: 0 0 12px;
+  border-top: none;
+  border-bottom: 1px dashed var(--borde-fuerte);
+}
+
+.hoja-orden {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--acento-doc-suave);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 14px;
+}
+
+.hoja-orden > div {
+  min-width: 0;
+}
+
+.hoja-orden .ancho {
+  grid-column: 1 / -1;
+}
+
+.hoja-orden dt {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--texto-2);
+}
+
+.hoja-orden dd {
+  margin: 2px 0 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.hoja-leyenda {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--texto-2);
+}
+
+.hoja-imagen {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hoja-imagen figcaption {
+  font-size: 12px;
+  color: var(--texto-2);
+}
+
+.hoja-seccion {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.hoja-seccion h4 {
+  margin: 8px 0 0;
+  padding-bottom: 4px;
+  border-bottom: 2px solid var(--acento-doc);
+  color: var(--acento-doc);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hoja-tabla-caja {
+  min-width: 0;
+}
+
+.hoja-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.hoja-tabla th,
+.hoja-tabla td {
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--borde);
+  overflow-wrap: anywhere;
+}
+
+.hoja-tabla thead th {
+  background: var(--acento-doc-suave);
+  color: var(--acento-doc);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.hoja-tabla tbody tr:nth-child(even) {
+  background: var(--panel-2);
+}
+
+.hoja-tabla .renglon {
+  display: block;
+}
+
+.hoja-tabla .renglon.negrita {
+  font-weight: 800;
+}
+
+.hoja-tabla .renglon.gris {
+  color: var(--texto-2);
+  font-size: 12px;
+}
+
+.hoja-tabla.datos tbody th .renglon {
+  font-weight: 800;
+}
+
+.hoja-esquema {
+  margin: 4px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hoja-esquema figcaption {
+  font-weight: 800;
+  font-size: 13.5px;
+}
+
+.hoja-esquema-dibujo {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* El esquema a su tamaño en mm (la misma escala del PDF para todos los muros). */
+.hoja-esquema-dibujo svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.hoja-observaciones {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fff8e6;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 600px) {
+  /* Cabecera de los documentos en el teléfono: la marca arriba y el número (o el tipo de hoja) debajo. */
+  .documento-cotizacion .documento-cabeza {
+    flex-wrap: wrap;
+  }
+  .documento-cotizacion .documento-numero {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+  }
+  .hoja-maestro .documento-numero {
+    flex-basis: 100%;
+    justify-content: space-between;
+  }
+  .pestanas-documento button {
+    padding: 8px 12px;
+    font-size: 13.5px;
+  }
+  .hoja-orden {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* El esquema se lee a su tamaño: se desliza de lado si no cabe. */
+  .hoja-esquema-dibujo svg {
+    max-width: none;
+  }
+  /* Tablas con títulos: cada fila es una tarjeta con el título de cada dato. */
+  .hoja-tabla:not(.datos),
+  .hoja-tabla:not(.datos) tbody,
+  .hoja-tabla:not(.datos) tr,
+  .hoja-tabla:not(.datos) td {
+    display: block;
+    width: auto;
+  }
+  .hoja-tabla:not(.datos) thead,
+  .hoja-tabla:not(.datos) colgroup {
+    display: none;
+  }
+  .hoja-tabla:not(.datos) tr {
+    margin-bottom: 8px;
+    padding: 6px 10px;
+    border: 1px solid var(--borde);
+    border-radius: 10px;
+  }
+  .hoja-tabla:not(.datos) td {
+    padding: 3px 0;
+    border: none;
+  }
+  .hoja-tabla:not(.datos) td:first-child::before {
+    display: inline !important;
+    margin-right: 6px;
+  }
+  .hoja-tabla:not(.datos) td:first-child .renglon {
+    display: inline;
+  }
+  .hoja-tabla:not(.datos) td[data-col]::before {
+    content: attr(data-col);
+    display: block;
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--acento-doc);
+  }
+  .hoja-tabla.datos:not(.numerada) col:first-child {
+    width: 38% !important;
+  }
+  .hoja-tabla.datos:not(.numerada) col:last-child {
+    width: 62% !important;
+  }
+  .hoja-tabla.numerada col:first-child {
+    width: 34px !important;
+  }
+}
+
+@media print {
+  body.imprimiendo .hoja-tabla tr,
+  body.imprimiendo .hoja-esquema,
+  body.imprimiendo .hoja-imagen {
+    break-inside: avoid;
+  }
+  body.imprimiendo .hoja-seccion h4 {
+    break-after: avoid;
+  }
+  body.imprimiendo .hoja-esquema-dibujo svg {
+    width: 100%;
+    max-width: none;
+  }
+}
+/* ===================== Fin visor de documentos ===================== */

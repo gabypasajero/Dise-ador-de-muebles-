@@ -226,12 +226,111 @@ function Camara() {
   );
 }
 
-/** Ancho en px de la imagen del mueble para los documentos (≈ 230 ppp a todo el ancho de una hoja A4). */
-const ANCHO_CAPTURA = 1600;
+/** Imagen del mueble para los documentos: 2400 × 1350 px (16:9, ≈ 340 ppp a todo el ancho de una hoja A4). */
+const CAPTURA = { ancho: 2400, alto: 1350, fov: 30 };
+/** La columna imagen admite 2.000.000 de caracteres: la data URL queda bajo 1,8 millones. */
+const MAX_DATA_URL = 1_800_000;
 
 /**
- * Registra la función para capturar la imagen del visor (sin cotas ni ayudas). Se dibuja una vez
- * a mayor resolución para que la imagen de los documentos salga nítida; la miniatura de la lista
+ * Encuadre de la imagen de los documentos, independiente de la cámara del vendedor: vista 3/4
+ * frontal de todo el conjunto (tramo principal, lados de la L o la U, aéreos y campana mural),
+ * centrado y con un margen parejo. La distancia se calcula exacta para que todo entre.
+ */
+function encuadreCaptura(d: Diseno, aspecto: number, escena: string, altoReal: number | null) {
+  const izq = d.lados?.izq ?? null;
+  const der = d.lados?.der ?? null;
+  const conLados = !!(izq || der);
+  const enU = !!(izq && der);
+  // Igual que el visor: la L se mira desde el lado abierto; la U casi de frente y más desde arriba.
+  const lado = enU ? (izq!.largo <= der!.largo ? 0.4 : -0.4) : izq ? -1 : der ? 1 : escena === 'cocina' ? 1 : -0.85;
+  const caja = dimensionesTotales(d);
+  const mural = ubicarEquipos(d).some((u) => u.tipo === 'campana' && u.montaje === 'mural');
+  if (mural) caja.alto = Math.max(caja.alto, d.aereos.elevacion + 260);
+  // Lo que sobresale del mueble (llave del lavaplatos, parrillas de la encimera, campana) también entra.
+  const H = Math.max(caja.alto / 1000 + (d.plantilla === 'comoda' && d.mudador ? 0.1 : 0), Math.min(altoReal ?? 0, caja.alto / 1000 + 0.6));
+  const puntos: THREE.Vector3[] = [];
+  const pieza = (x0: number, x1: number, y1: number, z1: number) => {
+    for (const x of [x0, x1]) for (const y of [0, y1]) for (const z of [0, z1]) puntos.push(new THREE.Vector3(x, y, z));
+  };
+  if (conLados) {
+    const [e0, e1] = extremosPrincipal(d).map((x) => x / 1000);
+    pieza(caja.x0 / 1000, caja.x1 / 1000, H, d.profundidad / 1000);
+    for (const ld of LADOS) {
+      const r = d.lados[ld];
+      const ra = ladoAereoActivo(d, ld);
+      if (!r && !ra) continue;
+      const prof = Math.max(r?.profundidad ?? 0, ra?.profundidad ?? 0) / 1000;
+      const largo = Math.max(r?.largo ?? 0, ra?.largo ?? 0) / 1000;
+      pieza(ld === 'der' ? e1 - prof : e0, ld === 'der' ? e1 : e0 + prof, ra || mural ? H : d.alto / 1000, largo);
+    }
+  } else {
+    pieza(caja.x0 / 1000, caja.x1 / 1000, H, caja.fondo / 1000);
+  }
+  const el = enU ? 0.5 : 0.3;
+  const az = ANGULOS.perspectiva.az * lado;
+  // Hacia la cámara, y los ejes derecha y arriba de la imagen.
+  const dir = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el));
+  const derecha = dir.clone().negate().cross(new THREE.Vector3(0, 1, 0)).normalize();
+  const arriba = derecha.clone().cross(dir.clone().negate()).normalize();
+  const tanV = Math.tan(THREE.MathUtils.degToRad(CAPTURA.fov) / 2);
+  const tanH = tanV * aspecto;
+  const llenado = 0.86;
+  const objetivo = puntos.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / puntos.length);
+  let dist = 1;
+  const q = new THREE.Vector3();
+  for (let k = 0; k < 6; k++) {
+    // Distancia mínima para que cada punto quede dentro del cuadro: |x| / (dist − a) ≤ tan · llenado.
+    dist = 0;
+    for (const p of puntos) {
+      q.copy(p).sub(objetivo);
+      const a = q.dot(dir);
+      dist = Math.max(dist, a + Math.abs(q.dot(derecha)) / (tanH * llenado), a + Math.abs(q.dot(arriba)) / (tanV * llenado));
+    }
+    // Centra lo que se ve moviendo el objetivo (y la cámara con él).
+    let [x0, x1, y0, y1] = [Infinity, -Infinity, Infinity, -Infinity];
+    for (const p of puntos) {
+      q.copy(p).sub(objetivo);
+      const z = dist - q.dot(dir);
+      const x = q.dot(derecha) / (z * tanH);
+      const y = q.dot(arriba) / (z * tanV);
+      [x0, x1, y0, y1] = [Math.min(x0, x), Math.max(x1, x), Math.min(y0, y), Math.max(y1, y)];
+    }
+    const mx = (x0 + x1) / 2;
+    const my = (y0 + y1) / 2;
+    if (Math.abs(mx) < 0.005 && Math.abs(my) < 0.005) break;
+    objetivo.addScaledVector(derecha, mx * tanH * dist).addScaledVector(arriba, my * tanV * dist);
+  }
+  return { objetivo, pos: objetivo.clone().addScaledVector(dir, dist) };
+}
+
+/** Alto real (m) de lo dibujado del mueble, sin cotas ni ayudas: el grupo del mueble es el de escala 0,001 (mm). */
+function altoMueble(scene: THREE.Object3D): number | null {
+  let raiz: THREE.Object3D | null = null;
+  scene.traverse((o) => {
+    if (!raiz && o.type === 'Group' && Math.abs(o.scale.x - 0.001) < 1e-9) raiz = o;
+  });
+  if (!raiz) return null;
+  const caja = new THREE.Box3();
+  const b = new THREE.Box3();
+  const recorrer = (o: THREE.Object3D) => {
+    if (o.name === 'cotas' || o.name === 'ayudas' || !o.visible) return;
+    const m = o as THREE.Mesh;
+    if (m.isMesh && m.geometry) {
+      if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+      if (m.geometry.boundingBox) caja.union(b.copy(m.geometry.boundingBox).applyMatrix4(m.matrixWorld));
+    }
+    o.children.forEach(recorrer);
+  };
+  (raiz as THREE.Object3D).updateMatrixWorld(true);
+  recorrer(raiz);
+  return caja.isEmpty() ? null : caja.max.y;
+}
+
+/**
+ * Registra la función para capturar la imagen del mueble para la cotización, la hoja del
+ * maestro y la descarga: un render dedicado de alta resolución (2400 px, con antialias), con
+ * su propia cámara y encuadre automático de todo el conjunto, sin cotas ni ayudas. El tamaño
+ * del renderer se cambia solo mientras se dibuja y luego se restaura. La miniatura de la lista
  * se saca de esta misma imagen.
  */
 function Capturador() {
@@ -239,30 +338,47 @@ function Capturador() {
   useEffect(() => {
     useApp.getState().set({
       capturar: () => {
+        const s = useApp.getState();
         const ocultas: THREE.Object3D[] = [];
         scene.traverse((o) => {
           if ((o.name === 'cotas' || o.name === 'ayudas') && o.visible) ocultas.push(o);
         });
         const proporcion = gl.getPixelRatio();
         const tam = gl.getSize(new THREE.Vector2());
-        const maximo = gl.capabilities.maxTextureSize || 4096;
-        const objetivo = Math.min(ANCHO_CAPTURA, maximo) / Math.max(1, tam.x);
+        const ctx = gl.getContext();
+        const limites = [gl.capabilities.maxTextureSize || 4096, ctx.getParameter(ctx.MAX_RENDERBUFFER_SIZE) || 4096, ...((ctx.getParameter(ctx.MAX_VIEWPORT_DIMS) as number[] | null) ?? [4096])];
+        const ancho = Math.min(CAPTURA.ancho, ...limites);
+        const alto = Math.round((ancho * CAPTURA.alto) / CAPTURA.ancho);
+        const camara = new THREE.PerspectiveCamera(CAPTURA.fov, ancho / alto, 0.03, 80);
+        const e = encuadreCaptura(s.diseno, ancho / alto, escenarioActual(s.escenario, s.producto, s.diseno), altoMueble(scene));
+        camara.position.copy(e.pos);
+        camara.lookAt(e.objetivo);
+        camara.updateProjectionMatrix();
+        camara.updateMatrixWorld();
         ocultas.forEach((o) => (o.visible = false));
         try {
-          if (objetivo > proporcion) gl.setPixelRatio(objetivo);
-          gl.render(scene, camera);
-          const origen = gl.domElement;
-          const escala = Math.min(1, ANCHO_CAPTURA / origen.width);
+          gl.setPixelRatio(1);
+          gl.setSize(ancho, alto, false);
+          gl.render(scene, camara);
+          const lienzo = gl.domElement;
+          // JPEG de buena calidad; si la imagen pesa demasiado para guardarla, baja un poco.
+          for (const calidad of [0.92, 0.88, 0.84, 0.78, 0.7]) {
+            const url = lienzo.toDataURL('image/jpeg', calidad);
+            if (url.length <= MAX_DATA_URL) return url;
+          }
           const c = document.createElement('canvas');
-          c.width = Math.round(origen.width * escala);
-          c.height = Math.round(origen.height * escala);
+          c.width = Math.round(ancho * 0.75);
+          c.height = Math.round(alto * 0.75);
           const g = c.getContext('2d')!;
           g.imageSmoothingQuality = 'high';
-          g.drawImage(origen, 0, 0, c.width, c.height);
-          return c.toDataURL('image/jpeg', 0.86);
+          g.drawImage(lienzo, 0, 0, c.width, c.height);
+          return c.toDataURL('image/jpeg', 0.8);
+        } catch {
+          return null;
         } finally {
           ocultas.forEach((o) => (o.visible = true));
-          if (gl.getPixelRatio() !== proporcion) gl.setPixelRatio(proporcion);
+          gl.setPixelRatio(proporcion);
+          gl.setSize(tam.x, tam.y, false);
           gl.render(scene, camera);
         }
       },

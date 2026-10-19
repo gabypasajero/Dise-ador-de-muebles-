@@ -1,7 +1,10 @@
 // Hoja para el maestro: documento interno, SIN precios, con la imagen referencial, la
-// marca, el N° de cotización, el cliente y la fecha; un esquema frontal acotado de cada
-// muro (módulos con su ancho, puertas con su apertura, cajones, horno, aéreos) y la ficha
-// de fabricación completa del motor (fichaFabricacion de shared/resumen.ts).
+// marca, el N° de cotización, el cliente y la fecha; la forma y las medidas generales, un
+// esquema frontal acotado de cada muro (módulos con su ancho, puertas con su apertura,
+// cajones, horno, aéreos) y la ficha de fabricación del motor en tablas (fichaFabricacion de
+// shared/resumen.ts): cada tramo con sus módulos y cada frente con su medida y apertura,
+// equipamiento, cubierta, materiales y frentes para cortar. El mismo contenido se ve dentro
+// de la aplicación (contenidoHoja y esquemaSvg) y se descarga en PDF (crearHojaMaestro).
 import { jsPDF } from 'jspdf';
 import {
   calcularLayout,
@@ -19,7 +22,7 @@ import {
   type LayoutAereos,
 } from '../../shared/layout';
 import { formatear, normalizar } from '../../shared/reglas';
-import { fichaFabricacion, formatoFecha, type FichaFabricacion } from '../../shared/resumen';
+import { fichaFabricacion, formatoFecha, type FichaFabricacion, type SeccionFicha, type TablaFicha } from '../../shared/resumen';
 import type { CatalogoMateriales, Cliente, Diseno, LadoId, LineaDetalle, ProductoCatalogo, TramoId, Unidad } from '../../shared/tipos';
 import { A4, COLORES_MARCA, colorTexto, dibujarCabecera, dibujarImagen, dibujarLogo, fuente, GRIS, latin1, LINEA, MARGEN, nombreArchivo, TEXTO, type Rgb } from './pdf';
 import { MARCAS, type Marca } from './marcas';
@@ -439,17 +442,210 @@ function d0(z: Caja | null): number {
   return z ? z.y1 : 0;
 }
 
-// ---------- Documento ----------
+// ---------- Esquema en SVG (la vista de la hoja dentro de la aplicación) ----------
+
+/** mm por punto tipográfico. */
+const PT = 25.4 / 72;
+const n2 = (v: number) => (Math.round(v * 100) / 100).toString();
+const escaparXml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/**
+ * Lienzo con la parte de la API de jsPDF que usa dibujarMuro, pero que arma un SVG: así el
+ * esquema de la hoja dentro de la aplicación es el mismo dibujo del PDF (medidas en mm).
+ */
+class LienzoSvg {
+  private partes: string[] = [];
+  private relleno = 'rgb(0,0,0)';
+  private trazo = 'rgb(0,0,0)';
+  private colorLetra = 'rgb(0,0,0)';
+  private grosor = 0.2;
+  private guiones: number[] = [];
+  private tam = 10;
+  private negrita = false;
+  private caja = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  /** Mide los textos con las mismas métricas de Helvetica que el PDF. */
+  private medidor = new jsPDF({ unit: 'mm', format: 'a4' });
+
+  private incluir(x0: number, y0: number, x1: number, y1: number) {
+    this.caja = { x0: Math.min(this.caja.x0, x0, x1), y0: Math.min(this.caja.y0, y0, y1), x1: Math.max(this.caja.x1, x0, x1), y1: Math.max(this.caja.y1, y0, y1) };
+  }
+  private atributos(estilo = 'S') {
+    const relleno = /F/.test(estilo) ? this.relleno : 'none';
+    const trazo = estilo === 'S' || /D/.test(estilo) ? this.trazo : 'none';
+    const guiones = this.guiones.length && trazo !== 'none' ? ` stroke-dasharray="${this.guiones.map(n2).join(' ')}"` : '';
+    return `fill="${relleno}" stroke="${trazo}" stroke-width="${n2(this.grosor)}"${guiones}`;
+  }
+  setFillColor(r: number, g: number, b: number) {
+    this.relleno = `rgb(${r},${g},${b})`;
+  }
+  setDrawColor(r: number, g: number, b: number) {
+    this.trazo = `rgb(${r},${g},${b})`;
+  }
+  setTextColor(r: number, g: number, b: number) {
+    this.colorLetra = `rgb(${r},${g},${b})`;
+  }
+  setLineWidth(w: number) {
+    this.grosor = w;
+  }
+  setLineDashPattern(patron: number[]) {
+    this.guiones = patron;
+  }
+  setFont(_familia: string, estilo: string) {
+    this.negrita = estilo === 'bold';
+    this.medidor.setFont('helvetica', this.negrita ? 'bold' : 'normal');
+  }
+  setFontSize(tam: number) {
+    this.tam = tam;
+    this.medidor.setFontSize(tam);
+  }
+  getTextWidth(texto: string) {
+    return this.medidor.getTextWidth(texto);
+  }
+  rect(x: number, y: number, w: number, h: number, estilo?: string) {
+    this.partes.push(`<rect x="${n2(x)}" y="${n2(y)}" width="${n2(w)}" height="${n2(h)}" ${this.atributos(estilo)}/>`);
+    this.incluir(x, y, x + w, y + h);
+  }
+  roundedRect(x: number, y: number, w: number, h: number, rx: number, ry: number, estilo?: string) {
+    this.partes.push(`<rect x="${n2(x)}" y="${n2(y)}" width="${n2(w)}" height="${n2(h)}" rx="${n2(rx)}" ry="${n2(ry)}" ${this.atributos(estilo)}/>`);
+    this.incluir(x, y, x + w, y + h);
+  }
+  line(x1: number, y1: number, x2: number, y2: number) {
+    this.partes.push(`<line x1="${n2(x1)}" y1="${n2(y1)}" x2="${n2(x2)}" y2="${n2(y2)}" ${this.atributos('S')}/>`);
+    this.incluir(x1, y1, x2, y2);
+  }
+  circle(x: number, y: number, r: number, estilo?: string) {
+    this.partes.push(`<circle cx="${n2(x)}" cy="${n2(y)}" r="${n2(r)}" ${this.atributos(estilo)}/>`);
+    this.incluir(x - r, y - r, x + r, y + r);
+  }
+  lines(segmentos: number[][], x: number, y: number, escala: [number, number] = [1, 1], estilo?: string, cerrado = false) {
+    let cx = x;
+    let cy = y;
+    const d = [`M${n2(x)} ${n2(y)}`];
+    for (const [dx, dy] of segmentos) {
+      cx += dx * escala[0];
+      cy += dy * escala[1];
+      d.push(`L${n2(cx)} ${n2(cy)}`);
+      this.incluir(cx, cy, cx, cy);
+    }
+    if (cerrado) d.push('Z');
+    this.partes.push(`<path d="${d.join(' ')}" ${this.atributos(estilo)}/>`);
+    this.incluir(x, y, x, y);
+  }
+  text(texto: string | string[], x: number, y: number, op: { align?: 'left' | 'center' | 'right'; angle?: number } = {}) {
+    const lineas = Array.isArray(texto) ? texto : [texto];
+    const ancla = op.align === 'center' ? 'middle' : op.align === 'right' ? 'end' : 'start';
+    const alto = this.tam * PT;
+    lineas.forEach((l, i) => {
+      const yy = y + i * alto * 1.15;
+      const giro = op.angle ? ` transform="rotate(${n2(-op.angle)} ${n2(x)} ${n2(yy)})"` : '';
+      this.partes.push(
+        `<text x="${n2(x)}" y="${n2(yy)}" font-size="${n2(alto)}" font-weight="${this.negrita ? 700 : 400}" fill="${this.colorLetra}" text-anchor="${ancla}"${giro}>${escaparXml(l)}</text>`,
+      );
+      const w = this.getTextWidth(l);
+      const x0 = ancla === 'middle' ? x - w / 2 : ancla === 'end' ? x - w : x;
+      if (op.angle) this.incluir(x - alto, yy - w / 2, x + alto, yy + w / 2);
+      else this.incluir(x0, yy - alto, x0 + w, yy + alto * 0.3);
+    });
+  }
+  /** El dibujo completo, recortado a lo dibujado con un pequeño margen. */
+  svg(titulo: string): string {
+    const m = 1.5;
+    const { x0, y0, x1, y1 } = this.caja;
+    const w = x1 - x0 + 2 * m;
+    const h = y1 - y0 + 2 * m;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${n2(x0 - m)} ${n2(y0 - m)} ${n2(w)} ${n2(h)}" width="${n2(w)}mm" height="${n2(h)}mm" role="img" aria-label="${escaparXml(titulo)}" font-family="Helvetica, Arial, sans-serif">${this.partes.join('')}</svg>`;
+  }
+}
+
+// ---------- Contenido común del PDF y de la vista en la aplicación ----------
+
+/** Ancho y alto máximos del esquema de un muro en la hoja (mm de papel). */
+const ANCHO_ESQUEMA = A4.ancho - MARGEN * 2 - 24;
+const ALTO_ESQUEMA = 62;
+
+export interface ContenidoHoja {
+  ficha: FichaFabricacion;
+  muros: Muro[];
+  /** Escala común de todos los esquemas (mm de papel por mm reales). */
+  escala: number;
+}
+
+/** Ficha de fabricación y esquemas de una hoja del maestro (lo mismo en el PDF y en la aplicación). */
+export function contenidoHoja(
+  diseno: Diseno,
+  producto: ProductoCatalogo | null,
+  unidad: Unidad,
+  materiales: CatalogoMateriales | null,
+  opciones: { numero?: string | null; cliente?: string } = {},
+): ContenidoHoja {
+  const d = normalizar(diseno);
+  let ficha: FichaFabricacion;
+  try {
+    ficha = fichaFabricacion(d, producto, unidad, materiales, { numero: opciones.numero ?? undefined, cliente: opciones.cliente });
+  } catch (e) {
+    ficha = { titulo: 'Ficha de fabricación', subtitulo: '', secciones: [{ titulo: 'Forma y medidas generales', lineas: [{ etiqueta: 'Aviso', valor: `No se pudo armar la ficha: ${(e as Error).message}` }] }] };
+  }
+  let muros: Muro[] = [];
+  try {
+    muros = murosDe(d);
+  } catch {
+    muros = [];
+  }
+  const escala = muros.length ? Math.min(...muros.map((m) => Math.min(ANCHO_ESQUEMA / Math.max(1, m.h1 - m.h0), ALTO_ESQUEMA / Math.max(1, m.alto)))) : 1;
+  return { ficha, muros, escala };
+}
+
+/** Esquema frontal acotado de un muro como SVG (el mismo dibujo del PDF). */
+export function esquemaSvg(m: Muro, escala: number, unidad: Unidad, marca: Marca): string {
+  const lienzo = new LienzoSvg();
+  dibujarMuro(lienzo as unknown as jsPDF, m, 0, 0, escala, unidad, COLORES_MARCA[marca].acento);
+  return lienzo.svg(m.titulo);
+}
+
+/** Leyenda del esquema frontal. */
+export function leyendaEsquema(unidad: Unidad): string {
+  return `Cada muro visto de frente, con sus módulos numerados de izquierda a derecha y su ancho en ${unidad}. En cada puerta, las líneas punteadas se juntan en el lado de las bisagras (la puerta abre hacia ese lado). Dibujo a escala aproximada: valen las cotas.`;
+}
+
+export interface CeldaHoja {
+  texto: string;
+  negrita: boolean;
+  gris: boolean;
+}
+
+/**
+ * Renglones de una celda de una tabla de la ficha: las columnas en negrita completas y, en
+ * las destacadas, el primer renglón en negrita y el resto en gris.
+ */
+export function renglonesCelda(tabla: Pick<TablaFicha, 'negrita' | 'destacar'>, columna: number, texto: string): CeldaHoja[] {
+  const partes = texto.split('\n');
+  const negrita = tabla.negrita?.includes(columna) ?? false;
+  const destacar = tabla.destacar?.includes(columna) ?? false;
+  return partes.map((p, i) => ({ texto: p, negrita: negrita || (destacar && i === 0), gris: destacar && i > 0 }));
+}
+
+/** Las líneas sueltas de una sección como tabla de dos columnas (dato y valor, con sus sub-líneas). */
+export function tablaDeLineas(lineas: LineaDetalle[]): TablaFicha {
+  const numeradas = lineas.every((l) => /^\d+$/.test(l.etiqueta));
+  return {
+    columnas: [],
+    anchos: numeradas ? [0.05, 0.95] : [0.27, 0.73],
+    negrita: [0],
+    filas: lineas.map((l) => ({ celdas: [l.etiqueta, [l.valor, ...(l.sub ?? []).map((s) => `– ${s}`)].join('\n')] })),
+  };
+}
+
+// ---------- Documento PDF ----------
 
 export function crearHojaMaestro(datos: DatosHojaMaestro): jsPDF {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  const d = normalizar(datos.diseno);
   const marca = datos.marca;
   const { acento, suave } = COLORES_MARCA[marca];
   const ancho = A4.ancho - MARGEN * 2;
   const borde = A4.ancho - MARGEN;
   const limite = A4.alto - MARGEN - 10;
   const numero = datos.numero ? `N° ${datos.numero}` : 'Borrador';
+  const { ficha, muros, escala } = contenidoHoja(datos.diseno, datos.producto, datos.unidad, datos.materiales, { numero: datos.numero, cliente: datos.cliente.nombre });
   let y = MARGEN - 2;
 
   const nuevaPagina = () => {
@@ -464,7 +660,7 @@ export function crearHojaMaestro(datos: DatosHojaMaestro): jsPDF {
     doc.text(`Hoja para el maestro · ${numero}`, borde, MARGEN - 0.3, { align: 'right' });
     fuente(doc, 'normal', 8);
     colorTexto(doc, GRIS);
-    doc.text(`${datos.cliente.nombre} · ${formatoFecha(datos.fecha)}`, borde, MARGEN + 3.4, { align: 'right' });
+    doc.text(latin1(`${datos.cliente.nombre} · ${formatoFecha(datos.fecha)}`), borde, MARGEN + 3.4, { align: 'right' });
     doc.setDrawColor(...acento);
     doc.setLineWidth(0.4);
     doc.line(MARGEN, MARGEN + 6, borde, MARGEN + 6);
@@ -526,7 +722,7 @@ export function crearHojaMaestro(datos: DatosHojaMaestro): jsPDF {
 
   // Imagen referencial
   if (datos.imagen) {
-    const alto = dibujarImagen(doc, datos.imagen, MARGEN, y, ancho, 80);
+    const alto = dibujarImagen(doc, datos.imagen, MARGEN, y, ancho, 92);
     if (alto) {
       fuente(doc, 'normal', 7);
       colorTexto(doc, GRIS);
@@ -535,16 +731,8 @@ export function crearHojaMaestro(datos: DatosHojaMaestro): jsPDF {
     }
   }
 
-  // Ficha de fabricación del motor
-  let ficha: FichaFabricacion;
-  try {
-    ficha = fichaFabricacion(d, datos.producto, datos.unidad, datos.materiales, { numero: datos.numero ?? undefined, cliente: datos.cliente.nombre });
-  } catch (e) {
-    ficha = { titulo: 'Ficha de fabricación', subtitulo: '', secciones: [{ titulo: 'Datos generales', lineas: [{ etiqueta: 'Aviso', valor: `No se pudo armar la ficha: ${(e as Error).message}` }] }] };
-  }
-
   const titulo = (t: string) => {
-    asegurar(16);
+    asegurar(22);
     y += 2;
     fuente(doc, 'bold', 10.5);
     colorTexto(doc, acento);
@@ -553,71 +741,86 @@ export function crearHojaMaestro(datos: DatosHojaMaestro): jsPDF {
     doc.setDrawColor(...acento);
     doc.setLineWidth(0.35);
     doc.line(MARGEN, y, borde, y);
-    y += 4.6;
+    y += 2.2;
   };
 
-  const lineas = (ls: LineaDetalle[]) => {
-    for (const l of ls) {
-      fuente(doc, 'bold', 9.3);
-      const etiqueta = `${latin1(l.etiqueta)}: `;
-      const anchoEtiqueta = doc.getTextWidth(etiqueta);
-      fuente(doc, 'normal', 9.3);
-      const palabras = latin1(l.valor).split(/\s+/).filter(Boolean);
-      let primera = '';
-      let i = 0;
-      while (i < palabras.length) {
-        const prueba = primera ? `${primera} ${palabras[i]}` : palabras[i];
-        if (doc.getTextWidth(prueba) > ancho - 4 - anchoEtiqueta) break;
-        primera = prueba;
-        i++;
-      }
-      const resto = palabras.slice(i).join(' ');
-      const siguientes = resto ? (doc.splitTextToSize(resto, ancho - 4) as string[]) : [];
-      fuente(doc, 'normal', 8.6);
-      const subs = (l.sub ?? []).flatMap((s) => doc.splitTextToSize(`– ${latin1(s)}`, ancho - 10) as string[]);
-      asegurar(4.6 * (1 + siguientes.length) + subs.length * 4.1 + 1.4);
-      fuente(doc, 'bold', 9.3);
+  // Tabla con renglones ajustados al ancho de cada columna; si no cabe, sigue en otra hoja
+  // repitiendo la fila de títulos.
+  const TAM = 8.3;
+  const INTER = 3.55;
+  const PAD = 1.5;
+  const tabla = (t: TablaFicha) => {
+    const total = t.anchos.reduce((a, b) => a + b, 0);
+    const ws = t.anchos.map((a) => (a / total) * ancho);
+    const xs = ws.map((_, i) => MARGEN + ws.slice(0, i).reduce((a, b) => a + b, 0));
+    const cabeza = t.columnas.map((c, i) => {
+      fuente(doc, 'bold', 7.2);
+      return doc.splitTextToSize(latin1(c.toUpperCase()), ws[i] - 2 * PAD) as string[];
+    });
+    const altoCabeza = t.columnas.length ? Math.max(1, ...cabeza.map((l) => l.length)) * 2.9 + 2.6 : 0;
+    const dibujarCabeza = () => {
+      if (!altoCabeza) return;
+      doc.setFillColor(...suave);
+      doc.rect(MARGEN, y, ancho, altoCabeza, 'F');
+      fuente(doc, 'bold', 7.2);
       colorTexto(doc, acento);
-      doc.text('•', MARGEN + 0.6, y);
-      colorTexto(doc, TEXTO);
-      doc.text(etiqueta, MARGEN + 4, y);
-      fuente(doc, 'normal', 9.3);
-      if (primera) doc.text(primera, MARGEN + 4 + anchoEtiqueta, y);
-      for (const s of siguientes) {
-        y += 4.6;
-        doc.text(s, MARGEN + 4, y);
+      cabeza.forEach((ls, i) => ls.forEach((l, j) => doc.text(l, xs[i] + PAD, y + 3.6 + j * 2.9)));
+      y += altoCabeza;
+    };
+    const filas = t.filas.map((f) =>
+      f.celdas.map((celda, i) =>
+        renglonesCelda(t, i, celda).flatMap((r) => {
+          fuente(doc, r.negrita ? 'bold' : 'normal', TAM);
+          return (doc.splitTextToSize(latin1(r.texto), ws[i] - 2 * PAD) as string[]).map((texto) => ({ ...r, texto }));
+        }),
+      ),
+    );
+    const altoFila = (f: CeldaHoja[][]) => Math.max(1, ...f.map((c) => c.length)) * INTER + 2 * PAD - 0.4;
+    asegurar(altoCabeza + (filas[0] ? altoFila(filas[0]) : 0));
+    dibujarCabeza();
+    filas.forEach((f, k) => {
+      const alto = altoFila(f);
+      if (y + alto > limite) {
+        nuevaPagina();
+        dibujarCabeza();
       }
-      fuente(doc, 'normal', 8.6);
-      colorTexto(doc, [80, 76, 86]);
-      for (const s of subs) {
-        y += 4.1;
-        doc.text(s, MARGEN + 9, y);
+      if (k % 2 === 1) {
+        doc.setFillColor(249, 247, 245);
+        doc.rect(MARGEN, y, ancho, alto, 'F');
       }
-      y += 4.6 + 1.2;
-    }
+      f.forEach((renglones, i) =>
+        renglones.forEach((r, j) => {
+          fuente(doc, r.negrita ? 'bold' : 'normal', TAM);
+          colorTexto(doc, r.gris ? GRIS : TEXTO);
+          doc.text(r.texto, xs[i] + PAD, y + PAD + 2.55 + j * INTER);
+        }),
+      );
+      doc.setDrawColor(...LINEA);
+      doc.setLineWidth(0.2);
+      doc.line(MARGEN, y + alto, borde, y + alto);
+      y += alto;
+    });
+    y += 3.5;
+  };
+
+  const seccion = (s: SeccionFicha) => {
+    titulo(s.titulo);
+    if (s.lineas.length) tabla(tablaDeLineas(s.lineas));
+    if (s.tabla) tabla(s.tabla);
   };
 
   const [generales, ...resto] = ficha.secciones;
-  if (generales) {
-    titulo(generales.titulo);
-    lineas(generales.lineas);
-  }
+  if (generales) seccion(generales);
 
   // Esquema frontal acotado de cada muro (misma escala para todos)
-  const muros = murosDe(d);
   if (muros.length) {
-    const anchoDibujo = ancho - 24;
-    const altoMax = 62;
-    const escala = Math.min(...muros.map((m) => Math.min(anchoDibujo / Math.max(1, m.h1 - m.h0), altoMax / Math.max(1, m.alto))));
     const altoMuro = (m: Muro) => 9 + m.alto * escala + (m.base ? 15 : 4);
     asegurar(16 + 8 + altoMuro(muros[0]));
     titulo('Esquema frontal');
+    y += 2.4;
     fuente(doc, 'normal', 7.8);
     colorTexto(doc, GRIS);
-    const leyenda = doc.splitTextToSize(
-      `Cada muro visto de frente, con sus módulos numerados de izquierda a derecha y su ancho en ${datos.unidad}. En cada puerta, las líneas punteadas se juntan en el lado de las bisagras. Dibujo a escala aproximada: valen las cotas.`,
-      ancho,
-    ) as string[];
+    const leyenda = doc.splitTextToSize(latin1(leyendaEsquema(datos.unidad)), ancho) as string[];
     doc.text(leyenda, MARGEN, y);
     y += leyenda.length * 3.4 + 2;
     for (const m of muros) {
@@ -628,20 +831,19 @@ export function crearHojaMaestro(datos: DatosHojaMaestro): jsPDF {
       doc.text(m.titulo, MARGEN, y + 2);
       y += 3;
       const anchoReal = (m.h1 - m.h0) * escala;
-      const usado = dibujarMuro(doc, m, MARGEN + Math.max(0, (anchoDibujo - anchoReal) / 2), y, escala, datos.unidad, acento);
+      const usado = dibujarMuro(doc, m, MARGEN + Math.max(0, (ANCHO_ESQUEMA - anchoReal) / 2), y, escala, datos.unidad, acento);
       y += usado + 4;
     }
   }
 
-  // Resto de la ficha: tramos con sus módulos, cubierta, equipamiento, aéreos, campana, materiales y notas.
-  for (const s of resto) {
-    titulo(s.titulo);
-    lineas(s.lineas);
-  }
+  // Resto de la ficha: tramos con sus módulos y frentes, aéreos, equipamiento, cubierta,
+  // materiales, frentes para cortar y notas.
+  for (const s of resto) seccion(s);
 
   // Observaciones del vendedor
   if (datos.observaciones) {
     titulo('Observaciones de la cotización');
+    y += 4;
     fuente(doc, 'normal', 9.5);
     const ls = doc.splitTextToSize(latin1(datos.observaciones), ancho - 8) as string[];
     asegurar(ls.length * 4.6 + 6);
@@ -673,4 +875,10 @@ export function nombreArchivoMaestro(d: Pick<DatosHojaMaestro, 'numero' | 'clien
 
 export function descargarHojaMaestro(d: DatosHojaMaestro) {
   crearHojaMaestro(d).save(nombreArchivoMaestro(d));
+}
+
+/** La hoja como archivo PDF (para compartirla desde el teléfono). */
+export function hojaMaestroComoArchivo(d: DatosHojaMaestro): File {
+  const blob = crearHojaMaestro(d).output('blob');
+  return new File([blob], nombreArchivoMaestro(d), { type: 'application/pdf' });
 }

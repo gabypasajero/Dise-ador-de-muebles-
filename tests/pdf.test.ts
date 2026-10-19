@@ -6,7 +6,8 @@ import { describe, expect, it } from 'vitest';
 import { clasificarProducto, disenoInicial } from '../shared/catalogo';
 import { activarAereos, ejecutar, fijarAncho, fijarForma } from '../shared/reglas';
 import type { CatalogoMateriales, ProductoTienda } from '../shared/tipos';
-import { crearHojaMaestro, murosDe, nombreArchivoMaestro } from '../src/cotizacion/hojaMaestro';
+import { fichaFabricacion, textoFicha } from '../shared/resumen';
+import { contenidoHoja, crearHojaMaestro, esquemaSvg, murosDe, nombreArchivoMaestro, renglonesCelda, tablaDeLineas } from '../src/cotizacion/hojaMaestro';
 import { marcaDe, textoCotizacionMarca } from '../src/cotizacion/marcas';
 import { crearPdf, datosCliente, lineasDocumento, nombreArchivo, type DatosDocumento } from '../src/cotizacion/pdf';
 
@@ -178,4 +179,60 @@ describe('hoja para el maestro', () => {
     expect(t).toContain(`Página ${paginas} de ${paginas}`);
     expect((t.match(/Hoja para el maestro · N° COT-0012/g) ?? []).length).toBeGreaterThanOrEqual(paginas);
   });
+
+  it('cada módulo en una tabla por tramo: frentes con su medida exacta, apertura de cada puerta y cajones', () => {
+    const ficha = fichaFabricacion(d, producto, 'cm', materiales);
+    const titulos = ficha.secciones.map((s) => s.titulo);
+    expect(titulos.slice(0, 3)).toEqual(['Forma y medidas generales', 'Lado izquierdo', 'Tramo principal']);
+    expect(titulos).toEqual(expect.arrayContaining(['Muebles aéreos', 'Aéreo principal', 'Equipamiento', 'Cubierta', 'Materiales', 'Frentes para cortar', 'Notas']));
+    const principal = ficha.secciones.find((s) => s.titulo === 'Tramo principal')!;
+    expect(principal.tabla!.columnas).toEqual(['N°', 'Módulo y ubicación', 'Ancho', 'Frentes: ancho × alto y apertura', 'Interior y equipamiento']);
+    expect(principal.tabla!.filas.length).toBe(d.cuerpos.length);
+    const celdas = principal.tabla!.filas.map((f) => f.celdas.join(' | ')).join('\n');
+    expect(celdas).toMatch(/Cajón 1 \(arriba\): \d+(,\d)? × \d+(,\d)? cm/);
+    expect(celdas).toMatch(/Puerta 1: \d+(,\d)? × \d+(,\d)? cm · abre a la (izquierda|derecha) \(bisagras (izq|der)\.\)/);
+    expect(celdas).toMatch(/Frente del especiero \(extraíble\)/);
+    expect(celdas).toMatch(/Encimera a gas 4 platos \(quemadores\)/);
+    expect(celdas).toMatch(/Horno eléctrico 58 L \(60 cm\); hueco/);
+    // Las medidas salen del layout del motor: la puerta del módulo 1 del lado izquierdo.
+    const lado = ficha.secciones.find((s) => s.titulo === 'Lado izquierdo')!;
+    expect(lado.tabla!.filas[0].celdas[4]).toMatch(/Lavaplatos doble \(2 cubetas\), centrado, con llave/);
+    const eq = ficha.secciones.find((s) => s.titulo === 'Equipamiento')!;
+    expect(eq.tabla!.filas.map((f) => f.celdas[0])).toEqual(expect.arrayContaining(['Horno', 'Encimera', 'Lavaplatos', 'Llave']));
+    expect(eq.tabla!.filas.find((f) => f.celdas[0] === 'Encimera')!.celdas[1]).toMatch(/^A gas, 4 platos \(quemadores\)/);
+    const cortar = ficha.secciones.find((s) => s.titulo === 'Frentes para cortar')!;
+    const total = cortar.tabla!.filas.reduce((a, f) => a + Number(f.celdas[2]), 0);
+    expect(total).toBeGreaterThan(d.cuerpos.length);
+    // El texto plano conserva una línea por fila.
+    expect(textoFicha(ficha)).toMatch(/• Módulo \d · \d+ cm: Cajonera de 3 cajones/);
+  });
+
+  it('las líneas sueltas y las celdas se arman igual para el PDF y la vista en la aplicación', () => {
+    const t = tablaDeLineas([{ etiqueta: 'Piezas', valor: '2 piezas', sub: ['tramo principal'] }]);
+    expect(t.filas[0].celdas).toEqual(['Piezas', '2 piezas\n– tramo principal']);
+    expect(renglonesCelda({ destacar: [1] }, 1, 'Cajonera\nde 0 a 60 cm')).toEqual([
+      { texto: 'Cajonera', negrita: true, gris: false },
+      { texto: 'de 0 a 60 cm', negrita: false, gris: true },
+    ]);
+  });
+
+  it('el esquema de cada muro también sale en SVG (vista de la hoja dentro de la aplicación)', () => {
+    const c = contenidoHoja(d, producto, 'cm', materiales);
+    expect(c.muros.length).toBe(2);
+    const svg = esquemaSvg(c.muros[1], c.escala, 'cm', 'molina');
+    expect(svg.startsWith('<svg')).toBe(true);
+    expect(svg).toMatch(/viewBox="[-\d. ]+"/);
+    expect((svg.match(/<rect /g) ?? []).length).toBeGreaterThan(10);
+    expect(svg).toContain('HORNO');
+    expect(svg).toContain('stroke-dasharray');
+    expect(svg).toContain('300 cm con la esquina');
+  });
+
+  it('el PDF de la hoja trae las tablas con medidas de puertas y cajones, apertura, encimera y lavaplatos', () => {
+    const t = textoDe(hoja());
+    for (const texto of ['FORMA Y MEDIDAS GENERALES', 'FRENTES PARA CORTAR', 'EQUIPAMIENTO', 'abre a la izquierda', 'Cajón 1 (arriba)', 'A gas, 4 platos', 'Doble (2 cubetas)', 'Frente del especiero']) {
+      expect(t).toContain(texto);
+    }
+  });
 });
+
