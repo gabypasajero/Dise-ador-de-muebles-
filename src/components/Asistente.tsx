@@ -161,12 +161,6 @@ export function PanelAsistente({ onCerrar }: { onCerrar: () => void }) {
     }
   };
 
-  const alternativa = (x: OperacionRechazada) => {
-    if (!x.alternativa) return;
-    const r = useApp.getState().operar(x.alternativa);
-    if (r.ok) setRespuesta((v) => v && { ...v, rechazadas: v.rechazadas.filter((y) => y !== x), aplicadas: [...v.aplicadas, { n: x.n, op: x.alternativa!, descripcion: `${x.descripcion} (ajustando el largo)`, avisos: r.avisos }] });
-  };
-
   return (
     <section className="asistente" role="dialog" aria-label="Asistente de diseño con IA">
       <header className="asistente-cabecera">
@@ -257,11 +251,6 @@ export function PanelAsistente({ onCerrar }: { onCerrar: () => void }) {
                     <li key={x.n} className="rechazada">
                       <span>{x.descripcion}</span>
                       <small>{x.motivo}</small>
-                      {x.alternativa && (
-                        <button type="button" className="boton chico secundario" onClick={() => alternativa(x)}>
-                          {x.alternativa.op === 'quitarModulo' ? 'Quitarlo achicando el mueble' : 'Hacerlo agrandando el mueble'}
-                        </button>
-                      )}
                     </li>
                   ))}
                 </ul>

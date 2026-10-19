@@ -114,14 +114,17 @@ export function anchoFijo(p: Plantilla, c: Pick<Cuerpo, 'tipo'>): number | null 
 /**
  * Rol de un módulo en el reparto:
  * - fijo: horno y especiero, nunca cambian de ancho.
- * - equipado: lleva encimera o lavaplatos (o aloja la campana en los aéreos): conserva su ancho
- *   cuando se agregan, quitan, mueven o reparten otros módulos.
+ * - equipado: lleva encimera o lavaplatos (o aloja la campana en los aéreos), o es un espacio
+ *   libre (refrigerador, lavadora, ventana): conserva su ancho cuando se agregan, quitan, mueven
+ *   o reparten otros módulos.
  * - ajustable: cede o toma espacio para mantener el largo del tramo.
  */
 export type Rol = 'fijo' | 'equipado' | 'ajustable';
 
 export function rolModulo(d: Diseno, t: TramoId, c: Cuerpo): Rol {
   if (anchoFijo(d.plantilla, c) != null) return 'fijo';
+  // El espacio libre mide lo que el equipo que va en él: no entra al reparto parejo.
+  if (c.tipo === 'hueco') return 'equipado';
   if (esTramoAereo(t)) return c.tipo === 'campana' && c.campanaDe ? 'equipado' : 'ajustable';
   return (d.equipos ?? []).some((e) => e.tramo === t && e.modulo === c.id) ? 'equipado' : 'ajustable';
 }

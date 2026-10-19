@@ -38,7 +38,7 @@ export interface ModuloContexto {
   contenido: string;
   tipo: Cuerpo['tipo'];
   ancho: number;
-  /** fijo (horno, especiero), equipado (con encimera, lavaplatos o campana) o ajustable. */
+  /** fijo (horno, especiero), equipado (con encimera, lavaplatos o campana, o espacio libre) o ajustable. */
   rol: Rol;
   min: number;
   /** null = sin máximo. */
@@ -247,8 +247,6 @@ export interface OperacionRechazada {
   op: unknown;
   descripcion: string;
   motivo: string;
-  /** Si faltó espacio: la misma operación agrandando o achicando el mueble (se puede ofrecer). */
-  alternativa?: Operacion;
 }
 
 export interface ResultadoPlan {
@@ -486,6 +484,8 @@ const REF = /^\$(\d{1,2})$/;
 /** Reemplaza "$n" (algo creado por la operación n del mismo plan) por su id. */
 function resolverReferencias(op: Record<string, unknown>, creados: Map<number, string | undefined>): Record<string, unknown> | string {
   const out = { ...op };
+  // El mueble solo cambia de medida cuando se pide su medida: agregar o quitar reparte parejo.
+  delete out.ajustarLargo;
   for (const k of ['id', 'para', 'modulo']) {
     const v = out[k];
     if (typeof v !== 'string') continue;
@@ -661,9 +661,9 @@ export function aplicarPlan(d: Diseno, plan: PlanAsistente, opciones: { material
   plan.operaciones.forEach((original, i) => {
     const n = i + 1;
     const descripcion = describirOperacionPlan(actual, original, catalogo);
-    const rechazo = (motivo: string, alternativa?: Operacion) => {
+    const rechazo = (motivo: string) => {
       creados.set(n, undefined);
-      rechazadas.push({ n, op: original, descripcion, motivo, ...(alternativa ? { alternativa } : {}) });
+      rechazadas.push({ n, op: original, descripcion, motivo });
     };
     if (n > MAX_OPERACIONES) return rechazo(`Se aplican hasta ${MAX_OPERACIONES} cambios por instrucción: pide el resto en otra instrucción.`);
     const op = resolverReferencias(original, creados);
@@ -671,7 +671,7 @@ export function aplicarPlan(d: Diseno, plan: PlanAsistente, opciones: { material
     const previo = revisarContraDiseno(actual, op, catalogo);
     if (previo) return rechazo(previo);
     const r = ejecutar(actual, op as unknown as Operacion);
-    if (!r.ok) return rechazo(r.motivo ?? 'No se pudo hacer.', r.alternativa);
+    if (!r.ok) return rechazo(r.motivo ?? 'No se pudo hacer.');
     creados.set(n, r.id);
     if (r.diseno === actual && !r.avisos.length) {
       aplicadas.push({ n, op: op as unknown as Operacion, descripcion, avisos: ['Ya estaba así.'] });

@@ -84,12 +84,13 @@ describe('cocina en L', () => {
     expect(d.equipos.find((e) => e.tipo === 'encimera')!.modulo).toBe(enc);
     const m = moverCuerpo(d, 0, 1, 'retorno');
     expect(m.lados.izq!.cuerpos[1].id).toBe(d.lados.izq!.cuerpos[0].id);
-    expect(m.lados.izq!.cuerpos.map((c) => c.ancho)).toEqual([150, 450]);
+    // La cajonera y el módulo que había se reparten parejo los 60 cm útiles de la L.
+    expect(m.lados.izq!.cuerpos.map((c) => c.ancho)).toEqual([300, 300]);
     const q = quitarCuerpo(m, 1, 'retorno');
     expect(q.lados.izq!.cuerpos).toHaveLength(1);
     expect(q.lados.izq!.cuerpos[0].ancho).toBe(util(q));
     expect(largoTramo(q, 'retorno')).toBe(util(q));
-    // Agrandando la L a pedido sí crece.
+    // Solo con ajustarLargo (uso programático, no se ofrece en la interfaz) la L crece.
     const larga = agregarModulo(fijarForma(disenoLibre('cocina'), 'izq'), cajonera, 0, 'izq', true);
     expect(larga.lados.izq!.largo).toBe(1200 + 450);
     expect(validarDiseno(larga)).toEqual([]);

@@ -36,7 +36,9 @@ const tramo = (opcional = false): CampoOperacion => ({
   descripcion: "'base' (tramo principal), 'izq' / 'der' (lados de la L o U), 'aereos', 'aereos-izq', 'aereos-der'",
 });
 const modulo: CampoOperacion = { tipo: 'modulo', descripcion: 'índice del módulo en su tramo (0 = el primero) o su id' };
-const ajustarLargo: CampoOperacion = { tipo: 'booleano', opcional: true, descripcion: 'true: agranda o achica el mueble en vez de repartir el espacio dentro del largo actual' };
+// Solo para uso programático: el asistente no lo ve (y aplicarPlan lo descarta). Al agregar o quitar,
+// el mueble conserva su medida y los módulos ajustables se reparten parejo.
+const ajustarLargo: CampoOperacion = { tipo: 'booleano', opcional: true, oculto: true, descripcion: 'true: agranda o achica el mueble en vez de repartir el espacio dentro del largo actual' };
 
 const CAMBIOS_MODULO: Record<string, CampoOperacion> = {
   id: { tipo: 'texto', opcional: true, oculto: true, descripcion: 'se ignora: el id de un módulo no cambia' },
@@ -80,17 +82,17 @@ export const OPERACIONES: DescripcionOperacion[] = [
   },
   {
     op: 'agregarModulo',
-    descripcion: 'Agrega un módulo de la lista presetsModulo(plantilla, tramo) sin cambiar el largo (o agrandando con ajustarLargo).',
+    descripcion: 'Agrega un módulo de la lista presetsModulo(plantilla, tramo) sin cambiar el largo: el nuevo y los módulos ajustables del tramo se reparten parejo el espacio (horno, especiero y módulos con encimera, lavaplatos o campana conservan su ancho).',
     campos: { tramo: tramo(), preset: { tipo: 'texto', descripcion: "id del preset: 'puerta', 'dos-puertas', 'cajonera', 'cajon-puerta', 'especiero', 'horno', 'hueco', 'aereo-puerta', 'aereo-dos', 'abatible', 'nicho'" }, posicion: { tipo: 'entero', opcional: true, descripcion: 'dónde se inserta (0 = al comienzo; sin dar = al final)' }, ajustarLargo },
     ejemplo: { op: 'agregarModulo', tramo: 'base', preset: 'especiero', posicion: 1 },
   },
   {
     op: 'agregarCuerpo',
-    descripcion: 'Agrega un módulo de un tipo con contenido a medida.',
+    descripcion: 'Agrega un módulo de un tipo con contenido a medida sin cambiar el largo (se reparte parejo con los ajustables; con ancho, el nuevo conserva ese ancho).',
     campos: { tramo: tramo(), tipo: { tipo: 'opcion', valores: TIPOS_MODULO, descripcion: 'tipo de módulo' }, posicion: { tipo: 'entero', opcional: true, descripcion: 'dónde se inserta' }, ancho: mm('ancho deseado', true), cambios: { tipo: 'objeto', opcional: true, campos: CAMBIOS_MODULO, descripcion: 'contenido del módulo' }, ajustarLargo },
     ejemplo: { op: 'agregarCuerpo', tramo: 'izq', tipo: 'frentes', cambios: { puertas: 2 } },
   },
-  { op: 'quitarModulo', descripcion: 'Quita un módulo; su espacio pasa a los vecinos (o el mueble se achica con ajustarLargo).', campos: { tramo: tramo(), modulo, ajustarLargo }, ejemplo: { op: 'quitarModulo', tramo: 'base', modulo: 2 } },
+  { op: 'quitarModulo', descripcion: 'Quita un módulo sin cambiar el largo: los módulos ajustables que quedan se reparten parejo su espacio.', campos: { tramo: tramo(), modulo, ajustarLargo }, ejemplo: { op: 'quitarModulo', tramo: 'base', modulo: 2 } },
   { op: 'moverModulo', descripcion: 'Mueve un módulo un lugar a la izquierda (-1) o a la derecha (1).', campos: { tramo: tramo(), modulo, delta: { tipo: 'opcion', valores: [-1, 1], descripcion: '-1 o 1' } }, ejemplo: { op: 'moverModulo', tramo: 'base', modulo: 1, delta: 1 } },
   {
     op: 'actualizarModulo',
@@ -246,5 +248,5 @@ export function describirOperaciones(): string {
           : c.tipo;
     return `${k}${c.opcional ? '?' : ''}: ${tipo}`;
   };
-  return OPERACIONES.map((o) => `- ${o.op} { ${Object.entries(o.campos).map(([k, c]) => campo(k, c)).join(', ')} }: ${o.descripcion} Ejemplo: ${JSON.stringify(o.ejemplo)}`).join('\n');
+  return OPERACIONES.map((o) => `- ${o.op} { ${Object.entries(o.campos).filter(([, c]) => !c.oculto).map(([k, c]) => campo(k, c)).join(', ')} }: ${o.descripcion} Ejemplo: ${JSON.stringify(o.ejemplo)}`).join('\n');
 }

@@ -195,21 +195,23 @@ describe('encimera y lavaplatos no se topan', () => {
   });
 });
 
-describe('rechazos con motivo y alternativa', () => {
-  it('dicen qué módulo no puede ceder y ofrecen hacerlo agrandando el mueble', () => {
+describe('rechazos con motivo, sin ofrecer cambiar la medida del mueble', () => {
+  it('dicen por qué no cabe y no ofrecen agrandar ni achicar el mueble', () => {
     const d = full();
     const r = ejecutar(d, { op: 'agregarModulo', tramo: 'base', preset: 'horno' });
     expect(r.ok).toBe(false);
-    expect(r.motivo).toMatch(/el módulo 1 es el horno \(60 cm fijos\)/);
-    expect(r.motivo).toMatch(/el módulo 3 tiene el lavaplatos/);
-    expect(r.alternativa).toEqual({ op: 'agregarModulo', tramo: 'base', preset: 'horno', ajustarLargo: true });
-    const alt = ejecutar(d, r.alternativa!);
-    expect(alt.ok).toBe(true);
-    expect(alt.diseno.ancho).toBe(2100);
-    // Quitar la cajonera tampoco cabe: se ofrece quitarla achicando el mueble.
+    expect(r.diseno).toBe(d);
+    expect(r.motivo).toMatch(/^No cabe «Horno empotrado» de 60 cm en 150 cm: /);
+    expect(r.motivo).toMatch(/\(el horno de 60 cm y el módulo 3 con el lavaplatos conservan su ancho\)/);
+    expect(r.motivo).toMatch(/Quita uno o cambia la medida del mueble\.$/);
+    expect(r.motivo).not.toMatch(/agrand|achic|crec/);
+    expect(r).not.toHaveProperty('alternativa');
+    // Quitar la cajonera tampoco se puede: los que quedan conservan su ancho.
     const q = ejecutar(d, { op: 'quitarModulo', tramo: 'base', modulo: 1 });
     expect(q.ok).toBe(false);
-    expect(q.alternativa).toMatchObject({ op: 'quitarModulo', ajustarLargo: true });
+    expect(q.motivo).toMatch(/^No se puede quitar el módulo 2: los módulos que quedan conservan su ancho \(el horno de 60 cm y el módulo 3 con el lavaplatos\) y ninguno puede tomar sus 45 cm\./);
+    expect(q.motivo).not.toMatch(/agrand|achic|crec/);
+    expect(q).not.toHaveProperty('alternativa');
   });
 
   it('el aviso de un lado quitado habla en singular cuando corresponde', () => {

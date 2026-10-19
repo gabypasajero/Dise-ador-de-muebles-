@@ -1,6 +1,7 @@
 // Reparto de anchos entre módulos: funciones puras sobre listas de anchos (mm
 // enteros) con mínimos y máximos. Las usan las operaciones de reglas.ts para
-// mantener fijo el largo de cada tramo.
+// mantener fijo el largo de cada tramo (al agregar o quitar módulos, los ajustables
+// se reparten parejo con repartirParejo).
 
 export interface Limite {
   min: number;
@@ -58,6 +59,20 @@ export function repartirConLimites(pesos: number[], total: number, lims: Limite[
     }
   }
   return resto === 0 ? out : null;
+}
+
+/**
+ * Anchos enteros iguales que suman exactamente `total`, dentro de sus límites: los que
+ * pasarían su máximo (cajonera de 90 cm) quedan en él y los que no llegarían a su mínimo
+ * quedan en él, y el resto se reparte parejo entre los demás. Los milímetros que no se
+ * dividen exacto van de a uno a los primeros. null si el total no cabe en los límites.
+ */
+export function repartirParejo(total: number, lims: Limite[]): number[] | null {
+  return repartirConLimites(
+    lims.map(() => 1),
+    total,
+    lims,
+  );
 }
 
 /** Reparte un entero entre capacidades (proporcional, sin pasar ninguna). */

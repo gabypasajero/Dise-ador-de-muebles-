@@ -18,12 +18,10 @@ interface Aviso {
   tipo: 'ok' | 'error' | 'info';
 }
 
-/** Operación que el motor rechazó: el motivo se muestra tal cual y, si hay, la forma de hacerla igual. */
+/** Operación que el motor rechazó: el motivo se muestra tal cual. */
 export interface Rechazo {
   id: number;
   motivo: string;
-  /** La misma operación agrandando o achicando el mueble (que sí se puede). */
-  alternativa?: Operacion;
 }
 
 interface Estado {
@@ -78,7 +76,7 @@ interface Estado {
   cambiar: (f: (d: Diseno) => Diseno, grupo?: string) => void;
   /**
    * Ejecuta una operación del motor: si se hace entra al historial (deshacer) y muestra sus
-   * avisos; si se rechaza, guarda el motivo y la alternativa para mostrarlos sin tocar el diseño.
+   * avisos; si se rechaza, guarda el motivo para mostrarlo sin tocar el diseño.
    */
   operar: (op: Operacion, grupo?: string) => Resultado;
   deshacer: () => void;
@@ -282,7 +280,7 @@ export const useApp = create<Estado>((set, get) => ({
   operar(op, grupo) {
     const r = ejecutar(get().diseno, op);
     if (!r.ok) {
-      set({ rechazo: { id: ++idRechazo, motivo: r.motivo ?? 'No se pudo hacer ese cambio.', alternativa: r.alternativa } });
+      set({ rechazo: { id: ++idRechazo, motivo: r.motivo ?? 'No se pudo hacer ese cambio.' } });
       return r;
     }
     if (r.diseno !== get().diseno) get().cambiar(() => r.diseno, grupo);

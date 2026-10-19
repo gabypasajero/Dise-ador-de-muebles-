@@ -1,6 +1,6 @@
 // Secuencias aleatorias de operaciones (como las haría un cliente indeciso o el asistente):
 // después de cada una el diseño debe seguir siendo válido, estable al guardarlo y abrirlo,
-// y un rechazo no debe cambiar nada.
+// un rechazo no debe cambiar nada y agregar o quitar módulos reparte parejo sin cambiar el largo.
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { clasificarProducto, disenoInicial, disenoLibre } from '../shared/catalogo';
@@ -8,17 +8,21 @@ import { calcularLayout, calcularLayoutAereos, calcularLayoutAereosLado, disenoL
 import {
   cuerposDe,
   ejecutar,
+  largoTramo,
+  limitesModulo,
   listarEquipamiento,
   normalizar,
   precioDiseno,
   presetsModulo,
+  resolverTramo,
+  rolModulo,
   tiposPermitidos,
   tramosDe,
   type Operacion,
 } from '../shared/reglas';
 import { detalleCotizacion, fichaFabricacion } from '../shared/resumen';
 import { validarDiseno } from '../shared/validar';
-import type { Cuerpo, Diseno, Forma, ProductoTienda, TramoBase } from '../shared/tipos';
+import type { Cuerpo, Diseno, Forma, ProductoTienda, Tramo, TramoBase } from '../shared/tipos';
 
 /** Generador pseudoaleatorio con semilla (mulberry32): las fallas se pueden repetir. */
 function azar(semilla: number) {
@@ -113,6 +117,27 @@ function revisarGeometria(d: Diseno) {
   for (const u of ubicarEquipos(d)) expect(Number.isFinite(u.s + u.mundo.x + u.mundo.z)).toBe(true);
 }
 
+/**
+ * Agregar o quitar un módulo no cambia el largo del tramo y deja parejos sus ajustables (salvo
+ * los que topan su mínimo o máximo; en los aéreos con campana, esta se centra sobre su encimera).
+ */
+function revisarReparto(antes: Diseno, despues: Diseno, tramo: Tramo, donde: string) {
+  const t = resolverTramo(antes, tramo);
+  if (!t) return;
+  expect(largoTramo(despues, t), donde).toBe(largoTramo(antes, t));
+  if (t === 'base') expect(despues.ancho, donde).toBe(antes.ancho);
+  const cs = cuerposDe(despues, t);
+  if (t.startsWith('aereos') && cs.some((c) => c.tipo === 'campana' && c.campanaDe)) return;
+  const libres = cs
+    .filter((c) => {
+      if (rolModulo(despues, t, c) !== 'ajustable') return false;
+      const l = limitesModulo(despues, t, c);
+      return c.ancho > l.min && c.ancho < l.max;
+    })
+    .map((c) => c.ancho);
+  if (libres.length > 1) expect(Math.max(...libres) - Math.min(...libres), `${donde}: ${JSON.stringify(cs.map((c) => c.ancho))}`).toBeLessThanOrEqual(1);
+}
+
 const productos = JSON.parse(fs.readFileSync('public/datos/productos-respaldo.json', 'utf8')) as ProductoTienda[];
 const inicios: [string, () => Diseno][] = [
   ['cocina full equipo', () => disenoInicial(clasificarProducto(productos.find((p) => p.id === 16)!))],
@@ -145,6 +170,8 @@ describe('secuencias aleatorias de operaciones', () => {
             continue;
           }
           expect(validarDiseno(r.diseno), `${donde}\n${JSON.stringify(historial.slice(-6))}`).toEqual([]);
+          const modulos = op.op === 'agregarCuerpo' || op.op === 'quitarModulo' || (op.op === 'agregarModulo' && op.preset !== 'campana');
+          if (modulos && !op.ajustarLargo) revisarReparto(d, r.diseno, op.tramo, donde);
           d = r.diseno;
           if (paso % 10 === 0) {
             // Guardar y abrir no cambia nada.

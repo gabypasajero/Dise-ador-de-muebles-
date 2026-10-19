@@ -1,7 +1,8 @@
 // Categorías de medidas del panel inferior: puertas, cajones, módulos y
 // espacios, equipamiento/interior. Cambian según el tipo de mueble.
 // Toda edición del mueble pasa por el motor (`operar` → `ejecutar`): si se rechaza, el panel
-// muestra el motivo (y la alternativa, si la hay) y el diseño no cambia.
+// muestra el motivo y el diseño no cambia. Al agregar o quitar módulos el mueble no cambia de
+// medida: los módulos ajustables se reparten parejo el largo de su tramo.
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { destinosEquipo } from '../../shared/asistente';
 import { margenMaximo } from '../../shared/equipos';
@@ -164,29 +165,16 @@ function elegirModulo(r: Resultado, tramo: TramoId, id = r.id) {
 
 // ---------- Rechazos del motor ----------
 
-/** Motivo del último rechazo y, si el motor la ofrece, la forma de hacerlo igual (agrandando o achicando el mueble). */
+/** Motivo del último rechazo. */
 export function AvisoRechazo() {
   const rechazo = useApp((s) => s.rechazo);
   const set = useApp((s) => s.set);
   if (!rechazo) return null;
-  const alt = rechazo.alternativa;
-  const hacerAlternativa = () => {
-    if (!alt) return;
-    const r = operar(alt);
-    if (!r.ok || !('tramo' in alt) || alt.tramo === 'retorno') return;
-    if (alt.op === 'agregarModulo' || alt.op === 'agregarCuerpo') elegirModulo(r, alt.tramo);
-    else if (alt.op === 'quitarModulo') set({ moduloActivo: Math.max(0, useApp.getState().moduloActivo - 1) });
-  };
   return (
     <div className="aviso-rechazo" role="alert" key={rechazo.id}>
       <IcoAviso width={16} height={16} aria-hidden="true" />
       <p>{rechazo.motivo}</p>
       <div className="aviso-rechazo-acciones">
-        {alt && (
-          <button type="button" className="boton primario chico" onClick={hacerAlternativa}>
-            {alt.op === 'quitarModulo' ? 'Quitarlo achicando el mueble' : 'Hacerlo agrandando el mueble'}
-          </button>
-        )}
         <button type="button" className="boton chico" onClick={() => set({ rechazo: null })}>
           Entendido
         </button>
@@ -715,15 +703,22 @@ function MedidasTramo({ d, tramo, unidad }: { d: Diseno; tramo: TramoId; unidad:
 
 const TEXTO_ROL = { fijo: 'Fijo', equipado: 'Equipado', ajustable: 'Ajustable' } as const;
 
+/** Texto del chip de rol: el espacio libre no lleva equipamiento, queda reservado para un equipo. */
+function textoRol(rol: keyof typeof TEXTO_ROL, c: Cuerpo): string {
+  return c.tipo === 'hueco' && rol === 'equipado' ? 'Reservado' : TEXTO_ROL[rol];
+}
+
 function ayudaRol(d: Diseno, tramo: TramoId, c: Cuerpo, unidad: Unidad): string {
   const rol = rolModulo(d, tramo, c);
   if (rol === 'fijo') return `Mide siempre ${formatear(c.ancho, unidad)}: no cede ni toma espacio.`;
+  if (rol === 'equipado' && c.tipo === 'hueco')
+    return `Espacio para ${esAereo(tramo) ? 'una ventana o extractor' : 'refrigerador, lavadora u otro equipo'}: conserva su ancho cuando agregas, quitas o mueves otros módulos.`;
   if (rol === 'equipado')
     return esAereo(tramo)
       ? 'Aloja la campana: va siempre centrado sobre su encimera.'
       : 'Lleva equipamiento: conserva su ancho cuando agregas, quitas o mueves otros módulos.';
   const l = limitesModulo(d, tramo, c);
-  return `Cede o toma espacio cuando agregas o quitas módulos (mínimo ${formatear(l.min, unidad)}${Number.isFinite(l.max) ? `, máximo ${formatear(l.max, unidad)}` : ''}).`;
+  return `Se reparte parejo con los demás ajustables cuando agregas o quitas módulos (mínimo ${formatear(l.min, unidad)}${Number.isFinite(l.max) ? `, máximo ${formatear(l.max, unidad)}` : ''}).`;
 }
 
 export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
@@ -791,7 +786,7 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
             {prefijo} {activo + 1}
           </strong>
           <span className={`chip-rol ${rol}`} title={ayudaRol(d, tramo, c, unidad)}>
-            {TEXTO_ROL[rol]}
+            {textoRol(rol, c)}
           </span>
           <span className="acciones-cuerpo">
             <button type="button" className="boton-icono" aria-label="Mover a la izquierda" title="Mover a la izquierda" disabled={activo - 1 < minPos} onClick={() => mover(-1)}>
@@ -927,7 +922,7 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
                 className={`bloque-modulo ${m.tipo}${i === activo ? ' activo' : ''}${rol !== 'ajustable' ? ` ${rol}` : ''}`}
                 style={{ flexGrow: m.ancho }}
                 aria-pressed={i === activo}
-                aria-label={`${mayus(nombreModuloEn(d, tramo, i))}: ${nombreModulo(m)}, ${formatear(m.ancho, unidad)}${rol !== 'ajustable' ? `, ${rol}` : ''}`}
+                aria-label={`${mayus(nombreModuloEn(d, tramo, i))}: ${nombreModulo(m)}, ${formatear(m.ancho, unidad)}${rol !== 'ajustable' ? `, ${textoRol(rol, m).toLowerCase()}` : ''}`}
                 onClick={() => elegir(i)}
               >
                 <span className={`numero-cuerpo${claseTramo(tramo)}`}>{i + 1}</span>

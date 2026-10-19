@@ -119,20 +119,20 @@ describe('operaciones sobre el diseño', () => {
     expect(suma(m)).toBe(m.ancho);
   });
 
-  it('un módulo nuevo usa el espacio que ceden los ajustables o no se agrega', () => {
+  it('un módulo nuevo se reparte parejo con los ajustables o no se agrega', () => {
     const d = disenoLibre('cocina');
     const puerta = presetsModulo('cocina')[0];
-    // Solo la cajonera puede ceder (45 → 15 cm): la puerta entra con 30 cm.
-    expect(anchoDisponible(d, 'frentes', puerta.ancho)).toBe(300);
+    // El horno y el módulo del lavaplatos conservan su ancho: la cajonera y la puerta nueva se reparten 45 cm.
+    expect(anchoDisponible(d, 'frentes', puerta.ancho)).toBe(225);
     const m = agregarModulo(d, puerta);
     expect(m.ancho).toBe(d.ancho);
-    expect(m.cuerpos.at(-1)!.ancho).toBe(300);
-    // La puerta nueva todavía puede ceder 15 cm; después queda lleno: no cambia nada y se explica por qué.
+    expect(m.cuerpos.map((c) => c.ancho)).toEqual([600, 225, 450, 225]);
+    // Con otra puerta quedan 3 de 15 cm; después queda lleno: no cambia nada y se explica por qué.
     const m2 = agregarModulo(m, puerta);
     expect(m2.cuerpos.map((c) => c.ancho)).toEqual([600, 150, 450, 150, 150]);
     expect(anchoDisponible(m2, 'frentes', 450)).toBeNull();
     expect(agregarModulo(m2, puerta)).toBe(m2);
-    expect(ejecutar(m2, { op: 'agregarModulo', tramo: 'base', preset: 'puerta' }).motivo).toMatch(/No hay espacio/);
+    expect(ejecutar(m2, { op: 'agregarModulo', tramo: 'base', preset: 'puerta' }).motivo).toMatch(/^No caben más módulos en 150 cm: cada módulo necesita al menos 15 cm/);
     // Con ajustarLargo el mueble crece (hasta su máximo).
     const grande = agregarModulo(m, puerta, undefined, 'base', true);
     expect(grande.ancho).toBe(m.ancho + 350);
@@ -194,7 +194,8 @@ describe('operaciones sobre el diseño', () => {
     // Sin ajustarLargo el espacio tendría que pasar al módulo de la encimera, que conserva su ancho: se rechaza.
     const sinAjuste = ejecutar(chico, { op: 'quitarModulo', tramo: 'base', modulo: 1 });
     expect(sinAjuste.ok).toBe(false);
-    expect(sinAjuste.motivo).toMatch(/medida fija o equipamiento/);
+    expect(sinAjuste.motivo).toMatch(/conservan su ancho \(el módulo 1 con la encimera\)/);
+    expect(sinAjuste.motivo).not.toMatch(/achicando|agrandando/);
   });
 
   it('cambiar el ancho de un módulo no cambia el ancho total del mueble', () => {
@@ -219,7 +220,9 @@ describe('operaciones sobre el diseño', () => {
     const [puerta] = presetsModulo('cocina-infantil');
     const m = agregarModulo(d, puerta, 0);
     expect(m.cuerpos[0].id).toBe(despensa);
-    expect(m.cuerpos[1].ancho).toBe(300);
+    // La despensa y la puerta nueva (ajustables) se reparten parejo el espacio.
+    expect(m.cuerpos.slice(0, 2).map((c) => c.ancho)).toEqual([373, 372]);
+    expect(suma(m)).toBe(d.ancho);
     expect(moverCuerpo(m, 1, -1)).toBe(m);
     expect(moverCuerpo(m, 0, 1)).toBe(m);
     // Al quitar el módulo del lavaplatos o de la encimera, no pasan a la despensa.

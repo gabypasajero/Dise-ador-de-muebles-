@@ -17,6 +17,7 @@ import {
 } from '../shared/asistente';
 import { clasificarProducto, disenoInicial, disenoLibre } from '../shared/catalogo';
 import { listarEquipamiento } from '../shared/equipos';
+import { describirOperaciones } from '../shared/operaciones';
 import { OPERACIONES, cuerposDe, formaBase, largoTramo } from '../shared/reglas';
 import { validarDiseno } from '../shared/validar';
 import type { CatalogoMateriales, ProductoTienda } from '../shared/tipos';
@@ -169,13 +170,27 @@ describe('aplicarPlan', () => {
     expect(validarDiseno(r.diseno)).toEqual([]);
   });
 
-  it('ofrece la alternativa del motor cuando falta espacio', () => {
+  it('cuando falta espacio da el motivo del motor sin ofrecer agrandar el mueble', () => {
     const d = full();
     const r = aplicarPlan(d, plan([{ op: 'agregarModulo', tramo: 'base', preset: 'horno' }]));
     expect(r.aplicadas).toEqual([]);
-    expect(r.rechazadas[0].alternativa).toMatchObject({ op: 'agregarModulo', ajustarLargo: true });
+    expect(r.rechazadas[0].motivo).toMatch(/^No cabe «Horno empotrado» de 60 cm en 150 cm/);
+    expect(r.rechazadas[0]).not.toHaveProperty('alternativa');
     expect(r.diseno).toBe(d);
     expect(largoTramo(r.diseno, 'base')).toBe(d.ancho);
+  });
+
+  it('agregar o quitar módulos no cambia la medida del mueble aunque la IA lo pida', () => {
+    const d = full();
+    const r = aplicarPlan(d, plan([{ op: 'agregarModulo', tramo: 'base', preset: 'puerta', ajustarLargo: true }]));
+    expect(r.rechazadas).toEqual([]);
+    expect(r.diseno.ancho).toBe(d.ancho);
+    // La cajonera y la puerta nueva se reparten parejo los 45 cm ajustables.
+    expect(r.diseno.cuerpos.map((c) => c.ancho)).toEqual([600, 225, 450, 225]);
+    const q = aplicarPlan(r.diseno, plan([{ op: 'quitarModulo', tramo: 'base', modulo: 3, ajustarLargo: true }]));
+    expect(q.diseno.ancho).toBe(d.ancho);
+    expect(q.diseno.cuerpos.map((c) => c.ancho)).toEqual([600, 450, 450]);
+    expect(describirOperaciones()).not.toMatch(/ajustarLargo/);
   });
 });
 
