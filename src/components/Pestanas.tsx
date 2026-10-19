@@ -635,7 +635,7 @@ function MedidasTramo({ d, tramo, unidad }: { d: Diseno; tramo: TramoId; unidad:
           max={LIMITES_AEREOS.profundidad[1]}
           onCambio={(mm) => operar({ op: 'fijarAereos', profundidad: mm }, 'fondo-aereos')}
         />
-        {!a.cuadrado && forma !== 'U' && (
+        {forma !== 'U' && (
           <CampoMedida
             etiqueta="Largo"
             compacto
@@ -658,9 +658,14 @@ function MedidasTramo({ d, tramo, unidad }: { d: Diseno; tramo: TramoId; unidad:
             ]}
           />
         )}
+        {!a.cuadrado && (
+          <button type="button" className="boton secundario chico" onClick={() => operar({ op: 'fijarAereosCuadrados', cuadrado: true })}>
+            Cuadrar con el mueble
+          </button>
+        )}
         <p className="ayuda">
           {a.cuadrado
-            ? 'Iguales al mueble: siguen su forma y sus largos. Al cambiar un largo aquí quedan a medida.'
+            ? 'Iguales al mueble: siguen su forma y sus largos. Si cambias el largo aquí, el aéreo queda a medida, independiente del mueble.'
             : forma === 'U'
               ? 'En U el aéreo principal va de muro a muro.'
               : 'El alto y la altura valen para todos los aéreos.'}
@@ -673,7 +678,7 @@ function MedidasTramo({ d, tramo, unidad }: { d: Diseno; tramo: TramoId; unidad:
   if (!la) return null;
   return (
     <div className="opciones-globales espacios">
-      {!a.cuadrado && (
+      {(
         <CampoMedida
           etiqueta="Largo (desde el muro)"
           compacto
