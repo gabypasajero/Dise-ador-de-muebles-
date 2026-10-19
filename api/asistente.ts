@@ -22,6 +22,14 @@ export const config = { maxDuration: 60 };
 
 /** Modelo estable de Gemini (Flash: rápido y económico). Se cambia con GEMINI_MODEL. */
 const MODELO_POR_DEFECTO = 'gemini-3.8-flash';
+/** Modelo de respaldo si el principal está saturado (503). Se cambia con GEMINI_MODEL_RESPALDO. */
+const MODELO_RESPALDO = 'gemini-2.5-flash';
+
+/** Google responde 503/500 cuando el modelo tiene alta demanda: vale la pena reintentar. */
+function saturado(e: unknown): boolean {
+  const status = e instanceof ApiError ? e.status : 0;
+  return status === 503 || status === 500 || /overloaded|UNAVAILABLE|high demand/i.test(e instanceof Error ? e.message : String(e));
+}
 /** Tamaño máximo del cuerpo (el diseño va sin la imagen de los frentes). */
 const MAX_CUERPO = 300_000;
 const POR_MINUTO = 8;
@@ -116,9 +124,11 @@ export default {
 
     const modelo = process.env.GEMINI_MODEL?.trim() || MODELO_POR_DEFECTO;
     const ai = new GoogleGenAI({ apiKey: clave });
-    let respuesta;
-    try {
-      respuesta = await ai.models.generateContent({
+    const respaldo = process.env.GEMINI_MODEL_RESPALDO?.trim() || MODELO_RESPALDO;
+    // Si Google está saturado: un reintento con el mismo modelo y, si sigue, el modelo de respaldo.
+    const intentos = [modelo, modelo, ...(respaldo !== modelo ? [respaldo] : [])];
+    const pedir = (modelo: string) =>
+      ai.models.generateContent({
         model: modelo,
         contents: mensajeAsistente({
           instruccion,
@@ -134,12 +144,23 @@ export default {
           maxOutputTokens: 8192,
           // Los modelos Gemini 3 piensan antes de responder: «low» basta para planear y responde más rápido.
           ...(/^gemini-[3-9]/.test(modelo) ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } : {}),
-          httpOptions: { timeout: 50_000 },
+          httpOptions: { timeout: 25_000 },
         },
       });
-    } catch (e) {
-      return errorGemini(e);
+    let respuesta;
+    let fallo: unknown = null;
+    for (const [i, m] of intentos.entries()) {
+      if (i > 0) await new Promise((r) => setTimeout(r, 1200));
+      try {
+        respuesta = await pedir(m);
+        break;
+      } catch (e) {
+        // Si el respaldo no existe o falla distinto, se informa el error del modelo principal.
+        if (i < intentos.length - 1 || !fallo) fallo = e;
+        if (!saturado(e)) break;
+      }
     }
+    if (!respuesta) return errorGemini(fallo);
 
     if (respuesta.promptFeedback?.blockReason) return error('La IA no quiso responder esa instrucción. Escríbela de otra forma, solo sobre el diseño del mueble.', 422);
     const fin = respuesta.candidates?.[0]?.finishReason;
