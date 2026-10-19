@@ -43,9 +43,11 @@ async function modelosAlternativos(ai: GoogleGenAI, principal: string, respaldo:
     console.error('Gemini: no se pudo listar los modelos:', e instanceof Error ? e.message.slice(0, 200) : e);
   }
   const version = (n: string) => Number(n.match(/^gemini-(\d+(?:\.\d+)?)/)?.[1] ?? 0);
-  const orden = nombres.sort((a, b) => Number(/flash/.test(b)) - Number(/flash/.test(a)) || version(b) - version(a) || a.length - b.length);
+  // Los «lite» suelen estar menos saturados en el plan gratuito: van primero, luego los Flash más nuevos.
+  const puntaje = (n: string) => (/flash-lite/.test(n) ? 2 : /flash/.test(n) ? 1 : 0);
+  const orden = nombres.filter((n) => !/preview/.test(n)).sort((a, b) => puntaje(b) - puntaje(a) || version(b) - version(a) || a.length - b.length);
   console.error('Gemini: modelos alternativos', orden.slice(0, 8).join(', '));
-  return [...(nombres.includes(respaldo) ? [respaldo] : []), ...orden.filter((n) => n !== respaldo)].slice(0, 2);
+  return [...(nombres.includes(respaldo) ? [respaldo] : []), ...orden.filter((n) => n !== respaldo)].slice(0, 3);
 }
 
 /** Google responde 503/500 cuando el modelo tiene alta demanda: vale la pena reintentar. */
