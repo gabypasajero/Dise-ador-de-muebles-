@@ -168,7 +168,7 @@ export default {
           httpOptions: { timeout: 20_000 },
         },
       });
-    let respuesta;
+    let respuesta: Awaited<ReturnType<typeof pedir>> | undefined;
     let fallo: unknown = null;
     // Si Google está saturado: 2 intentos con el modelo principal y luego otros modelos de la cuenta.
     const intentar = async (m: string) => {
