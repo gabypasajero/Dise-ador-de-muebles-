@@ -110,7 +110,7 @@ export default {
     if (verificado instanceof Response) return verificado;
     if (!dentroDelLimite(verificado.id)) return error('Vas muy rápido: espera un minuto antes de pedir otro diseño.', 429);
 
-    const clave = process.env.GEMINI_API_KEY;
+    const clave = process.env.GEMINI_API_KEY || process.env.GEMINI_APY_KEY;
     if (!clave) return error('El asistente aún no está configurado (falta GEMINI_API_KEY en Vercel).', 503);
 
     let contexto;
