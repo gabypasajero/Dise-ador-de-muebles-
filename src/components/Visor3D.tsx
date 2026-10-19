@@ -236,13 +236,10 @@ const MAX_DATA_URL = 1_800_000;
  * frontal de todo el conjunto (tramo principal, lados de la L o la U, aéreos y campana mural),
  * centrado y con un margen parejo. La distancia se calcula exacta para que todo entre.
  */
-function encuadreCaptura(d: Diseno, aspecto: number, escena: string, altoReal: number | null) {
+function encuadreCaptura(d: Diseno, aspecto: number, altoReal: number | null) {
   const izq = d.lados?.izq ?? null;
   const der = d.lados?.der ?? null;
   const conLados = !!(izq || der);
-  const enU = !!(izq && der);
-  // Igual que el visor: la L se mira desde el lado abierto; la U casi de frente y más desde arriba.
-  const lado = enU ? (izq!.largo <= der!.largo ? 0.4 : -0.4) : izq ? -1 : der ? 1 : escena === 'cocina' ? 1 : -0.85;
   const caja = dimensionesTotales(d);
   const mural = ubicarEquipos(d).some((u) => u.tipo === 'campana' && u.montaje === 'mural');
   if (mural) caja.alto = Math.max(caja.alto, d.aereos.elevacion + 260);
@@ -266,8 +263,9 @@ function encuadreCaptura(d: Diseno, aspecto: number, escena: string, altoReal: n
   } else {
     pieza(caja.x0 / 1000, caja.x1 / 1000, H, caja.fondo / 1000);
   }
-  const el = enU ? 0.5 : 0.3;
-  const az = ANGULOS.perspectiva.az * lado;
+  // Siempre de frente y apenas desde arriba, como una foto de catálogo (la dueña lo pidió así).
+  const el = 0.1;
+  const az = 0;
   // Hacia la cámara, y los ejes derecha y arriba de la imagen.
   const dir = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el));
   const derecha = dir.clone().negate().cross(new THREE.Vector3(0, 1, 0)).normalize();
@@ -341,7 +339,7 @@ function Capturador() {
         const s = useApp.getState();
         const ocultas: THREE.Object3D[] = [];
         scene.traverse((o) => {
-          if ((o.name === 'cotas' || o.name === 'ayudas') && o.visible) ocultas.push(o);
+          if ((o.name === 'cotas' || o.name === 'ayudas' || o.name === 'escenario') && o.visible) ocultas.push(o);
         });
         const proporcion = gl.getPixelRatio();
         const tam = gl.getSize(new THREE.Vector2());
@@ -350,7 +348,7 @@ function Capturador() {
         const ancho = Math.min(CAPTURA.ancho, ...limites);
         const alto = Math.round((ancho * CAPTURA.alto) / CAPTURA.ancho);
         const camara = new THREE.PerspectiveCamera(CAPTURA.fov, ancho / alto, 0.03, 80);
-        const e = encuadreCaptura(s.diseno, ancho / alto, escenarioActual(s.escenario, s.producto, s.diseno), altoMueble(scene));
+        const e = encuadreCaptura(s.diseno, ancho / alto, altoMueble(scene));
         camara.position.copy(e.pos);
         camara.lookAt(e.objetivo);
         camara.updateProjectionMatrix();
@@ -443,7 +441,10 @@ export function Visor3D() {
       <color attach="background" args={['#f3f1ee']} />
       <Entorno />
       <Suspense fallback={null}>
-        <Escenario3D tipo={tipoEscena} diseno={diseno} />
+        {/* Con nombre para ocultarlo en la imagen de la cotización (fondo liso, solo el mueble). */}
+        <group name="escenario">
+          <Escenario3D tipo={tipoEscena} diseno={diseno} />
+        </group>
         <Mueble3D diseno={diseno} materiales={materiales} vista={{ abierto, cotas, etiquetasFrentes, unidad, modulos }} />
       </Suspense>
       <Camara />
