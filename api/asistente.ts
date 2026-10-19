@@ -25,6 +25,29 @@ const MODELO_POR_DEFECTO = 'gemini-3.8-flash';
 /** Modelo de respaldo si el principal está saturado (503). Se cambia con GEMINI_MODEL_RESPALDO. */
 const MODELO_RESPALDO = 'gemini-3.8-flash-lite';
 
+/**
+ * Otros modelos de texto de la cuenta para cuando el principal está saturado: primero el de
+ * respaldo configurado (si existe en la cuenta) y luego los Flash y Pro más nuevos. Máximo 2.
+ */
+async function modelosAlternativos(ai: GoogleGenAI, principal: string, respaldo: string): Promise<string[]> {
+  const nombres: string[] = [];
+  try {
+    const pagina = await ai.models.list({ config: { pageSize: 200 } });
+    for await (const m of pagina) {
+      const nombre = (m.name ?? '').replace(/^models\//, '');
+      if (!/^gemini-/.test(nombre) || !(m.supportedActions ?? []).includes('generateContent')) continue;
+      if (/image|tts|audio|live|embed|vision|robotics|computer|preview-\d\d-\d\d/i.test(nombre)) continue;
+      if (nombre !== principal) nombres.push(nombre);
+    }
+  } catch (e) {
+    console.error('Gemini: no se pudo listar los modelos:', e instanceof Error ? e.message.slice(0, 200) : e);
+  }
+  const version = (n: string) => Number(n.match(/^gemini-(\d+(?:\.\d+)?)/)?.[1] ?? 0);
+  const orden = nombres.sort((a, b) => Number(/flash/.test(b)) - Number(/flash/.test(a)) || version(b) - version(a) || a.length - b.length);
+  console.error('Gemini: modelos alternativos', orden.slice(0, 8).join(', '));
+  return [...(nombres.includes(respaldo) ? [respaldo] : []), ...orden.filter((n) => n !== respaldo)].slice(0, 2);
+}
+
 /** Google responde 503/500 cuando el modelo tiene alta demanda: vale la pena reintentar. */
 function saturado(e: unknown): boolean {
   const status = e instanceof ApiError ? e.status : 0;
@@ -125,8 +148,6 @@ export default {
     const modelo = process.env.GEMINI_MODEL?.trim() || MODELO_POR_DEFECTO;
     const ai = new GoogleGenAI({ apiKey: clave });
     const respaldo = process.env.GEMINI_MODEL_RESPALDO?.trim() || MODELO_RESPALDO;
-    // Si Google está saturado: hasta 3 intentos con el modelo principal (con pausa) y luego el respaldo, si existe.
-    const intentos = [modelo, modelo, modelo, ...(respaldo !== modelo ? [respaldo] : [])];
     const pedir = (modelo: string) =>
       ai.models.generateContent({
         model: modelo,
@@ -149,16 +170,21 @@ export default {
       });
     let respuesta;
     let fallo: unknown = null;
-    for (const [i, m] of intentos.entries()) {
-      if (i > 0) await new Promise((r) => setTimeout(r, 1500 * i));
+    // Si Google está saturado: 2 intentos con el modelo principal y luego otros modelos de la cuenta.
+    const intentar = async (m: string) => {
       try {
         respuesta = await pedir(m);
-        break;
+        return true;
       } catch (e) {
-        console.error(`Gemini intento ${i + 1} (${m}):`, e instanceof Error ? e.message.slice(0, 200) : e);
-        // Se informa el error del modelo principal (el respaldo puede no existir en la cuenta).
+        console.error(`Gemini (${m}):`, e instanceof Error ? e.message.slice(0, 200) : e);
         if (m === modelo) fallo = e;
-        if (!saturado(e)) break;
+        return false;
+      }
+    };
+    if (!(await intentar(modelo)) && saturado(fallo)) {
+      await new Promise((r) => setTimeout(r, 1500));
+      if (!(await intentar(modelo)) && saturado(fallo)) {
+        for (const m of await modelosAlternativos(ai, modelo, respaldo)) if (await intentar(m)) break;
       }
     }
     if (!respuesta) return errorGemini(fallo);
