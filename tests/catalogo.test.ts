@@ -110,3 +110,68 @@ describe('clasificación del catálogo de la tienda', () => {
     }
   });
 });
+
+describe('muebles de cocina nuevos de la tienda', () => {
+  const de = (id: number) => disenoInicial(clasificarProducto(productos.find((p) => p.id === id)!));
+
+  it('lee medidas con el orden indicado en la ficha', () => {
+    expect(leerMedidas('90 x 180 x 55 cm (alto x ancho x fondo)')).toEqual({ ancho: 1800, alto: 900, profundidad: 550 });
+    expect(leerMedidas('60 × 150 × 90 cm')).toEqual({ ancho: 1500, alto: 900, profundidad: 600 });
+  });
+
+  it('cocina L con horno: horno con encimera de 4, 3 cajones, puerta y lavaplatos doble', () => {
+    const d = de(158);
+    expect(d.ancho).toBe(1500);
+    expect(d.cuerpos.map((c) => c.tipo)).toEqual(['horno', 'frentes', 'frentes']);
+    expect(d.cuerpos[1].cajones).toBe(3);
+    const enc = d.equipos.find((e) => e.tipo === 'encimera');
+    const lav = d.equipos.find((e) => e.tipo === 'lavaplatos');
+    expect(enc && enc.tipo === 'encimera' && enc.platos).toBe('4');
+    expect(enc?.modulo).toBe(d.cuerpos[0].id);
+    expect(lav && lav.tipo === 'lavaplatos' && lav.modelo).toBe('doble');
+  });
+
+  it('XL con horno: 180 × 90 × 55, puertas con lavaplatos, cajones y horno con encimera, en rojo con cubierta Módena', () => {
+    const d = de(159);
+    expect([d.ancho, d.alto, d.profundidad]).toEqual([1800, 900, 550]);
+    expect(d.cuerpos.map((c) => c.tipo)).toEqual(['frentes', 'frentes', 'horno']);
+    expect(d.cuerpos.reduce((s, c) => s + c.ancho, 0)).toBe(1800);
+    expect(d.cuerpos[0].puertas).toBe(2);
+    expect(d.cuerpos[1].cajones).toBe(3);
+    expect(d.equipos.find((e) => e.tipo === 'encimera')?.modulo).toBe(d.cuerpos[2].id);
+    expect(d.equipos.find((e) => e.tipo === 'lavaplatos')?.modulo).toBe(d.cuerpos[0].id);
+    expect(d.materiales.frente).toBe('rojo');
+    expect(d.materiales.cubierta).toBe('modena');
+  });
+
+  it('XL con encimera y lavaplatos: 4 puertas y 3 cajones en verde glaciar', () => {
+    const d = de(160);
+    expect([d.ancho, d.alto, d.profundidad]).toEqual([1800, 900, 550]);
+    expect(d.cuerpos.map((c) => [c.puertas, c.cajones])).toEqual([[2, 0], [0, 3], [2, 0]]);
+    expect(d.materiales.frente).toBe('verde-glaciar');
+    expect(d.materiales.cubierta).toBe('modena');
+  });
+
+  it('ningún mueble de cocina de la tienda abre como genérico', () => {
+    for (const p of productos.filter((x) => x.categoria === 'cocina')) {
+      const c = clasificarProducto(p);
+      const d = disenoInicial(c);
+      expect(d.alto, p.nombre).toBeGreaterThanOrEqual(c.plantilla === 'compacto' ? 1500 : 850);
+      expect(d.cuerpos.reduce((s, x) => s + x.ancho, 0), p.nombre).toBe(d.ancho);
+      if (/horno/i.test(p.nombre)) expect(d.cuerpos.some((x) => x.tipo === 'horno'), p.nombre).toBe(true);
+      if (/lavaplatos/i.test(p.nombre)) expect(d.equipos.some((e) => e.tipo === 'lavaplatos'), p.nombre).toBe(true);
+    }
+  });
+
+  it('arma una cocina nueva desconocida leyendo su ficha', () => {
+    const d = disenoInicial(
+      clasificarProducto({ id: 9999, nombre: 'Mueble de cocina 200 con horno, encimera 4 quemadores, lavaplatos, 4 puertas y 3 cajones', categoria: 'cocina', descripcion: null, medidas: '60 × 200 × 90 cm', precio: 1, precio_oferta: null, imagen_url: null, personalizable: false, destacado: false, orden: 9 }),
+    );
+    expect(d.ancho).toBe(2000);
+    expect(d.cuerpos.reduce((s, x) => s + x.ancho, 0)).toBe(2000);
+    expect(d.cuerpos.some((x) => x.tipo === 'horno')).toBe(true);
+    expect(d.cuerpos.some((x) => x.cajones === 3)).toBe(true);
+    expect(d.cuerpos.filter((x) => x.puertas > 0).reduce((s, x) => s + x.puertas, 0)).toBe(4);
+    expect(d.equipos.map((e) => e.tipo).sort()).toEqual(['encimera', 'lavaplatos']);
+  });
+});

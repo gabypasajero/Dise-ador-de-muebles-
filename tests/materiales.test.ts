@@ -8,7 +8,9 @@ const catalogo = JSON.parse(fs.readFileSync(RUTA, 'utf8')) as CatalogoMateriales
 const grupos = { melaminas: catalogo.melaminas, cubiertas: catalogo.cubiertas, tiradores: catalogo.tiradores };
 
 const MELAMINAS_COCINA = ['gris-blanqueado', 'pino-casina', 'pino-nebraska', 'verde-salvia', 'rojo'];
-const CUBIERTAS_OFICIALES = ['clasic', 'florentino', 'granito', 'granito-beige', 'calacatta', 'granito-negro'];
+const CUBIERTAS_OFICIALES = ['clasic', 'florentino', 'granito', 'granito-beige', 'calacatta', 'granito-negro', 'modena'];
+/** Colores de los muebles XL de la tienda (sin muestra fotográfica todavía: color liso). */
+const MELAMINAS_COCINA_LISAS = ['verde-glaciar', 'gris-sombra'];
 const TIPOS = ['liso', 'madera', 'marmol', 'granito', 'concreto'];
 
 function porId(lista: Material[], id: string): Material {
@@ -103,11 +105,16 @@ describe('materiales.json', () => {
     expect(porId(catalogo.melaminas, 'pino-nebraska').tipo).toBe('madera');
     expect(porId(catalogo.melaminas, 'verde-salvia').tipo).toBe('liso');
     expect(porId(catalogo.melaminas, 'rojo').tipo).toBe('liso');
+    for (const id of MELAMINAS_COCINA_LISAS) {
+      const m = porId(catalogo.melaminas, id);
+      expect(m.cocina, id).toBe(true);
+      expect(m.tipo, id).toBe('liso');
+    }
     // Solo esas son exclusivas de cocina.
-    expect(catalogo.melaminas.filter((m) => m.cocina).map((m) => m.id).sort()).toEqual([...MELAMINAS_COCINA].sort());
+    expect(catalogo.melaminas.filter((m) => m.cocina).map((m) => m.id).sort()).toEqual([...MELAMINAS_COCINA, ...MELAMINAS_COCINA_LISAS].sort());
   });
 
-  it('están las 6 cubiertas postformadas oficiales, primero', () => {
+  it('están las 7 cubiertas postformadas oficiales, primero', () => {
     const oficiales = catalogo.cubiertas.filter((m) => m.origen === 'catalogo-dto').map((m) => m.id);
     expect([...oficiales].sort()).toEqual([...CUBIERTAS_OFICIALES].sort());
     expect(catalogo.cubiertas.slice(0, CUBIERTAS_OFICIALES.length).map((m) => m.id).sort()).toEqual([...CUBIERTAS_OFICIALES].sort());

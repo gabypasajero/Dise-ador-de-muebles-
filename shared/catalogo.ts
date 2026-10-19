@@ -42,17 +42,32 @@ export function cuerpo(parcial: Partial<Cuerpo> & { ancho: number }): Cuerpo {
   };
 }
 
-/** Lee medidas "P × A × H cm" de la ficha de la tienda (profundidad × ancho × alto). */
+/**
+ * Lee las medidas de la ficha de la tienda. Por defecto vienen como "P × A × H cm"
+ * (profundidad × ancho × alto), pero si la ficha dice el orden, por ejemplo
+ * "90 x 180 x 55 cm (alto x ancho x fondo)", se respeta ese orden.
+ */
 export function leerMedidas(texto: string | null): { ancho: number; alto: number; profundidad: number } | null {
   if (!texto) return null;
-  const numeros = texto
+  const [cifras, etiquetas = ''] = texto.split('(');
+  const numeros = cifras
     .replace(/,/g, '.')
     .split(/[x×X*]/)
     .map((s) => parseFloat(s.replace(/[^\d.]/g, '')))
     .filter((n) => Number.isFinite(n) && n > 0);
   if (numeros.length !== 3) return null;
-  const factor = /mm/i.test(texto) ? 1 : /\bm\b/i.test(texto) && !/cm/i.test(texto) ? 1000 : 10;
-  const [profundidad, ancho, alto] = numeros.map((n) => Math.round(n * factor));
+  const factor = /mm/i.test(cifras) ? 1 : /\bm\b/i.test(cifras) && !/cm/i.test(cifras) ? 1000 : 10;
+  const valores = numeros.map((n) => Math.round(n * factor));
+  const orden = etiquetas
+    .toLowerCase()
+    .split(/[x×*]/)
+    .map((s) => (/alto|altura/.test(s) ? 'alto' : /ancho|largo|frente/.test(s) ? 'ancho' : /fondo|prof/.test(s) ? 'profundidad' : null));
+  if (orden.length === 3 && new Set(orden).size === 3 && !orden.includes(null)) {
+    const m = { ancho: 0, alto: 0, profundidad: 0 };
+    orden.forEach((k, i) => (m[k as keyof typeof m] = valores[i]));
+    return m;
+  }
+  const [profundidad, ancho, alto] = valores;
   return { ancho, alto, profundidad };
 }
 
@@ -108,6 +123,7 @@ function medidasEstimadas(p: ProductoTienda, plantilla: Plantilla) {
     case 'cocina':
       if (/encimera,? 2 puertas y 3 cajones/.test(n)) return { ancho: 1000, alto: 900, profundidad: 550 };
       if (/encimera y 2 puertas/.test(n)) return { ancho: 800, alto: 900, profundidad: 550 };
+      if (/\bxl\b/.test(n)) return { ancho: 1800, alto: 900, profundidad: 550 };
       return { ancho: 1500, alto: 900, profundidad: 600 };
     case 'compacto':
       if (/5\s*c\b/.test(n)) return { ancho: 1800, alto: 1900, profundidad: 400 };
@@ -164,8 +180,27 @@ export function coloresDeVariante(variante: string | null): { cubierta?: string;
   else if (v.includes('pino casina')) out.frente = 'pino-casina';
   else if (v.includes('pino nebraska')) out.frente = 'pino-nebraska';
   else if (v.includes('verde salvia')) out.frente = 'verde-salvia';
+  else if (/verde.glaciar/.test(v)) out.frente = 'verde-glaciar';
+  else if (/gris.sombra/.test(v)) out.frente = 'gris-sombra';
   else if (/\brojo\b/.test(v)) out.frente = 'rojo';
+  if (!out.cubierta && /m[oó]dena/.test(v)) out.cubierta = 'modena';
   return out;
+}
+
+/**
+ * Colores de un producto de cocina: primero la variante del nombre ("· Clasic Pino Casina");
+ * si no trae, el color de la foto publicada (p. ej. "...-verde-glaciar.jpg") y la cubierta
+ * nombrada en el título (p. ej. "cubierta Módena").
+ */
+export function coloresDeProducto(p: Pick<ProductoCatalogo, 'variante' | 'nombre' | 'imagen_url'>): { cubierta?: string; frente?: string } {
+  const deVariante = coloresDeVariante(p.variante);
+  const foto = (p.imagen_url ?? '').toLowerCase().split('/').pop() ?? '';
+  const deFoto = coloresDeVariante(foto.replace(/[-_.]/g, ' '));
+  const deNombre = coloresDeVariante(p.nombre);
+  return {
+    cubierta: deVariante.cubierta ?? deNombre.cubierta ?? deFoto.cubierta,
+    frente: deVariante.frente ?? deFoto.frente ?? deNombre.frente,
+  };
 }
 
 function base(plantilla: Plantilla, medidas: { ancho: number; alto: number; profundidad: number }): Diseno {
@@ -237,6 +272,118 @@ function numero(texto: string, patron: RegExp, defecto: number): number {
   return m ? parseInt(m[1], 10) : defecto;
 }
 
+/**
+ * Módulos y equipamiento de un mueble de cocina de la tienda. Primero los modelos conocidos
+ * (calcados de sus fotos); cualquier otro se arma leyendo su nombre y descripción (horno,
+ * encimera de N platos o quemadores, lavaplatos, N puertas, N cajones), para que un producto
+ * nuevo nunca abra un mueble genérico.
+ */
+function armarCocina(d: Diseno, p: ProductoCatalogo, util: number) {
+  const n = p.nombre.toLowerCase();
+  const texto = `${n} ${(p.descripcion ?? '').toLowerCase()}`;
+  const platos = (): '3' | '4' => (/4\s*(quemadores|platos)/.test(texto) ? '4' : '3');
+  const horno = 600;
+
+  if (/full equipo/.test(n)) {
+    // Horno (60 cm) con la encimera encima, cajonera y una puerta con el lavaplatos.
+    const [b, c] = repartir(util - horno, [450, 450]);
+    d.cuerpos = [
+      cuerpo({ tipo: 'horno', ancho: horno }),
+      cuerpo({ ancho: b, cajones: 3 }),
+      cuerpo({ ancho: c, puertas: 1, bisagra: 'der', repisas: 1 }),
+    ];
+    d.equipos = [encimera(d.cuerpos[0].id, '4'), lavaplatos(d.cuerpos[2].id)];
+    return;
+  }
+  if (/cocina l con horno/.test(n)) {
+    // "Mueble de cocina L": horno con encimera de 4 quemadores, 3 cajones y una puerta,
+    // con lavaplatos doble sobre los cajones y la puerta (foto de la tienda).
+    const [b, c] = repartir(util - horno, [450, 450]);
+    d.cuerpos = [
+      cuerpo({ tipo: 'horno', ancho: horno }),
+      cuerpo({ ancho: b, cajones: 3 }),
+      cuerpo({ ancho: c, puertas: 1, bisagra: 'der', repisas: 1 }),
+    ];
+    d.equipos = [encimera(d.cuerpos[0].id, platos() === '3' ? '4' : platos()), lavaplatos(d.cuerpos[2].id, 'doble')];
+    return;
+  }
+  if (/\bxl\b/.test(n) && /horno/.test(n)) {
+    // XL de 180 cm con horno: 2 puertas con el lavaplatos, 3 cajones y el horno con la encimera.
+    const [a, b] = repartir(util - horno, [700, 500]);
+    d.cuerpos = [
+      cuerpo({ ancho: a, puertas: 2, repisas: 1 }),
+      cuerpo({ ancho: b, cajones: 3 }),
+      cuerpo({ tipo: 'horno', ancho: horno }),
+    ];
+    d.equipos = [lavaplatos(d.cuerpos[0].id), encimera(d.cuerpos[2].id, platos())];
+    return;
+  }
+  if (/\bxl\b/.test(n)) {
+    // XL de 180 cm: 2 puertas con el lavaplatos, 3 cajones y 2 puertas con la encimera.
+    const [a, b, c] = repartir(util, [670, 460, 670]);
+    d.cuerpos = [
+      cuerpo({ ancho: a, puertas: 2, repisas: 1 }),
+      cuerpo({ ancho: b, cajones: 3 }),
+      cuerpo({ ancho: c, puertas: 2, repisas: 1 }),
+    ];
+    d.equipos = [lavaplatos(d.cuerpos[0].id), encimera(d.cuerpos[2].id, platos())];
+    return;
+  }
+  if (/encimera y lavaplatos/.test(n) && !/horno/.test(n)) {
+    const [a, b] = repartir(util, [1, 2]);
+    d.cuerpos = [cuerpo({ ancho: a, cajones: 3 }), cuerpo({ ancho: b, puertas: 2, repisas: 1 })];
+    d.equipos = [encimera(d.cuerpos[0].id, platos()), lavaplatos(d.cuerpos[1].id)];
+    return;
+  }
+  if (/encimera,? 2 puertas y 3 cajones/.test(n)) {
+    const [a, b] = repartir(util, [2, 3]);
+    d.cuerpos = [cuerpo({ ancho: a, cajones: 3 }), cuerpo({ ancho: b, puertas: 2, repisas: 1 })];
+    d.equipos = [encimera(d.cuerpos[1].id, platos())];
+    return;
+  }
+  if (/encimera y 2 puertas/.test(n)) {
+    d.cuerpos = [cuerpo({ ancho: util, puertas: 2, repisas: 1 })];
+    d.equipos = [encimera(d.cuerpos[0].id, platos())];
+    return;
+  }
+
+  // Cualquier otro mueble de cocina: se arma con lo que dice su ficha.
+  const conHorno = /horno/.test(texto);
+  const conLavaplatos = /lavaplatos/.test(texto);
+  const conEncimera = /encimera|quemadores|platos/.test(texto) || conHorno;
+  const cajones = numero(texto, /(\d+)\s*cajon/, /cajon/.test(texto) ? 3 : 0);
+  const puertas = numero(texto, /(\d+)\s*puerta/, 2);
+  const cuerpos: Cuerpo[] = [];
+  const conPuertas: Cuerpo[] = [];
+  const resto = util - (conHorno ? horno : 0) - (cajones ? 450 : 0);
+  const modulosPuertas = Math.max(1, Math.ceil(puertas / 2));
+  const anchos = repartir(Math.max(resto, 150 * modulosPuertas), Array(modulosPuertas).fill(1));
+  let quedan = puertas;
+  for (const ancho of anchos) {
+    const c = cuerpo({ ancho, puertas: Math.min(2, Math.max(1, quedan)), repisas: 1 });
+    quedan -= c.puertas;
+    conPuertas.push(c);
+  }
+  if (conPuertas.length) cuerpos.push(conPuertas[0]);
+  if (cajones) cuerpos.push(cuerpo({ ancho: 450, cajones: Math.min(cajones, 5) }));
+  cuerpos.push(...conPuertas.slice(1));
+  if (conHorno) cuerpos.push(cuerpo({ tipo: 'horno', ancho: horno }));
+  // Ajusta para que la suma calce exacto con el ancho del mueble.
+  const suma = cuerpos.reduce((s, c) => s + c.ancho, 0);
+  const primero = cuerpos.find((c) => c.tipo === 'frentes') ?? cuerpos[0];
+  primero.ancho += util - suma;
+  d.cuerpos = cuerpos;
+  const equipos: Diseno['equipos'] = [];
+  const hornoC = cuerpos.find((c) => c.tipo === 'horno');
+  const puertasC = cuerpos.filter((c) => c.tipo === 'frentes' && c.puertas > 0);
+  if (conLavaplatos && puertasC[0]) equipos.push(lavaplatos(puertasC[0].id, /lavaplatos doble|doble lavaplatos/.test(texto) ? 'doble' : 'simple'));
+  if (conEncimera) {
+    const destino = hornoC ?? puertasC[conLavaplatos ? 1 : 0] ?? cuerpos.find((c) => c.tipo === 'frentes' && c.cajones > 0) ?? cuerpos[0];
+    equipos.push(encimera(destino.id, platos()));
+  }
+  d.equipos = equipos;
+}
+
 /** Arma el diseño inicial (editable) a partir de un producto de la tienda. */
 export function disenoInicial(p: ProductoCatalogo): Diseno {
   const d = base(p.plantilla, p.medidasBase);
@@ -247,29 +394,8 @@ export function disenoInicial(p: ProductoCatalogo): Diseno {
 
   switch (p.plantilla) {
     case 'cocina': {
-      if (/full equipo/.test(n)) {
-        // El horno empotrado mide siempre 60 cm: el resto se reparte entre cajones y puerta.
-        const a = 600;
-        const [b, c] = repartir(util - a, [450, 450]);
-        d.cuerpos = [
-          cuerpo({ tipo: 'horno', ancho: a }),
-          cuerpo({ ancho: b, cajones: 3 }),
-          cuerpo({ ancho: c, puertas: 1, bisagra: 'der', repisas: 1 }),
-        ];
-        d.equipos = [encimera(d.cuerpos[0].id, '4'), lavaplatos(d.cuerpos[2].id)];
-      } else if (/lavaplatos/.test(n)) {
-        const [a, b] = repartir(util, [1, 2]);
-        d.cuerpos = [cuerpo({ ancho: a, cajones: 3 }), cuerpo({ ancho: b, puertas: 2, repisas: 1 })];
-        d.equipos = [encimera(d.cuerpos[0].id, '3'), lavaplatos(d.cuerpos[1].id)];
-      } else if (/3 cajones/.test(n)) {
-        const [a, b] = repartir(util, [2, 3]);
-        d.cuerpos = [cuerpo({ ancho: a, cajones: 3 }), cuerpo({ ancho: b, puertas: 2, repisas: 1 })];
-        d.equipos = [encimera(d.cuerpos[1].id, '3')];
-      } else {
-        d.cuerpos = [cuerpo({ ancho: util, puertas: 2, repisas: 1 })];
-        d.equipos = [encimera(d.cuerpos[0].id, '3')];
-      }
-      const colores = coloresDeVariante(p.variante);
+      armarCocina(d, p, util);
+      const colores = coloresDeProducto(p);
       if (colores.cubierta) d.materiales.cubierta = colores.cubierta;
       if (colores.frente) d.materiales.frente = colores.frente;
       break;
