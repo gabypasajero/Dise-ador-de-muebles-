@@ -47,6 +47,7 @@ import {
   resolverTramo,
   rolModulo,
   sepDe,
+  SIN_TOPE,
   TRAMOS_AEREOS,
   TRAMOS_BASE,
 } from './tramos';
@@ -128,13 +129,13 @@ export interface Limites {
 }
 
 export const LIMITES: Record<Plantilla, Limites> = {
-  cocina: { ancho: [400, 3600], alto: [700, 1000], profundidad: [450, 700] },
-  compacto: { ancho: [600, 2400], alto: [1500, 2300], profundidad: [350, 650] },
-  'cocina-infantil': { ancho: [500, 1500], alto: [800, 1300], profundidad: [250, 450] },
-  closet: { ancho: [400, 3000], alto: [1200, 2600], profundidad: [300, 650] },
-  comoda: { ancho: [400, 2000], alto: [500, 1400], profundidad: [300, 600] },
-  tocador: { ancho: [600, 1800], alto: [1000, 2000], profundidad: [300, 600] },
-  escritorio: { ancho: [700, 2600], alto: [500, 2400], profundidad: [350, 700] },
+  cocina: { ancho: [400, SIN_TOPE], alto: [700, SIN_TOPE], profundidad: [450, SIN_TOPE] },
+  compacto: { ancho: [600, SIN_TOPE], alto: [1500, SIN_TOPE], profundidad: [350, SIN_TOPE] },
+  'cocina-infantil': { ancho: [500, SIN_TOPE], alto: [800, SIN_TOPE], profundidad: [250, SIN_TOPE] },
+  closet: { ancho: [400, SIN_TOPE], alto: [1200, SIN_TOPE], profundidad: [300, SIN_TOPE] },
+  comoda: { ancho: [400, SIN_TOPE], alto: [500, SIN_TOPE], profundidad: [300, SIN_TOPE] },
+  tocador: { ancho: [600, SIN_TOPE], alto: [1000, SIN_TOPE], profundidad: [300, SIN_TOPE] },
+  escritorio: { ancho: [700, SIN_TOPE], alto: [500, SIN_TOPE], profundidad: [350, SIN_TOPE] },
 };
 
 /** Nombre heredado de LIMITES_LADO. */

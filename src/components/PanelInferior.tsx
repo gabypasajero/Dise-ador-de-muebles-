@@ -39,7 +39,7 @@ function FilaMedida({
         aria-label={`${nombre}, deslizador de ${rango}`}
         title={rango}
         min={limites[0]}
-        max={limites[1]}
+        max={Math.min(limites[1], Math.max(valor * 2, limites[0] * 2))}
         step={unidad === 'cm' ? 10 : 1}
         value={valor}
         onChange={(e) => onCambio(Number(e.target.value))}
