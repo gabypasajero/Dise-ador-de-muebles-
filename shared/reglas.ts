@@ -318,10 +318,10 @@ function ajustarTramo(d: Diseno, t: TramoId, objetivo: number, conEquipados = tr
  * quedan iguales salvo los que topan su máximo (cajonera de 90 cm) o su mínimo. `minimos`
  * sube el mínimo de algún módulo. null si los ajustables no caben o no alcanzan a llenarlo.
  */
-function anchosParejos(d: Diseno, t: TramoId, cs: Cuerpo[], total: number, conservar: Cuerpo[] = [], minimos = new Map<Cuerpo, number>()): number[] | null {
+function anchosParejos(d: Diseno, t: TramoId, cs: Cuerpo[], total: number, conservar: Cuerpo[] = [], minimos = new Map<Cuerpo, number>(), hastaNivel: 1 | 2 | 3 = 3): number[] | null {
   // Primero solo las cajoneras (o abatibles); si no alcanza, también los módulos de puertas
   // (sus 35 cm por puerta son el estándar, no un tope) y, al final, los que llevan equipamiento.
-  for (const nivel of [1, 2, 3] as const) {
+  for (const nivel of ([1, 2, 3] as const).filter((n) => n <= hastaNivel)) {
     const r = anchosParejosNivel(d, t, cs, total, conservar, minimos, nivel);
     if (r) return r;
   }
@@ -1006,7 +1006,9 @@ function opAgregar(out: Diseno, ctx: CtxOp, tramo: Tramo, tipo: Cuerpo['tipo'], 
         const libre = total - sumar(cs.filter((c) => c !== nuevo && !resto.includes(c)).map((c) => c.ancho)) - sumar(resto.map((c) => limitesReparto(out, t, c).min));
         nuevo.ancho = Math.max(minimo, Math.min(deseado, libre));
       }
-      anchos = anchosParejos(out, t, cs, total, [nuevo]);
+      // El nuevo conserva su medida mientras basten cajoneras y puertas; si no, también se ajusta y
+      // todos quedan parejos.
+      anchos = anchosParejos(out, t, cs, total, [nuevo], undefined, 2);
     }
     anchos = anchos ?? anchosParejos(out, t, cs, total, [], minimos);
     if (!anchos) rechazar(`No cabe «${texto}» en la medida ${delTramo(out, t)} (${cm(largo)}). ${recomendacion(out, t, cs, total)}`);

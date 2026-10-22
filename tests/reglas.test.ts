@@ -134,7 +134,7 @@ describe('operaciones sobre el diseño', () => {
     // y el módulo del lavaplatos (nivel 3, hasta su mínimo) y la puerta nueva entra con 35 cm.
     expect(anchoDisponible(d, 'frentes', puerta.ancho)).toBe(350);
     const chica = agregarModulo(d, puerta);
-    expect(chica.cuerpos.map((x) => x.ancho)).toEqual([600, 275, 275, 350]);
+    expect(chica.cuerpos.map((x) => x.ancho)).toEqual([600, 300, 300, 300]);
     expect(chica.ancho).toBe(d.ancho);
     expect(validarDiseno(chica)).toEqual([]);
     const c = conCajoneras(d, [900, 900]);

@@ -851,7 +851,7 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
           valor={c.ancho}
           unidad={unidad}
           min={lim.min}
-          max={Number.isFinite(lim.max) ? lim.max : Math.max(lim.min, maximoTramo(d, tramo))}
+          max={Math.max(lim.min, maximoTramo(d, tramo))}
           deshabilitado={bloqueado}
           onCambio={(mm) => operar({ op: 'fijarAnchoModulo', tramo, modulo: c.id, ancho: mm }, `ancho-cuerpo-${c.id}`)}
         />
