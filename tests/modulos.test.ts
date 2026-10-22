@@ -1,7 +1,8 @@
 // Módulos: largo fijo al agregar y quitar (en las cocinas solo ceden las cajoneras y los abatibles),
 // cajoneras de hasta 90 cm, puertas de 35 cm, especiero y apertura de las puertas.
+import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { cuerpo, disenoLibre } from '../shared/catalogo';
+import { clasificarProducto, cuerpo, disenoInicial, disenoLibre } from '../shared/catalogo';
 import { aperturaAjustable, bisagraDe, calcularLayout, calcularLayoutAereos, disenoLado } from '../shared/layout';
 import {
   ANCHO_ESPECIERO,
@@ -16,6 +17,7 @@ import {
   fijarAncho,
   fijarAnchoCuerpo,
   fijarForma,
+  fijarLado,
   limitesModulo,
   normalizar,
   presetsModulo,
@@ -24,7 +26,7 @@ import {
 } from '../shared/reglas';
 import { repartirParejo } from '../shared/reparto';
 import { validarDiseno } from '../shared/validar';
-import type { Cuerpo, Diseno, Tramo } from '../shared/tipos';
+import type { Cuerpo, Diseno, ProductoTienda, Tramo } from '../shared/tipos';
 
 const preset = (id: string, tramo: Tramo = 'base', p: Diseno['plantilla'] = 'cocina') => presetsModulo(p, tramo).find((x) => x.id === id)!;
 const anchos = (d: Diseno, t: Tramo = 'base') => cuerposDe(d, t).map((c) => c.ancho);
@@ -88,7 +90,8 @@ describe('el mueble no crece ni se achica al agregar o quitar módulos', () => {
     // El espacio libre entra con 50 cm y conserva su ancho al agregar y quitar otros módulos.
     let l = agregarModulo(d0, preset('hueco'), 4);
     expect(anchos(l)).toEqual([600, 734, 350, 733, 500, 733]);
-    expect(rolModulo(l, 'base', l.cuerpos[4])).toBe('equipado');
+    // Ahora es ajustable (20 a 50 cm), pero mientras las cajoneras alcanzan no se toca.
+    expect(rolModulo(l, 'base', l.cuerpos[4])).toBe('ajustable');
     l = agregarModulo(l, preset('puerta'), 1);
     expect(anchos(l)).toEqual([600, 350, 617, 350, 617, 500, 616]);
     l = quitarCuerpo(l, 1);
@@ -97,24 +100,31 @@ describe('el mueble no crece ni se achica al agregar o quitar módulos', () => {
     for (const x of [h, e, l]) expect(x.ancho).toBe(3650);
   });
 
-  it('las cajoneras nunca quedan bajo 60 cm ni sobre 90 cm al agregar o quitar', () => {
+  it('las cajoneras quedan entre 60 y 90 cm al agregar o quitar mientras ellas solas alcanzan', () => {
     let d = cocinaConCajoneras([900, 900, 900]);
     const ops = ['puerta', 'dos-puertas', 'puerta', 'especiero', 'puerta', 'cajonera', 'dos-puertas'];
-    let rechazos = 0;
+    let soloCajoneras = 0;
+    // Si ninguno de los demás módulos cambió, el reparto fue de nivel 1 y las cajoneras quedan en 60–90 cm.
+    const revisar = (antes: Diseno, despues: Diseno) => {
+      const previos = new Map(antes.cuerpos.map((c) => [c.id, c.ancho]));
+      const otros = despues.cuerpos.filter((c) => previos.has(c.id) && !cajonerasDe(despues).includes(c));
+      if (otros.some((c) => c.ancho !== previos.get(c.id))) return;
+      soloCajoneras++;
+      // (Una cajonera que ya medía menos de 60 cm no se achica más.)
+      for (const c of cajonerasDe(despues).filter((c) => previos.has(c.id))) {
+        expect(c.ancho).toBeGreaterThanOrEqual(Math.min(600, previos.get(c.id)!));
+        expect(c.ancho).toBeLessThanOrEqual(900);
+      }
+    };
     for (const id of ops) {
       const r = ejecutar(d, { op: 'agregarModulo', tramo: 'base', preset: id, posicion: 1 });
-      if (!r.ok) {
-        rechazos++;
-        continue;
-      }
+      if (!r.ok) continue;
+      revisar(d, r.diseno);
       d = r.diseno;
       expect(d.ancho).toBe(3650);
-      for (const c of cajonerasDe(d)) {
-        expect(c.ancho, id).toBeGreaterThanOrEqual(600);
-        expect(c.ancho, id).toBeLessThanOrEqual(900);
-      }
+      expect(validarDiseno(d)).toEqual([]);
     }
-    expect(rechazos).toBeGreaterThan(0);
+    expect(soloCajoneras).toBeGreaterThan(0);
     while (true) {
       const i = d.cuerpos.findIndex((c, k) => k > 0 && c.tipo === 'frentes' && c.puertas > 0 && !d.equipos.some((e) => e.modulo === c.id));
       if (i < 0) break;
@@ -123,19 +133,15 @@ describe('el mueble no crece ni se achica al agregar o quitar módulos', () => {
         expect(r.motivo).toMatch(/sin cubrir: agrega una cajonera/);
         break;
       }
+      revisar(d, r.diseno);
       d = r.diseno;
       expect(d.ancho).toBe(3650);
-      for (const c of cajonerasDe(d)) {
-        expect(c.ancho).toBeGreaterThanOrEqual(600);
-        expect(c.ancho).toBeLessThanOrEqual(900);
-      }
     }
-    // Una cajonera que ya medía menos de 60 cm no se achica más.
+    // Una cajonera que ya medía menos de 60 cm no se achica más mientras otras puedan ceder.
     const angosta = cocinaConCajoneras([500, 900]);
     const ra = ejecutar(angosta, { op: 'agregarModulo', tramo: 'base', preset: 'especiero' });
     expect(ra.ok).toBe(true);
     expect(Math.min(...cajonerasDe(ra.diseno).map((c) => c.ancho))).toBeGreaterThanOrEqual(500);
-    expect(ejecutar(angosta, { op: 'agregarModulo', tramo: 'base', preset: 'dos-puertas' }).ok).toBe(false);
   });
 
   it('cambiar a mano el ancho de un módulo de puertas se conserva al agregar o quitar otros', () => {
@@ -151,27 +157,40 @@ describe('el mueble no crece ni se achica al agregar o quitar módulos', () => {
   });
 
   it('si no cabe, se rechaza con cuánto falta o sobra y qué agregar o quitar, sin ofrecer agrandar el mueble', () => {
+    // Ahora casi todo cabe (nivel 3: los ajustables bajan hasta su mínimo); un 2 puertas entra en 250 cm.
     const d = cocinaConCajoneras();
-    const r = ejecutar(d, { op: 'agregarModulo', tramo: 'base', preset: 'dos-puertas' });
-    expect(r.ok).toBe(false);
-    expect(r.diseno).toBe(d);
-    expect(r.motivo).toBe(
-      'No cabe «Módulo 2 puertas» en la medida del tramo principal (250 cm). Faltan 35 cm para que quepa: quita puertas (35 cm cada una) o una cajonera, o elige módulos más angostos.',
-    );
+    const ok = ejecutar(d, { op: 'agregarModulo', tramo: 'base', preset: 'dos-puertas' });
+    expect(ok.ok).toBe(true);
+    expect(suma(ok.diseno)).toBe(2500);
+    expect(validarDiseno(ok.diseno)).toEqual([]);
+    // Se agregan hornos (60 cm fijos) hasta que no cabe otro: se rechaza con cuánto falta y qué quitar.
+    let h = d;
+    let r = ejecutar(h, { op: 'agregarModulo', tramo: 'base', preset: 'horno' });
+    while (r.ok) {
+      h = r.diseno;
+      expect(suma(h)).toBe(2500);
+      r = ejecutar(h, { op: 'agregarModulo', tramo: 'base', preset: 'horno' });
+    }
+    expect(r.diseno).toBe(h);
+    expect(r.motivo).toMatch(/^No cabe «Horno empotrado» en la medida del tramo principal \(250 cm\)\. Faltan \d+ cm para que quepa: quita puertas \(35 cm cada una\) o una cajonera, o elige módulos más angostos\.$/);
     expect(r).not.toHaveProperty('alternativa');
     expect(r.motivo).not.toMatch(/agrand|achic/);
-    const r1 = ejecutar(d, { op: 'agregarModulo', tramo: 'base', preset: 'horno' });
-    expect(r1.motivo).toMatch(/^No cabe «Horno empotrado» en la medida del tramo principal \(250 cm\)\. Faltan 25 cm/);
-    // Quitar: las cajoneras no pasan de 90 cm.
-    const r2 = ejecutar(d, { op: 'quitarModulo', tramo: 'base', modulo: 2 });
-    expect(r2.ok).toBe(false);
-    expect(r2.motivo).toBe(
-      'No se puede quitar el módulo 3 sin cambiar la medida del tramo principal (250 cm). Quedarían 10 cm sin cubrir: agrega una cajonera (de 60 cm a 90 cm) o puertas (35 cm cada una).',
+    // Quitar: si lo que queda no puede cubrir el espacio (horno fijo, ajustable de hasta 90 cm), se rechaza.
+    const q = ejecutar(cocina250(), { op: 'quitarModulo', tramo: 'base', modulo: 1 });
+    expect(q.ok).toBe(true);
+    expect(anchos(q.diseno)).toEqual([600, 1900]);
+    const q2 = ejecutar(q.diseno, { op: 'quitarModulo', tramo: 'base', modulo: 1 });
+    expect(q2.ok).toBe(false);
+    expect(q2.motivo).toBe(
+      'No se puede quitar el módulo 2 sin cambiar la medida del tramo principal (250 cm). Quedarían 190 cm sin cubrir: agrega una cajonera (de 60 cm a 90 cm) o puertas (35 cm cada una).',
     );
-    // Sin cajoneras no hay quién absorba: la cocina de fábrica no admite otro módulo de puertas.
+    // Sin cajoneras que puedan ceder, cede el módulo de la encimera y lavaplatos (ajustable) y la puerta entra con 35 cm.
     const r3 = ejecutar(cocina250(), { op: 'agregarModulo', tramo: 'base', preset: 'puerta' });
-    expect(r3.ok).toBe(false);
-    expect(r3.motivo).toMatch(/^No cabe «Módulo con puerta» en la medida del tramo principal \(250 cm\)\./);
+    expect(r3.ok).toBe(true);
+    expect(anchos(cocina250())).toEqual([600, 900, 1000]);
+    expect(anchos(r3.diseno)).toEqual([600, 775, 775, 350]);
+    expect(suma(r3.diseno)).toBe(2500);
+    expect(validarDiseno(r3.diseno)).toEqual([]);
   });
 
   it('en los muebles que no son de cocina el nuevo y los ajustables se siguen repartiendo parejo', () => {
@@ -230,9 +249,11 @@ describe('el mueble no crece ni se achica al agregar o quitar módulos', () => {
     expect(a.aereos.cuerpos[3]).toMatchObject({ puertas: 1, ancho: 350 });
     expect(suma(a, 'aereos')).toBe(largoA);
     expect(validarDiseno(a)).toEqual([]);
+    // Un 2 puertas más ya no cabe con los abatibles en 60 cm: ceden también las puertas (nivel 2) y el largo no cambia.
     const r = ejecutar(a, { op: 'agregarModulo', tramo: 'aereos', preset: 'aereo-dos' });
-    expect(r.ok).toBe(false);
-    expect(r.motivo).toMatch(/^No cabe «.*» en la medida de los aéreos \(300 cm\)\. Faltan .* quita puertas \(35 cm cada una\) o un abatible/);
+    expect(r.ok).toBe(true);
+    expect(suma(r.diseno, 'aereos')).toBe(largoA);
+    expect(validarDiseno(r.diseno)).toEqual([]);
     a = quitarCuerpo(a, 3, 'aereos');
     expect(anchos(a, 'aereos')).toEqual([750, 750, 750, 750]);
     expect(validarDiseno(a)).toEqual([]);
@@ -293,11 +314,11 @@ describe('cajoneras', () => {
   it('una cajonera mide como máximo 90 cm', () => {
     const d = cocina250();
     expect(limitesModulo(d, 'base', d.cuerpos[1]).max).toBe(ANCHO_MAX_CAJONERA);
-    // [horno 60][cajonera 60][2 puertas 100][lavaplatos 50]: la cajonera pide 110 y llega a 90.
+    // [horno 60][cajonera 60][2 puertas 80][lavaplatos 70]: la cajonera pide 110 y llega a 90.
     const base = fijarAnchoCuerpo(agregarModulo(fijarAncho(disenoLibre('cocina'), 2000), preset('dos-puertas'), 2, 'base', true), 1, 600);
-    expect(anchos(base)).toEqual([600, 600, 1000, 500]);
+    expect(anchos(base)).toEqual([600, 600, 800, 700]);
     const r = ejecutar(base, { op: 'fijarAnchoModulo', tramo: 'base', modulo: 1, ancho: 1100 });
-    expect(anchos(r.diseno)).toEqual([600, 900, 700, 500]);
+    expect(anchos(r.diseno)).toEqual([600, 900, 500, 700]);
     expect(r.avisos.join(' ')).toMatch(/máximo de una cajonera/);
     // Agregar una cajonera de 1,2 m la deja en 90 cm (las demás cajoneras ceden parejo).
     const holgada = cocinaConCajoneras([900, 900, 900]);
@@ -423,5 +444,92 @@ describe('apertura de las puertas', () => {
     const aereo = calcularLayoutAereos(d)!.frentes.filter((f) => f.cuerpo === 0);
     expect(aereo.map((f) => f.bisagra)).toEqual(['der']);
     expect(normalizar(JSON.parse(JSON.stringify(d)))).toEqual(d);
+  });
+});
+
+describe('reparto por niveles al agregar módulos en cocinas', () => {
+  const productos = JSON.parse(fs.readFileSync('public/datos/productos-respaldo.json', 'utf8')) as ProductoTienda[];
+  const prod = (id: number) => clasificarProducto(productos.find((x) => x.id === id)!);
+
+  it('un lado de L o U con un solo módulo de 2 puertas de 190 cm acepta una cajonera y un módulo de 1 puerta', () => {
+    for (const [forma, lado] of [['der', 'der'], ['U', 'izq']] as const) {
+      const d = fijarLado(fijarForma(fijarAncho(disenoInicial(prod(16)), 2400), forma), lado, { largo: 2500 });
+      expect(cuerposDe(d, lado).map((c) => [c.puertas, c.ancho])).toEqual([[2, 1900]]);
+      // Nivel 1 no alcanza (no hay cajoneras): cede la puerta y la cajonera nueva queda en 90 cm.
+      const c = ejecutar(d, { op: 'agregarModulo', tramo: lado, preset: 'cajonera' });
+      expect(c.ok).toBe(true);
+      expect(anchos(c.diseno, lado)).toEqual([1000, 900]);
+      expect(suma(c.diseno, lado)).toBe(1900);
+      expect(validarDiseno(c.diseno)).toEqual([]);
+      // Un módulo de 1 puerta entra con sus 35 cm.
+      const p = ejecutar(d, { op: 'agregarModulo', tramo: lado, preset: 'puerta' });
+      expect(p.ok).toBe(true);
+      expect(anchos(p.diseno, lado)).toEqual([1550, 350]);
+      expect(validarDiseno(p.diseno)).toEqual([]);
+    }
+  });
+
+  it('en la cocina XL, fijar la cajonera en 70 cm achica los módulos de puertas equipados', () => {
+    const d = disenoInicial(prod(160));
+    expect(anchos(d)).toEqual([670, 460, 670]);
+    const r = ejecutar(d, { op: 'fijarAnchoModulo', tramo: 'base', modulo: 1, ancho: 700 });
+    expect(r.ok).toBe(true);
+    expect(anchos(r.diseno)).toEqual([550, 700, 550]);
+    expect(r.diseno.ancho).toBe(d.ancho);
+    expect(validarDiseno(r.diseno)).toEqual([]);
+  });
+
+  it('en secuencias al azar el total no cambia, los fijos conservan su medida y el diseño queda válido', () => {
+    let semilla = 12345;
+    const azar = () => ((semilla = (semilla * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+    const ids = presetsModulo('cocina', 'base').map((p) => p.id);
+    const fijos = new Set<Cuerpo['tipo']>(['horno', 'especiero', 'nicho', 'campana']);
+    let aceptados = 0;
+    let nivel1 = 0;
+    for (let caso = 0; caso < 30; caso++) {
+      let d = fijarAncho(disenoInicial(prod(azar() < 0.5 ? 16 : 160)), 1800 + Math.floor(azar() * 16) * 100);
+      const total = d.ancho;
+      for (let paso = 0; paso < 8; paso++) {
+        const antes = new Map(cuerposDe(d, 'base').map((c) => [c.id, c.ancho]));
+        const r = ejecutar(d, { op: 'agregarModulo', tramo: 'base', preset: ids[Math.floor(azar() * ids.length)], posicion: Math.floor(azar() * (antes.size + 1)) });
+        if (!r.ok) {
+          expect(r.diseno).toBe(d);
+          expect(r.motivo).toMatch(/Faltan \d+ cm para que quepa|Quedarían \d+ cm sin cubrir/);
+          continue;
+        }
+        aceptados++;
+        d = r.diseno;
+        expect(d.ancho).toBe(total);
+        expect(suma(d)).toBe(total);
+        expect(validarDiseno(d)).toEqual([]);
+        const previos = cuerposDe(d, 'base').filter((c) => antes.has(c.id));
+        for (const c of previos) if (fijos.has(c.tipo)) expect(c.ancho).toBe(antes.get(c.id));
+        // Si solo cambiaron las cajoneras, alcanzó el nivel 1: quedan entre 60 y 90 cm (o no se achican si ya medían menos).
+        const cajs = cajonerasDe(d);
+        if (previos.every((c) => cajs.includes(c) || c.ancho === antes.get(c.id))) {
+          nivel1++;
+          for (const c of previos.filter((c) => cajs.includes(c))) {
+            expect(c.ancho).toBeGreaterThanOrEqual(Math.min(600, antes.get(c.id)!));
+            expect(c.ancho).toBeLessThanOrEqual(900);
+          }
+        }
+      }
+    }
+    expect(aceptados).toBeGreaterThan(100);
+    expect(nivel1).toBeGreaterThan(0);
+  });
+
+  it('una cocina full equipo de 250 cm acepta varios módulos de puertas seguidos sin cambiar su medida', () => {
+    let d = cocina250();
+    for (let k = 0; k < 5; k++) {
+      const r = ejecutar(d, { op: 'agregarModulo', tramo: 'base', preset: k % 2 ? 'dos-puertas' : 'puerta' });
+      expect(r.ok, `módulo ${k + 1}`).toBe(true);
+      d = r.diseno;
+      expect(d.ancho).toBe(2500);
+      expect(suma(d)).toBe(2500);
+      expect(validarDiseno(d)).toEqual([]);
+    }
+    expect(d.cuerpos).toHaveLength(8);
+    expect(d.cuerpos[0]).toMatchObject({ tipo: 'horno', ancho: 600 });
   });
 });

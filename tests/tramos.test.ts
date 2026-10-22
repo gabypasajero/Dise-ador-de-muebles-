@@ -369,7 +369,11 @@ describe('correcciones de la revisión de tramos', () => {
   });
 
   it('4: un módulo no pasa a horno si los 60 cm no caben en el tramo', () => {
-    const d = full();
+    // En la full equipo de 150 cm la cajonera sí puede pasar a horno (los demás ceden hasta su mínimo)…
+    expect(cabeHorno(full(), 1)).toBe(true);
+    // …pero con un horno ya agregado [horno 60][15][15][horno 60] no caben otros 60 cm.
+    const d = agregarModulo(full(), preset('cocina', 'base', 'horno'));
+    expect(cuerposDe(d, 'base').map((c) => c.ancho)).toEqual([600, 150, 150, 600]);
     expect(actualizarCuerpo(d, 1, { tipo: 'horno' })).toBe(d);
     expect(cabeHorno(d, 1)).toBe(false);
     // El módulo del horno ya lo es, y con espacio ajustable otro módulo también puede serlo.

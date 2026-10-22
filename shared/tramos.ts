@@ -130,10 +130,10 @@ export type Rol = 'fijo' | 'equipado' | 'ajustable';
 
 export function rolModulo(d: Diseno, t: TramoId, c: Cuerpo): Rol {
   if (anchoFijo(d.plantilla, c) != null) return 'fijo';
-  // El espacio libre mide lo que el equipo que va en él: no entra al reparto parejo.
-  if (c.tipo === 'hueco') return 'equipado';
-  if (esTramoAereo(t)) return c.tipo === 'campana' && c.campanaDe ? 'equipado' : 'ajustable';
-  return (d.equipos ?? []).some((e) => e.tramo === t && e.modulo === c.id) ? 'equipado' : 'ajustable';
+  // Solo el módulo que aloja la campana se ubica solo (centrado sobre su encimera). La encimera y el
+  // lavaplatos no fijan el ancho de su módulo, y el espacio libre se ajusta (de 20 a 50 cm).
+  if (esTramoAereo(t) && c.tipo === 'campana' && c.campanaDe) return 'equipado';
+  return 'ajustable';
 }
 
 /** Ancho mínimo y máximo de un módulo en su tramo. */

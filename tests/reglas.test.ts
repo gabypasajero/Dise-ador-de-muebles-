@@ -74,16 +74,19 @@ describe('operaciones sobre el diseño', () => {
     const d = fijarAnchoCuerpo(base, 1, 600);
     expect(d.ancho).toBe(base.ancho);
     expect(suma(d)).toBe(d.ancho);
-    // El horno es fijo y el módulo del lavaplatos conserva su ancho: cede la puerta del final.
-    expect(d.cuerpos.map((c) => c.ancho)).toEqual([600, 600, 450, 200]);
-    // Sin módulos ajustables no hay de dónde sacar espacio: se rechaza y se explica.
+    // El horno es fijo; el módulo del lavaplatos es ajustable y, por ser el vecino, cede él.
+    expect(d.cuerpos.map((c) => c.ancho)).toEqual([600, 600, 300, 350]);
+    // En la full equipo cede el módulo del lavaplatos; el total no cambia.
     const r = ejecutar(disenoLibre('cocina'), { op: 'fijarAnchoModulo', tramo: 'base', modulo: 1, ancho: 600 });
-    expect(r.ok).toBe(false);
-    expect(r.motivo).toMatch(/no pueden ceder/);
-    // Si alcanza solo una parte, llega hasta donde puede y avisa.
-    const parcial = ejecutar(base, { op: 'fijarAnchoModulo', tramo: 'base', modulo: 1, ancho: 900 });
-    expect(parcial.diseno.cuerpos.map((c) => c.ancho)).toEqual([600, 650, 450, 150]);
-    expect(parcial.avisos.join(' ')).toMatch(/quedó en 65 cm/);
+    expect(r.ok).toBe(true);
+    expect(r.diseno.cuerpos.map((c) => c.ancho)).toEqual([600, 600, 300]);
+    expect(r.diseno.ancho).toBe(1500);
+    expect(validarDiseno(r.diseno)).toEqual([]);
+    // Si el vecino no alcanza, cede también la puerta del final.
+    const todo = ejecutar(base, { op: 'fijarAnchoModulo', tramo: 'base', modulo: 1, ancho: 900 });
+    expect(todo.ok).toBe(true);
+    expect(todo.diseno.cuerpos.map((c) => c.ancho)).toEqual([600, 900, 150, 200]);
+    expect(suma(todo.diseno)).toBe(base.ancho);
   });
 
   it('la separación entre cuerpos se descuenta de los módulos: el ancho no cambia', () => {
@@ -124,13 +127,16 @@ describe('operaciones sobre el diseño', () => {
     expect(suma(m)).toBe(m.ancho);
   });
 
-  it('un módulo de puertas nuevo conserva sus 35 cm y lo absorben las cajoneras, o no se agrega', () => {
+  it('un módulo de puertas nuevo conserva sus 35 cm y lo absorben primero las cajoneras', () => {
     const d = disenoLibre('cocina');
     const puerta = presetsModulo('cocina')[0];
-    // [horno 60][cajonera 45][puerta 45 + lavaplatos]: la cajonera ya mide menos de 60 cm y no puede ceder.
-    expect(anchoDisponible(d, 'frentes', puerta.ancho)).toBeNull();
-    expect(agregarModulo(d, puerta)).toBe(d);
-    expect(ejecutar(d, { op: 'agregarModulo', tramo: 'base', preset: 'puerta' }).motivo).toMatch(/^No cabe «Módulo con puerta» en la medida del tramo principal \(150 cm\)\. Faltan 35 cm/);
+    // [horno 60][cajonera 45][puerta 45 + lavaplatos]: sin cajoneras que puedan ceder (nivel 1), ceden la cajonera
+    // y el módulo del lavaplatos (nivel 3, hasta su mínimo) y la puerta nueva entra con 35 cm.
+    expect(anchoDisponible(d, 'frentes', puerta.ancho)).toBe(350);
+    const chica = agregarModulo(d, puerta);
+    expect(chica.cuerpos.map((x) => x.ancho)).toEqual([600, 275, 275, 350]);
+    expect(chica.ancho).toBe(d.ancho);
+    expect(validarDiseno(chica)).toEqual([]);
     const c = conCajoneras(d, [900, 900]);
     expect(anchoDisponible(c, 'frentes', puerta.ancho)).toBe(350);
     const m = agregarModulo(c, puerta);
@@ -197,11 +203,12 @@ describe('operaciones sobre el diseño', () => {
     const r = ejecutar(chico, { op: 'quitarModulo', tramo: 'base', modulo: 1, ajustarLargo: true });
     expect(r.ok).toBe(false);
     expect(r.motivo).toMatch(/ancho mínimo/);
-    // Sin ajustarLargo el espacio tendría que pasar al módulo de la encimera, que conserva su ancho: se rechaza.
+    // Sin ajustarLargo el espacio pasa al módulo de la encimera (nivel 3: los equipados también toman espacio).
     const sinAjuste = ejecutar(chico, { op: 'quitarModulo', tramo: 'base', modulo: 1 });
-    expect(sinAjuste.ok).toBe(false);
-    expect(sinAjuste.motivo).toMatch(/^No se puede quitar el módulo 2 sin cambiar la medida del tramo principal \(40 cm\)\. Quedarían 15 cm sin cubrir: agrega una cajonera/);
-    expect(sinAjuste.motivo).not.toMatch(/achicando|agrandando/);
+    expect(sinAjuste.ok).toBe(true);
+    expect(sinAjuste.diseno.ancho).toBe(400);
+    expect(sinAjuste.diseno.cuerpos.map((c) => c.ancho)).toEqual([400]);
+    expect(validarDiseno(sinAjuste.diseno)).toEqual([]);
   });
 
   it('cambiar el ancho de un módulo no cambia el ancho total del mueble', () => {
@@ -215,7 +222,11 @@ describe('operaciones sobre el diseño', () => {
   it('el horno empotrado solo se agrega si caben 60 cm', () => {
     const horno = presetsModulo('cocina').find((p) => p.id === 'horno')!;
     const d = disenoLibre('cocina');
-    expect(agregarModulo(d, horno)).toBe(d);
+    // En la full equipo de 150 cm cabe uno (los ajustables bajan a su mínimo); otro ya no.
+    const uno = agregarModulo(d, horno);
+    expect(uno.cuerpos.map((c) => c.ancho)).toEqual([600, 150, 150, 600]);
+    expect(agregarModulo(uno, horno)).toBe(uno);
+    expect(ejecutar(uno, { op: 'agregarModulo', tramo: 'base', preset: 'horno' }).motivo).toMatch(/^No cabe «Horno empotrado» .* Faltan 60 cm/);
     const holgado = conCajoneras(fijarAncho(disenoLibre('cocina'), 2400));
     expect(agregarModulo(holgado, horno).cuerpos.at(-1)).toMatchObject({ tipo: 'horno', ancho: 600 });
   });
@@ -226,8 +237,8 @@ describe('operaciones sobre el diseño', () => {
     const [puerta] = presetsModulo('cocina-infantil');
     const m = agregarModulo(d, puerta, 0);
     expect(m.cuerpos[0].id).toBe(despensa);
-    // La despensa y la puerta nueva (ajustables) se reparten parejo el espacio.
-    expect(m.cuerpos.slice(0, 2).map((c) => c.ancho)).toEqual([373, 372]);
+    // Todos los módulos son ajustables (también los de la encimera y el lavaplatos): se reparten parejo.
+    expect(m.cuerpos.map((c) => c.ancho)).toEqual([350, 350, 350, 350]);
     expect(suma(m)).toBe(d.ancho);
     expect(moverCuerpo(m, 1, -1)).toBe(m);
     expect(moverCuerpo(m, 0, 1)).toBe(m);

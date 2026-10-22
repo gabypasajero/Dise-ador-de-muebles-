@@ -77,6 +77,12 @@ describe('horno entre tramos', () => {
     let d = disenoInicial(prod(154));
     d = agregarEquipo(d, 'encimera', { modulo: 0 });
     d = agregarEquipo(d, 'lavaplatos', { modulo: 2 });
+    // Con 180 cm los módulos ajustables pueden ceder hasta su mínimo y el horno entra como módulo aparte.
+    const holgado = ejecutar(d, { op: 'agregarEquipo', equipo: 'horno' });
+    expect(holgado.diseno.cuerpos.map((c) => [c.tipo, c.ancho])).toEqual([['frentes', 400], ['frentes', 400], ['frentes', 400], ['horno', 600]]);
+    expect(holgado.diseno.ancho).toBe(d.ancho);
+    // Con 100 cm ya no cabe un módulo más.
+    d = fijarAncho(d, 1000);
     const r = ejecutar(d, { op: 'agregarEquipo', equipo: 'horno' });
     expect(r.ok).toBe(true);
     expect(r.diseno.cuerpos[0]).toMatchObject({ tipo: 'horno', ancho: 600 });
@@ -162,9 +168,12 @@ describe('encimera y lavaplatos no se topan', () => {
   });
 
   it('en un módulo ancho caben si el lavaplatos va pegado a un borde', () => {
+    // Al agrandar el mueble también crece la puerta nueva: se ensancha a mano el módulo del lavaplatos.
     let d = fijarAncho(agregarModulo(fijarAncho(full(), 3000), preset('puerta'), 1), 3600);
     const i = d.cuerpos.findIndex((c) => c.id === lavaplatos(d).modulo);
-    expect(d.cuerpos[i].ancho).toBeGreaterThanOrEqual(1500);
+    d = ejecutar(d, { op: 'fijarAnchoModulo', tramo: 'base', modulo: i, ancho: 1500 }).diseno;
+    expect(d.cuerpos[i].ancho).toBe(1500);
+    expect(d.ancho).toBe(3600);
     d = configurarEquipo(d, lavaplatos(d).id, { posicion: 'der', margen: 50 });
     const r = ejecutar(d, { op: 'moverEquipo', id: encimera(d).id, tramo: 'base', modulo: i });
     expect(r.ok).toBe(true);
@@ -201,23 +210,29 @@ describe('encimera y lavaplatos no se topan', () => {
 
 describe('rechazos con motivo, sin ofrecer cambiar la medida del mueble', () => {
   it('dicen por qué no cabe y no ofrecen agrandar ni achicar el mueble', () => {
+    // Un horno sí cabe (los ajustables bajan a su mínimo); un segundo ya no.
+    const conHorno = agregarModulo(full(), preset('horno'));
+    expect(conHorno.cuerpos.map((c) => c.ancho)).toEqual([600, 150, 150, 600]);
+    const r = ejecutar(conHorno, { op: 'agregarModulo', tramo: 'base', preset: 'horno' });
     const d = full();
-    const r = ejecutar(d, { op: 'agregarModulo', tramo: 'base', preset: 'horno' });
     expect(r.ok).toBe(false);
-    expect(r.diseno).toBe(d);
+    expect(r.diseno).toBe(conHorno);
     expect(r.motivo).toBe(
       'No cabe «Horno empotrado» en la medida del tramo principal (150 cm). Faltan 60 cm para que quepa: quita puertas (35 cm cada una) o una cajonera, o elige módulos más angostos.',
     );
     expect(r.motivo).not.toMatch(/agrand|achic|crec/);
     expect(r).not.toHaveProperty('alternativa');
-    // Quitar la cajonera tampoco se puede: los que quedan conservan su ancho y nadie cubre sus 45 cm.
+    // Quitar la cajonera sí se puede: el módulo del lavaplatos toma sus 45 cm y la medida no cambia.
     const q = ejecutar(d, { op: 'quitarModulo', tramo: 'base', modulo: 1 });
-    expect(q.ok).toBe(false);
-    expect(q.motivo).toBe(
-      'No se puede quitar el módulo 2 sin cambiar la medida del tramo principal (150 cm). Quedarían 45 cm sin cubrir: agrega una cajonera (de 60 cm a 90 cm) o puertas (35 cm cada una).',
-    );
-    expect(q.motivo).not.toMatch(/agrand|achic|crec/);
-    expect(q).not.toHaveProperty('alternativa');
+    expect(q.ok).toBe(true);
+    expect(q.diseno.ancho).toBe(1500);
+    expect(q.diseno.cuerpos.map((c) => c.ancho)).toEqual([600, 900]);
+    // Quitar también ese módulo deja 90 cm que nadie puede cubrir (el horno es fijo): se rechaza y recomienda.
+    const q2 = ejecutar(q.diseno, { op: 'quitarModulo', tramo: 'base', modulo: 1 });
+    expect(q2.ok).toBe(false);
+    expect(q2.motivo).toMatch(/^No se puede quitar el módulo 2 sin cambiar la medida del tramo principal \(150 cm\)\. Quedarían 90 cm sin cubrir: agrega una cajonera/);
+    expect(q2.motivo).not.toMatch(/agrand|achic|crec/);
+    expect(q2).not.toHaveProperty('alternativa');
   });
 
   it('el aviso de un lado quitado habla en singular cuando corresponde', () => {

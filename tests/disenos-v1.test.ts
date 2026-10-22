@@ -103,10 +103,11 @@ describe('diseños guardados con la versión anterior', () => {
     const v = viejo('cajoneraAncha');
     const d = abrir('cajoneraAncha');
     expect(d.cuerpos.map((c) => [c.tipo, c.ancho, c.cajones])).toEqual([
-      ['frentes', 550, 3],
-      ['frentes', 550, 3],
-      ['frentes', 600, 0],
-      // El espacio libre mide como máximo 50 cm: los 10 cm que sobran los toman las cajoneras.
+      ['frentes', 531, 3],
+      ['frentes', 531, 3],
+      ['frentes', 638, 0],
+      // El espacio libre mide como máximo 50 cm: los 10 cm que sobran los toman los módulos ajustables
+      // (también el de la encimera, que ya no conserva su ancho).
       ['hueco', 500, 0],
     ]);
     expect(d.ancho).toBe(v.ancho);

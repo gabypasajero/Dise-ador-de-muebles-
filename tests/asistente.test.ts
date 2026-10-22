@@ -175,7 +175,9 @@ describe('aplicarPlan', () => {
   });
 
   it('cuando falta espacio da el motivo del motor sin ofrecer agrandar el mueble', () => {
-    const d = full();
+    // Con un horno ya agregado, los módulos ajustables están en su mínimo: otro horno no cabe.
+    const d = aplicarPlan(full(), plan([{ op: 'agregarModulo', tramo: 'base', preset: 'horno' }])).diseno;
+    expect(d.cuerpos.map((c) => c.ancho)).toEqual([600, 150, 150, 600]);
     const r = aplicarPlan(d, plan([{ op: 'agregarModulo', tramo: 'base', preset: 'horno' }]));
     expect(r.aplicadas).toEqual([]);
     expect(r.rechazadas[0].motivo).toMatch(/^No cabe «Horno empotrado» en la medida del tramo principal \(150 cm\)\. Faltan 60 cm/);

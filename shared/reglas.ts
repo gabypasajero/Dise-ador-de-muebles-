@@ -260,17 +260,17 @@ function limitesDe(d: Diseno, t: TramoId, cs: Cuerpo[]): Limite[] {
   return cs.map((c) => limitesModulo(d, t, c));
 }
 
-function ajustables(d: Diseno, t: TramoId, cs: Cuerpo[], excluir: Cuerpo[] = []): boolean[] {
-  return cs.map((c) => !excluir.includes(c) && rolModulo(d, t, c) === 'ajustable');
+function ajustables(d: Diseno, t: TramoId, cs: Cuerpo[], excluir: Cuerpo[] = [], conEquipados = false): boolean[] {
+  return cs.map((c) => !excluir.includes(c) && (rolModulo(d, t, c) === 'ajustable' || (conEquipados && rolModulo(d, t, c) === 'equipado' && c.tipo !== 'hueco' && !c.campanaDe)));
 }
 
 /** Espacio que pueden ceder (signo −1) o tomar (+1) los módulos ajustables del tramo. */
-function capacidad(d: Diseno, t: TramoId, signo: 1 | -1, excluir: Cuerpo[] = []): number {
+function capacidad(d: Diseno, t: TramoId, signo: 1 | -1, excluir: Cuerpo[] = [], conEquipados = false): number {
   const cs = cuerposDe(d, t);
   return holgura(
     cs.map((c) => c.ancho),
     limitesDe(d, t, cs),
-    ajustables(d, t, cs, excluir),
+    ajustables(d, t, cs, excluir, conEquipados),
     signo,
   );
 }
@@ -279,11 +279,11 @@ function capacidad(d: Diseno, t: TramoId, signo: 1 | -1, excluir: Cuerpo[] = [])
  * Da (delta > 0) o quita (delta < 0) espacio a los módulos ajustables del tramo más
  * cercanos a la posición `centro`. Si no alcanza, rechaza con `motivo` sin tocar nada.
  */
-function absorber(d: Diseno, t: TramoId, delta: number, centro: number, excluir: Cuerpo[], motivo: string) {
+function absorber(d: Diseno, t: TramoId, delta: number, centro: number, excluir: Cuerpo[], motivo: string, conEquipados = false) {
   if (delta === 0) return;
   const cs = cuerposDe(d, t);
   const lims = limitesDe(d, t, cs);
-  const cand = ajustables(d, t, cs, excluir);
+  const cand = ajustables(d, t, cs, excluir, conEquipados);
   const anchos = cs.map((c) => c.ancho);
   if (holgura(anchos, lims, cand, delta > 0 ? 1 : -1) < Math.abs(delta)) rechazar(motivo);
   absorberCercanos(anchos, lims, cand, delta, centro);
@@ -316,11 +316,38 @@ function ajustarTramo(d: Diseno, t: TramoId, objetivo: number, conEquipados = tr
  * sube el mínimo de algún módulo. null si los ajustables no caben o no alcanzan a llenarlo.
  */
 function anchosParejos(d: Diseno, t: TramoId, cs: Cuerpo[], total: number, conservar: Cuerpo[] = [], minimos = new Map<Cuerpo, number>()): number[] | null {
-  const idx = cs.map((_, i) => i).filter((i) => !conservar.includes(cs[i]) && absorbe(d, t, cs[i]));
+  // Primero solo las cajoneras (o abatibles); si no alcanza, también los módulos de puertas
+  // (sus 35 cm por puerta son el estándar, no un tope) y, al final, los que llevan equipamiento.
+  for (const nivel of [1, 2, 3] as const) {
+    const r = anchosParejosNivel(d, t, cs, total, conservar, minimos, nivel);
+    if (r) return r;
+  }
+  return null;
+}
+
+/**
+ * Al ceder espacio en una cocina: en el nivel 2 una puerta no baja de 30 cm (estándar 35); en el
+ * nivel 3 todos pueden llegar a su mínimo, para que siempre se pueda agregar un módulo.
+ */
+function minimoRazonable(d: Diseno, t: TramoId, c: Cuerpo, nivel: 2 | 3 = 2): Limite {
+  const l = limitesModulo(d, t, c);
+  if (!esCocinaAdulta(d) || nivel === 3) return l;
+  const min = c.tipo === 'frentes' && c.puertas > 0 ? 300 * c.puertas : l.min;
+  return { min: Math.max(l.min, Math.min(min, c.ancho || min)), max: l.max };
+}
+
+/** Si el módulo entra al reparto en ese nivel: 1 cajoneras/abatibles, 2 + puertas, 3 + equipados. */
+function entraAlReparto(d: Diseno, t: TramoId, c: Cuerpo, nivel: 1 | 2 | 3): boolean {
+  if (absorbe(d, t, c)) return true;
+  return nivel >= 2 && rolModulo(d, t, c) === 'ajustable';
+}
+
+function anchosParejosNivel(d: Diseno, t: TramoId, cs: Cuerpo[], total: number, conservar: Cuerpo[], minimos: Map<Cuerpo, number>, nivel: 1 | 2 | 3): number[] | null {
+  const idx = cs.map((_, i) => i).filter((i) => !conservar.includes(cs[i]) && entraAlReparto(d, t, cs[i], nivel));
   const espacio = total - sumar(cs.filter((_, i) => !idx.includes(i)).map((c) => c.ancho));
   if (!idx.length) return espacio === 0 ? cs.map((c) => c.ancho) : null;
   const lims = idx.map((i) => {
-    const l = limitesReparto(d, t, cs[i]);
+    const l = absorbe(d, t, cs[i]) && nivel < 3 ? limitesReparto(d, t, cs[i]) : nivel === 1 ? limitesReparto(d, t, cs[i]) : minimoRazonable(d, t, cs[i], nivel);
     return { min: Math.max(l.min, minimos.get(cs[i]) ?? 0), max: l.max };
   });
   const parejos = repartirParejo(espacio, lims);
@@ -357,9 +384,9 @@ export function limitesReparto(d: Diseno, t: TramoId, c: Cuerpo): Limite {
  * módulos agregar o quitar (cajones o puertas) para cuadrar.
  */
 function recomendacion(d: Diseno, t: TramoId, cs: Cuerpo[], total: number): string {
-  const ajustan = cs.filter((c) => absorbe(d, t, c));
+  const ajustan = cs.filter((c) => entraAlReparto(d, t, c, 3));
   const fijos = sumar(cs.filter((c) => !ajustan.includes(c)).map((c) => c.ancho));
-  const lims = ajustan.map((c) => limitesReparto(d, t, c));
+  const lims = ajustan.map((c) => minimoRazonable(d, t, c, 3));
   const resto = total - fijos;
   if (!esCocinaAdulta(d)) return 'Quita un módulo o achica alguno a mano.';
   const que = esTramoAereo(t) ? 'un abatible' : 'una cajonera';
@@ -1124,7 +1151,9 @@ function opAnchoModulo(out: Diseno, ctx: Ctx, tramo: Tramo, ref: RefModulo, anch
   if (objetivo !== pedido) ctx.avisos.push(objetivo < pedido ? `El ${nombre} llega hasta ${cm(lim.max)} (máximo de una cajonera).` : `El ${nombre} mide al menos ${cm(lim.min)}.`);
   const delta = objetivo - c.ancho;
   if (delta === 0) return;
-  const cap = capacidad(out, t, delta > 0 ? -1 : 1, [c]);
+  // Primero ceden los módulos sin equipamiento; si no alcanza, también los que lo llevan.
+  const conEquipados = capacidad(out, t, delta > 0 ? -1 : 1, [c]) < Math.abs(delta);
+  const cap = capacidad(out, t, delta > 0 ? -1 : 1, [c], conEquipados);
   if (cap <= 0) {
     rechazar(
       cs.length === 1
@@ -1134,7 +1163,7 @@ function opAnchoModulo(out: Diseno, ctx: Ctx, tramo: Tramo, ref: RefModulo, anch
   }
   const efectivo = Math.sign(delta) * Math.min(Math.abs(delta), cap);
   if (Math.abs(efectivo) < Math.abs(delta)) ctx.avisos.push(`El ${nombre} quedó en ${cm(c.ancho + efectivo)}: es lo que podían ${delta > 0 ? 'ceder' : 'tomar'} los demás módulos.`);
-  absorber(out, t, -efectivo, i, [c], 'No hay espacio.');
+  absorber(out, t, -efectivo, i, [c], 'No hay espacio.', conEquipados);
   c.ancho += efectivo;
 }
 

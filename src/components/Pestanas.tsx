@@ -718,20 +718,13 @@ function textoRol(rol: keyof typeof TEXTO_ROL, c: Cuerpo, conserva = false): str
 function ayudaRol(d: Diseno, tramo: TramoId, c: Cuerpo, unidad: Unidad): string {
   const rol = rolModulo(d, tramo, c);
   if (rol === 'fijo') return `Mide siempre ${formatear(c.ancho, unidad)}: no cede ni toma espacio.`;
-  if (rol === 'equipado' && c.tipo === 'hueco')
-    return `Espacio para ${esAereo(tramo) ? 'una ventana o extractor' : 'refrigerador, lavadora u otro equipo'}: conserva su ancho cuando agregas, quitas o mueves otros módulos.`;
-  if (rol === 'equipado')
-    return esAereo(tramo)
-      ? 'Aloja la campana: va siempre centrado sobre su encimera.'
-      : 'Lleva equipamiento: conserva su ancho cuando agregas, quitas o mueves otros módulos.';
-  if (!absorbe(d, tramo, c))
-    return d.plantilla === 'cocina' || d.plantilla === 'compacto'
-      ? 'Conserva su medida cuando agregas o quitas módulos (35 cm por puerta). Puedes cambiarla a mano.'
-      : 'Se reparte parejo con los demás módulos cuando agregas o quitas módulos.';
-  const l = limitesModulo(d, tramo, c);
-  if (d.plantilla === 'cocina' || d.plantilla === 'compacto')
-    return `Se ajusta (de ${formatear(600, unidad)} a ${formatear(900, unidad)}) para mantener la medida del cliente cuando agregas o quitas módulos.`;
-  return `Se reparte parejo con los demás ajustables cuando agregas o quitas módulos (mínimo ${formatear(l.min, unidad)}${Number.isFinite(l.max) ? `, máximo ${formatear(l.max, unidad)}` : ''}).`;
+  if (rol === 'equipado') return 'Aloja la campana: va siempre centrado sobre su encimera.';
+  const cocina = d.plantilla === 'cocina' || d.plantilla === 'compacto';
+  if (!cocina) return 'Se reparte parejo con los demás módulos cuando agregas o quitas módulos.';
+  if (c.tipo === 'hueco') return `Espacio libre de ${formatear(200, unidad)} a ${formatear(500, unidad)}: se ajusta si hace falta espacio.`;
+  if (absorbe(d, tramo, c))
+    return `Es lo primero que se ajusta (de ${formatear(600, unidad)} a ${formatear(900, unidad)}) para mantener la medida del cliente al agregar o quitar módulos.`;
+  return 'Medida estándar de 35 cm por puerta: se ajusta solo si las cajoneras no alcanzan. Puedes cambiarla a mano.';
 }
 
 export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
@@ -799,7 +792,7 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
             {prefijo} {activo + 1}
           </strong>
           <span className={`chip-rol ${rol}`} title={ayudaRol(d, tramo, c, unidad)}>
-            {textoRol(rol, c, rol === 'ajustable' && !absorbe(d, tramo, c))}
+            {textoRol(rol, c)}
           </span>
           <span className="acciones-cuerpo">
             <button type="button" className="boton-icono" aria-label="Mover a la izquierda" title="Mover a la izquierda" disabled={activo - 1 < minPos} onClick={() => mover(-1)}>

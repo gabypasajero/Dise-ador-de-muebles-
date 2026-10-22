@@ -1010,6 +1010,10 @@ h3 {
   grid-area: categorias;
   padding: 0 16px 10px;
   min-width: 0;
+  /* Las pestañas ocupan todo el alto de la fila (las columnas de medidas y precio suelen ser más altas). */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .pestanas-cabeza {
@@ -1089,6 +1093,7 @@ h3 {
 .pestana-panel {
   padding-top: 10px;
   height: 172px;
+  flex: 1 0 auto;
   overflow-y: auto;
 }
 
