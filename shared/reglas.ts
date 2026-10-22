@@ -1162,7 +1162,9 @@ function opAnchoModulo(out: Diseno, ctx: Ctx, tramo: Tramo, ref: RefModulo, anch
     rechazar(
       cs.length === 1
         ? `El ancho del ${nombre} es el largo ${delTramo(out, t)}: cambia la medida del mueble.`
-        : `Los demás módulos ${delTramo(out, t)} no pueden ${delta > 0 ? 'ceder' : 'tomar'} espacio (${razonesRigidez(out, t, delta > 0 ? -1 : 1, [c])}): cambia la medida del mueble o agrega un módulo sin equipamiento.`,
+        : delta > 0
+          ? `El ${nombre} ya tiene todo el espacio disponible: los demás módulos están en su medida mínima. Para agrandarlo, quita un módulo o cambia la medida del mueble.`
+          : `No hay módulos que puedan tomar ese espacio. Para achicar el ${nombre}, agrega un módulo o cambia la medida del mueble.`,
     );
   }
   const efectivo = Math.sign(delta) * Math.min(Math.abs(delta), cap);
