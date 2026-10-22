@@ -256,8 +256,11 @@ function indiceO(d: Diseno, t: TramoId, ref: RefModulo): number {
   return i;
 }
 
-function limitesDe(d: Diseno, t: TramoId, cs: Cuerpo[]): Limite[] {
-  return cs.map((c) => limitesModulo(d, t, c));
+function limitesDe(d: Diseno, t: TramoId, cs: Cuerpo[], sinTope = false): Limite[] {
+  return cs.map((c) => {
+    const l = limitesModulo(d, t, c);
+    return sinTope && l.min !== l.max ? { min: l.min, max: Infinity } : l;
+  });
 }
 
 function ajustables(d: Diseno, t: TramoId, cs: Cuerpo[], excluir: Cuerpo[] = [], conEquipados = false): boolean[] {
@@ -265,11 +268,11 @@ function ajustables(d: Diseno, t: TramoId, cs: Cuerpo[], excluir: Cuerpo[] = [],
 }
 
 /** Espacio que pueden ceder (signo −1) o tomar (+1) los módulos ajustables del tramo. */
-function capacidad(d: Diseno, t: TramoId, signo: 1 | -1, excluir: Cuerpo[] = [], conEquipados = false): number {
+function capacidad(d: Diseno, t: TramoId, signo: 1 | -1, excluir: Cuerpo[] = [], conEquipados = false, sinTope = false): number {
   const cs = cuerposDe(d, t);
   return holgura(
     cs.map((c) => c.ancho),
-    limitesDe(d, t, cs),
+    limitesDe(d, t, cs, sinTope),
     ajustables(d, t, cs, excluir, conEquipados),
     signo,
   );
@@ -279,10 +282,10 @@ function capacidad(d: Diseno, t: TramoId, signo: 1 | -1, excluir: Cuerpo[] = [],
  * Da (delta > 0) o quita (delta < 0) espacio a los módulos ajustables del tramo más
  * cercanos a la posición `centro`. Si no alcanza, rechaza con `motivo` sin tocar nada.
  */
-function absorber(d: Diseno, t: TramoId, delta: number, centro: number, excluir: Cuerpo[], motivo: string, conEquipados = false) {
+function absorber(d: Diseno, t: TramoId, delta: number, centro: number, excluir: Cuerpo[], motivo: string, conEquipados = false, sinTope = false) {
   if (delta === 0) return;
   const cs = cuerposDe(d, t);
-  const lims = limitesDe(d, t, cs);
+  const lims = limitesDe(d, t, cs, sinTope);
   const cand = ajustables(d, t, cs, excluir, conEquipados);
   const anchos = cs.map((c) => c.ancho);
   if (holgura(anchos, lims, cand, delta > 0 ? 1 : -1) < Math.abs(delta)) rechazar(motivo);
@@ -667,8 +670,11 @@ function minimoSuperior(d: Diseno): number {
   return d.plantilla === 'compacto' ? sumar(d.aereos.cuerpos.map((c) => limitesModulo(d, 'aereos', c).min)) : 0;
 }
 
-/** Medidas fijas, mínimos y cajoneras de un tramo (las cajoneras de más de 90 cm se dividen). */
-function repararAnchos(d: Diseno, t: TramoId, ctx: Ctx) {
+/**
+ * Medidas fijas y mínimos de un tramo. Los máximos (cajonera de 90 cm, espacio libre de 50 cm) solo
+ * guían los ajustes automáticos: lo que el vendedor deja a mano no se corta ni se divide.
+ */
+function repararAnchos(d: Diseno, t: TramoId, _ctx: Ctx) {
   const cs = cuerposDe(d, t);
   for (let i = 0; i < cs.length; i++) {
     const c = cs[i];
@@ -676,16 +682,6 @@ function repararAnchos(d: Diseno, t: TramoId, ctx: Ctx) {
     const l = limitesModulo(d, t, c);
     if (l.min === l.max) c.ancho = l.min;
     else if (c.ancho < l.min) c.ancho = l.min;
-    // Un espacio libre más ancho que su máximo se acota (no se divide): el resto lo toma el tramo.
-    else if (c.ancho > l.max && c.tipo === 'hueco') c.ancho = l.max;
-    else if (c.ancho > l.max) {
-      const k = Math.ceil(c.ancho / l.max);
-      const partes = repartir(c.ancho, Array(k).fill(1));
-      const piezas = partes.map((w, j) => (j === 0 ? Object.assign(c, { ancho: w }) : { ...c, id: nuevoId(), ancho: w }));
-      cs.splice(i, 1, ...piezas);
-      ctx.avisos.push(`La cajonera de ${cm(sumar(partes))} se dividió en ${k} cajoneras: cada una mide como máximo ${cm(l.max)}.`);
-      i += k - 1;
-    }
   }
 }
 
@@ -1147,13 +1143,19 @@ function opAnchoModulo(out: Diseno, ctx: Ctx, tramo: Tramo, ref: RefModulo, anch
     rechazar(`El ${nombre} (${nombreModulo(c).toLowerCase()}) mide siempre ${cm(lim.min)}.`);
   }
   const pedido = Math.round(ancho);
-  const objetivo = Math.max(lim.min, Math.min(lim.max, pedido));
-  if (objetivo !== pedido) ctx.avisos.push(objetivo < pedido ? `El ${nombre} llega hasta ${cm(lim.max)} (máximo de una cajonera).` : `El ${nombre} mide al menos ${cm(lim.min)}.`);
+  // A mano el vendedor manda: sin tope máximo (la cajonera de 90 cm o el espacio libre de 50 cm
+  // son la medida de los ajustes automáticos, no un límite para quien edita).
+  const objetivo = Math.max(lim.min, pedido);
+  if (objetivo !== pedido) ctx.avisos.push(`El ${nombre} mide al menos ${cm(lim.min)}.`);
   const delta = objetivo - c.ancho;
   if (delta === 0) return;
   // Primero ceden los módulos sin equipamiento; si no alcanza, también los que lo llevan.
-  const conEquipados = capacidad(out, t, delta > 0 ? -1 : 1, [c]) < Math.abs(delta);
-  const cap = capacidad(out, t, delta > 0 ? -1 : 1, [c], conEquipados);
+  // Los vecinos se ajustan dentro de sus medidas normales; solo si no alcanza pasan su máximo
+  // (por ejemplo, una cajonera sobre 90 cm): a mano el vendedor siempre puede.
+  const signo = delta > 0 ? -1 : 1;
+  const sinTope = capacidad(out, t, signo, [c], false) < Math.abs(delta) && capacidad(out, t, signo, [c], true) < Math.abs(delta);
+  const conEquipados = capacidad(out, t, signo, [c], false, sinTope) < Math.abs(delta);
+  const cap = capacidad(out, t, signo, [c], conEquipados, sinTope);
   if (cap <= 0) {
     rechazar(
       cs.length === 1
@@ -1163,7 +1165,7 @@ function opAnchoModulo(out: Diseno, ctx: Ctx, tramo: Tramo, ref: RefModulo, anch
   }
   const efectivo = Math.sign(delta) * Math.min(Math.abs(delta), cap);
   if (Math.abs(efectivo) < Math.abs(delta)) ctx.avisos.push(`El ${nombre} quedó en ${cm(c.ancho + efectivo)}: es lo que podían ${delta > 0 ? 'ceder' : 'tomar'} los demás módulos.`);
-  absorber(out, t, -efectivo, i, [c], 'No hay espacio.', conEquipados);
+  absorber(out, t, -efectivo, i, [c], 'No hay espacio.', conEquipados, sinTope);
   c.ancho += efectivo;
 }
 

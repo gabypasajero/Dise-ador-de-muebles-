@@ -99,16 +99,13 @@ describe('diseños guardados con la versión anterior', () => {
     expect(validarDiseno(d)).toEqual([]);
   });
 
-  it('una cajonera de más de 90 cm se divide en cajoneras iguales y el espacio libre queda en 50 cm', () => {
+  it('un diseño guardado conserva sus medidas tal cual (cajonera de 1 m y espacio libre de 60 cm hechos a mano)', () => {
     const v = viejo('cajoneraAncha');
     const d = abrir('cajoneraAncha');
     expect(d.cuerpos.map((c) => [c.tipo, c.ancho, c.cajones])).toEqual([
-      ['frentes', 531, 3],
-      ['frentes', 531, 3],
-      ['frentes', 638, 0],
-      // El espacio libre mide como máximo 50 cm: los 10 cm que sobran los toman los módulos ajustables
-      // (también el de la encimera, que ya no conserva su ancho).
-      ['hueco', 500, 0],
+      ['frentes', 1000, 3],
+      ['frentes', 600, 0],
+      ['hueco', 600, 0],
     ]);
     expect(d.ancho).toBe(v.ancho);
     expect(encimera(d)!.modulo).toBe(v.cuerpos[1].id);

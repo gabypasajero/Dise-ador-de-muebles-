@@ -19,11 +19,9 @@ import {
 import {
   ANCHO_ESPECIERO,
   ANCHO_HORNO,
-  ANCHO_MAX_CAJONERA,
   ANCHO_MIN_CUERPO,
   ANCHO_MIN_HUECO,
   cuerposDe,
-  esCajonera,
   largoObjetivo,
   largoTramo,
   resolverTramo,
@@ -53,7 +51,6 @@ export function validarDiseno(d: Diseno): string[] {
       if (c.tipo === 'especiero' && !(c.pisos === 2 || c.pisos === 3)) out.push(`${donde}: especiero con ${c.pisos} pisos`);
       const minimo = c.tipo === 'hueco' ? ANCHO_MIN_HUECO : ANCHO_MIN_CUERPO;
       if (c.ancho < minimo) out.push(`${donde}: ${c.ancho} bajo el mínimo ${minimo}`);
-      if (!aereo && esCocinaAdulta(d) && esCajonera(c) && c.ancho > ANCHO_MAX_CAJONERA) out.push(`${donde}: cajonera de ${c.ancho}`);
       if (aereo && c.cajones > 0) out.push(`${donde}: cajones en un aéreo`);
       if (!aereo && (c.tipo === 'campana' || c.tipo === 'nicho')) out.push(`${donde}: ${c.tipo} en el mueble base`);
       if (aereo && (c.tipo === 'horno' || c.tipo === 'especiero')) out.push(`${donde}: ${c.tipo} en los aéreos`);

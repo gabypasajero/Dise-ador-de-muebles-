@@ -311,15 +311,17 @@ describe('reparto parejo (repartirParejo)', () => {
 });
 
 describe('cajoneras', () => {
-  it('una cajonera mide como máximo 90 cm', () => {
+  it('una cajonera mide como máximo 90 cm en los ajustes automáticos; a mano puede pasar', () => {
     const d = cocina250();
     expect(limitesModulo(d, 'base', d.cuerpos[1]).max).toBe(ANCHO_MAX_CAJONERA);
     // [horno 60][cajonera 60][2 puertas 80][lavaplatos 70]: la cajonera pide 110 y llega a 90.
     const base = fijarAnchoCuerpo(agregarModulo(fijarAncho(disenoLibre('cocina'), 2000), preset('dos-puertas'), 2, 'base', true), 1, 600);
     expect(anchos(base)).toEqual([600, 600, 800, 700]);
+    // A mano el vendedor puede pasar los 90 cm: la cajonera queda en 110 y ceden los vecinos.
     const r = ejecutar(base, { op: 'fijarAnchoModulo', tramo: 'base', modulo: 1, ancho: 1100 });
-    expect(anchos(r.diseno)).toEqual([600, 900, 500, 700]);
-    expect(r.avisos.join(' ')).toMatch(/máximo de una cajonera/);
+    expect(r.ok).toBe(true);
+    expect(r.diseno.cuerpos[1].ancho).toBe(1100);
+    expect(suma(r.diseno)).toBe(suma(base));
     // Agregar una cajonera de 1,2 m la deja en 90 cm (las demás cajoneras ceden parejo).
     const holgada = cocinaConCajoneras([900, 900, 900]);
     const ancha = agregarCuerpo(holgada, 'frentes', 1, { cambios: { cajones: 4 }, ancho: 1200 });
