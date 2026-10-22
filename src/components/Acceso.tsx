@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { backend } from '../datos';
 import { useApp } from '../store/useApp';
+import { IcoOjo, IcoOjoTachado } from './Iconos';
 
 /** Pantalla de ingreso: la herramienta es de uso exclusivo de los vendedores. */
 export function Acceso() {
@@ -9,6 +10,7 @@ export function Acceso() {
   const [email, setEmail] = useState('');
   const [telefono, setTelefono] = useState('');
   const [password, setPassword] = useState('');
+  const [verClave, setVerClave] = useState(false);
   const [codigo, setCodigo] = useState('');
   const [requiereCodigo, setRequiereCodigo] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -118,14 +120,26 @@ export function Acceso() {
           </label>
           <label>
             Contraseña
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete={modo === 'login' ? 'current-password' : 'new-password'}
-              required
-              minLength={modo === 'registro' ? 8 : 1}
-            />
+            <span className="campo-clave">
+              <input
+                type={verClave ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={modo === 'login' ? 'current-password' : 'new-password'}
+                required
+                minLength={modo === 'registro' ? 8 : 1}
+              />
+              <button
+                type="button"
+                className="ver-clave"
+                aria-label={verClave ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                title={verClave ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                aria-pressed={verClave}
+                onClick={() => setVerClave((v) => !v)}
+              >
+                {verClave ? <IcoOjoTachado /> : <IcoOjo />}
+              </button>
+            </span>
             {modo === 'registro' && <small className="tenue">Mínimo 8 caracteres.</small>}
           </label>
           {modo === 'registro' && requiereCodigo && (

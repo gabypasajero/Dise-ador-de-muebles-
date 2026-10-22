@@ -3580,3 +3580,37 @@ h3 {
   }
 }
 /* ===================== Fin visor de documentos ===================== */
+
+/* ---------- Ver la contraseña en el ingreso ---------- */
+
+.campo-clave {
+  position: relative;
+  display: block;
+}
+
+.campo-clave input {
+  width: 100%;
+  padding-right: 44px;
+}
+
+.ver-clave {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--tenue, #6b6b6b);
+  cursor: pointer;
+}
+
+.ver-clave:hover,
+.ver-clave:focus-visible {
+  color: var(--texto, #222);
+  background: rgba(0, 0, 0, 0.05);
+}
