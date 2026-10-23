@@ -2340,6 +2340,67 @@ export function precioReferencial(d: Diseno, base: ProductoCatalogo | null, dise
   return Math.round(precio / 1000) * 1000 - 10;
 }
 
+/**
+ * Descuento al quitar un equipo de un mueble del catálogo (o pedirlo como solo corte): el mueble
+ * conserva el precio de la tienda y se le resta el equipo que no lleva.
+ */
+export const DESCUENTO_EQUIPO = {
+  encimera: { '3': 30000, '4': 60000 } as Record<'3' | '4', number>,
+  lavaplatos: { simple: 30000, doble: 35000 } as Record<'simple' | 'doble', number>,
+};
+
+/** Las medidas del mueble (ancho, alto, fondo, forma, lados y aéreos) siguen iguales a las del producto. */
+function mismasMedidas(d: Diseno, b: Diseno): boolean {
+  const lado = (x: Diseno, l: 'izq' | 'der') => {
+    const r = x.lados?.[l];
+    return r ? `${r.largo}x${r.profundidad}` : '-';
+  };
+  const aereo = (x: Diseno) =>
+    x.aereos.activo
+      ? `${largoTramo(x, 'aereos')}x${x.aereos.alto}x${x.aereos.profundidad}x${x.aereos.elevacion}|${x.aereos.lados?.izq?.largo ?? '-'}|${x.aereos.lados?.der?.largo ?? '-'}`
+      : '-';
+  return (
+    d.ancho === b.ancho &&
+    d.alto === b.alto &&
+    d.profundidad === b.profundidad &&
+    lado(d, 'izq') === lado(b, 'izq') &&
+    lado(d, 'der') === lado(b, 'der') &&
+    aereo(d) === aereo(b)
+  );
+}
+
+/**
+ * Cocina del catálogo con sus medidas de la tienda: vale el precio de la tienda menos las
+ * encimeras y lavaplatos que se quitaron o que van como solo corte (y más los que se agregaron,
+ * a tarifa). null si cambiaron las medidas: entonces rige el precio por metro lineal.
+ */
+function precioTiendaConDescuentos(d: Diseno, base: ProductoCatalogo | null, disenoBase: Diseno | null): { total: number; metodo: 'oficial'; lineas: LineaPrecio[] } | null {
+  if (!base || !disenoBase || disenoBase.plantilla !== 'cocina') return null;
+  const precioBase = base.precio_oferta ?? base.precio;
+  if (!precioBase || !mismasMedidas(d, disenoBase)) return null;
+  const linea = (concepto: string, cantidad: number, unitario: number, detalle: string): LineaPrecio => ({ concepto, detalle, cantidad, unidad: 'unidad', unitario, valor: cantidad * unitario });
+  const lineas: LineaPrecio[] = [linea('Precio de la tienda', 1, precioBase, base.nombre)];
+  let total = precioBase;
+  const cuenta = (x: Diseno, f: (e: Equipo) => boolean) => (x.equipos ?? []).filter((e) => !(e as { soloCorte?: boolean }).soloCorte && f(e)).length;
+  const tipos: { nombre: string; f: (e: Equipo) => boolean; descuento: number; tarifa: number }[] = [
+    { nombre: 'Encimera 4 platos', f: (e) => e.tipo === 'encimera' && e.platos === '4', descuento: DESCUENTO_EQUIPO.encimera['4'], tarifa: TARIFAS.encimera['4'] },
+    { nombre: 'Encimera 3 platos', f: (e) => e.tipo === 'encimera' && e.platos !== '4', descuento: DESCUENTO_EQUIPO.encimera['3'], tarifa: TARIFAS.encimera['3'] },
+    { nombre: 'Lavaplatos simple', f: (e) => e.tipo === 'lavaplatos' && e.modelo !== 'doble', descuento: DESCUENTO_EQUIPO.lavaplatos.simple, tarifa: TARIFAS.lavaplatos.simple },
+    { nombre: 'Lavaplatos doble', f: (e) => e.tipo === 'lavaplatos' && e.modelo === 'doble', descuento: DESCUENTO_EQUIPO.lavaplatos.doble, tarifa: TARIFAS.lavaplatos.doble },
+  ];
+  for (const t of tipos) {
+    const dif = cuenta(d, t.f) - cuenta(disenoBase, t.f);
+    if (dif < 0) {
+      lineas.push(linea(`Sin ${t.nombre.toLowerCase()}`, -dif, -t.descuento, `${-dif} × −${formatoPrecio(t.descuento)}`));
+      total += dif * t.descuento;
+    } else if (dif > 0) {
+      lineas.push(linea(`${t.nombre} agregada`, dif, t.tarifa, `${dif} × ${formatoPrecio(t.tarifa)}`));
+      total += dif * t.tarifa;
+    }
+  }
+  return { total: Math.max(0, total), metodo: 'oficial', lineas };
+}
+
 /** Precio con su método y, en la cocina, el desglose oficial para mostrar al vendedor. */
 export function precioDiseno(
   d: Diseno,
@@ -2347,6 +2408,8 @@ export function precioDiseno(
   disenoBase: Diseno | null,
 ): { total: number; metodo: 'oficial' | 'referencial'; lineas: LineaPrecio[] } | null {
   if (d.plantilla === 'cocina') {
+    const tienda = precioTiendaConDescuentos(d, base, disenoBase);
+    if (tienda) return tienda;
     const p = precioCocina(d);
     return { total: p.total, metodo: 'oficial', lineas: p.lineas };
   }
