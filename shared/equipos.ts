@@ -19,10 +19,11 @@ import {
   posEnTramo,
   posicionesModulos,
   tramoAereoDe,
+  ubicarEquipos,
 } from './layout';
 import { repartirConLimites, type Limite } from './reparto';
 import { ANCHO_CAMPANA, ANCHO_MIN_CUERPO, ANCHO_MIN_HUECO, cuerposDe, esCajonera, ladoDe, LIMITES_AEREOS, limitesModulo, resolverTramo, TRAMOS_AEREOS, TRAMOS_BASE } from './tramos';
-import type { Cuerpo, Diseno, Encimera, Equipo, Lavaplatos, Plantilla, TramoAereo, TramoBase, TramoId } from './tipos';
+import type { Cuerpo, Diseno, Encimera, Equipo, Lavaplatos, Plantilla, TramoAereo, TramoBase, TramoId, Unidad } from './tipos';
 
 /** Mensajes informativos que juntan las operaciones (se devuelven en Resultado.avisos). */
 export interface Ctx {
@@ -289,7 +290,7 @@ export function listarEquipamiento(d: Diseno): ItemEquipo[] {
     if (i < 0) continue;
     const donde = nombreModuloEn(d, e.tramo, i);
     if (e.tipo === 'encimera') {
-      out.push({ id: e.id, tipo: 'encimera', nombre: `Encimera ${e.platos} platos`, tramo: e.tramo, indice: i, modulo: e.modulo, donde, detalle: 'centrada en su módulo' });
+      out.push({ id: e.id, tipo: 'encimera', nombre: `Encimera ${e.platos} platos`, tramo: e.tramo, indice: i, modulo: e.modulo, donde, detalle: `centrada en su módulo${e.soloCorte ? '; solo corte (el cliente trae el equipo)' : ''}` });
       if (e.campana) {
         const ta = tramoAereoDe(e.tramo);
         const ia = cuerposDe(d, ta).findIndex((c) => c.tipo === 'campana' && c.campanaDe === e.id);
@@ -308,8 +309,8 @@ export function listarEquipamiento(d: Diseno): ItemEquipo[] {
       }
     } else {
       const pos = e.posicion === 'centro' ? 'centrado en su módulo' : `pegado al borde ${e.posicion === 'izq' ? 'izquierdo' : 'derecho'} a ${e.margen / 10} cm`;
-      out.push({ id: e.id, tipo: 'lavaplatos', nombre: `Lavaplatos ${e.modelo}`, tramo: e.tramo, indice: i, modulo: e.modulo, donde, detalle: pos });
-      if (e.llave) out.push({ id: `${e.id}:llave`, tipo: 'llave', nombre: 'Llave', tramo: e.tramo, indice: i, modulo: e.modulo, donde, detalle: 'con el lavaplatos', de: e.id });
+      out.push({ id: e.id, tipo: 'lavaplatos', nombre: `Lavaplatos ${e.modelo}`, tramo: e.tramo, indice: i, modulo: e.modulo, donde, detalle: `${pos}${e.soloCorte ? '; solo corte (el cliente trae el equipo)' : ''}` });
+      if (e.llave && !e.soloCorte) out.push({ id: `${e.id}:llave`, tipo: 'llave', nombre: 'Llave', tramo: e.tramo, indice: i, modulo: e.modulo, donde, detalle: 'con el lavaplatos', de: e.id });
     }
   }
   return out;
@@ -661,3 +662,73 @@ export function moduloCampana(d: Diseno, encimeraId: string): { tramo: TramoAere
 }
 
 export { esTramoAereo };
+
+// ---------- Distancias entre equipos ----------
+
+/** Un espacio libre de la cubierta a lo largo de un tramo: entre dos cortes o entre un corte y un extremo. */
+export interface DistanciaEquipos {
+  tramo: TramoBase;
+  /** Qué hay a cada lado, en minúsculas: «borde izquierdo», «encimera», «lavaplatos», «esquina», «punta». */
+  desde: string;
+  hasta: string;
+  /** Ids de los equipos a cada lado (null: un extremo de la cubierta). */
+  desdeId: string | null;
+  hastaId: string | null;
+  /** Inicio y fin del espacio a lo largo del tramo (mm, misma s que ubicarEquipos). */
+  s0: number;
+  s1: number;
+  /** Largo libre (mm, nunca negativo). */
+  mm: number;
+}
+
+/**
+ * Espacios libres de la cubierta de cada tramo base (principal y lados de la L o la U):
+ * de un extremo de la cubierta al primer corte, entre cortes consecutivos (encimeras y
+ * lavaplatos, con su ancho real de corte) y del último corte al otro extremo.
+ * En el tramo principal los extremos son los bordes de la cubierta (con las esquinas);
+ * en los lados, la esquina (borde de la cubierta principal) y la punta.
+ */
+export function distanciasEquipos(d: Diseno): DistanciaEquipos[] {
+  const out: DistanciaEquipos[] = [];
+  if (!llevaEquipamiento(d.plantilla)) return out;
+  const db = disenoBase(d);
+  const ubic = ubicarEquipos(d);
+  for (const t of TRAMOS_BASE) {
+    const cortes = ubic
+      .filter((u) => u.tramo === t && (u.tipo === 'encimera' || u.tipo === 'lavaplatos'))
+      .map((u) => ({ id: u.id, nombre: u.tipo as string, a: u.s - u.ancho / 2, b: u.s + u.ancho / 2 }))
+      .sort((x, y) => x.a - y.a);
+    if (!cortes.length) continue;
+    let ini: number, fin: number, nIni: string, nFin: string;
+    if (t === 'base') {
+      const [x0, x1] = extremosPrincipal(db);
+      ini = x0 + db.ancho / 2;
+      fin = x1 + db.ancho / 2;
+      nIni = 'borde izquierdo';
+      nFin = 'borde derecho';
+    } else {
+      const L = largoEje(db, t);
+      ini = 0;
+      fin = L;
+      // La esquina es el extremo más cerca del muro principal (z menor).
+      const alInicio = posEnMundo(db, t, 0).z <= posEnMundo(db, t, L).z;
+      nIni = alInicio ? 'esquina' : 'punta';
+      nFin = alInicio ? 'punta' : 'esquina';
+    }
+    const puntos = [{ id: null as string | null, nombre: nIni, a: ini, b: ini }, ...cortes, { id: null as string | null, nombre: nFin, a: fin, b: fin }];
+    for (let k = 0; k + 1 < puntos.length; k++) {
+      const p = puntos[k];
+      const q = puntos[k + 1];
+      const s0 = p.b;
+      const s1 = Math.max(s0, q.a);
+      out.push({ tramo: t, desde: p.nombre, hasta: q.nombre, desdeId: p.id, hastaId: q.id, s0, s1, mm: Math.round(s1 - s0) });
+    }
+  }
+  return out;
+}
+
+/** «Encimera ↔ lavaplatos: 42 cm» */
+export function textoDistancia(x: DistanciaEquipos, unidad: Unidad = 'cm'): string {
+  const medida = unidad === 'mm' ? `${x.mm} mm` : `${(x.mm / 10).toLocaleString('es-CL', { maximumFractionDigits: 1 })} cm`;
+  return `${x.desde.charAt(0).toUpperCase()}${x.desde.slice(1)} ↔ ${x.hasta}: ${medida}`;
+}

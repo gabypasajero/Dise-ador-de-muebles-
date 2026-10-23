@@ -54,6 +54,8 @@ interface Estado {
   altoPestanas: number | null;
   /** Panel de colores oculto. */
   coloresPlegados: boolean;
+  /** Distancias entre equipos sobre la cubierta (pestaña Equipamiento). */
+  distancias: boolean;
   /** Cambia y recuerda en este equipo cómo se reparte la pantalla. */
   fijarVista: (cambios: Partial<VistaGuardada>) => void;
   vista: Vista;
@@ -97,10 +99,12 @@ interface VistaGuardada {
   panelPlegado: boolean;
   altoPestanas: number | null;
   coloresPlegados: boolean;
+  /** Muestra en el 3D las distancias libres entre los equipos de la cubierta. */
+  distancias: boolean;
 }
 
 function leerVista(): VistaGuardada {
-  const defecto: VistaGuardada = { panelPlegado: false, altoPestanas: null, coloresPlegados: false };
+  const defecto: VistaGuardada = { panelPlegado: false, altoPestanas: null, coloresPlegados: false, distancias: false };
   try {
     const v = JSON.parse(localStorage.getItem(CLAVE_VISTA) ?? 'null') as Partial<VistaGuardada> | null;
     if (!v) return defecto;
@@ -108,6 +112,7 @@ function leerVista(): VistaGuardada {
       panelPlegado: v.panelPlegado === true,
       altoPestanas: typeof v.altoPestanas === 'number' && v.altoPestanas >= 100 && v.altoPestanas <= 900 ? v.altoPestanas : null,
       coloresPlegados: v.coloresPlegados === true,
+      distancias: v.distancias === true,
     };
   } catch {
     return defecto;
@@ -348,9 +353,9 @@ export const useApp = create<Estado>((set, get) => ({
 
   fijarVista(cambios) {
     set(cambios);
-    const { panelPlegado, altoPestanas, coloresPlegados } = get();
+    const { panelPlegado, altoPestanas, coloresPlegados, distancias } = get();
     try {
-      localStorage.setItem(CLAVE_VISTA, JSON.stringify({ panelPlegado, altoPestanas, coloresPlegados }));
+      localStorage.setItem(CLAVE_VISTA, JSON.stringify({ panelPlegado, altoPestanas, coloresPlegados, distancias }));
     } catch {
       // sin almacenamiento local: la preferencia dura solo esta sesión
     }

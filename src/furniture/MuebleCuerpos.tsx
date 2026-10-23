@@ -5,7 +5,7 @@ import { altoBaseInfantil, calcularLayout, esCocina, type EquipoUbicado, type La
 import { formatear } from '../../shared/reglas';
 import type { Diseno, Equipo, Unidad } from '../../shared/tipos';
 import { Cilindro, Panel, useMats } from './base3d';
-import { Cubierta, Encimera, EspacioLibre, Horno, Lavaplatos, huecosLavaplatos, medidasEncimera, type Hueco } from './Cocina3D';
+import { CorteCubierta, Cubierta, Encimera, EspacioLibre, Horno, Lavaplatos, huecosLavaplatos, medidasEncimera, type Hueco } from './Cocina3D';
 import { Cajon, Puerta, Tirador, materialFrente, type ContextoFrente } from './Frentes';
 import { ajustarImagenFrentes } from './texturas';
 
@@ -258,7 +258,20 @@ function EquipoCocina({ d, l, extension, equipos }: { d: Diseno; l: Layout; exte
 
   const lavaplatos: JSX.Element[] = [];
   const encimeras: JSX.Element[] = [];
+  const cortes: JSX.Element[] = [];
   for (const { u, e } of equipos) {
+    if (e.soloCorte) {
+      // Solo el hueco del corte real (el cliente trae el equipo), en el mismo lugar donde iría el equipo.
+      const escala = Math.min(1, (D - r - (e.tipo === 'lavaplatos' ? 120 : 30)) / u.fondo, (W - 60) / u.ancho);
+      const w = u.ancho * escala;
+      const f = u.fondo * escala;
+      const cx = limitar(u.x, w / 2 + 20);
+      const cz = e.tipo === 'lavaplatos' ? Math.min(Math.max((D - r) * 0.55, 14 + 70 + f / 2), D - r - 45 - f / 2) : (14 + D - r) / 2;
+      const h: Hueco = { x0: cx - w / 2, x1: cx + w / 2, z0: cz - f / 2, z1: cz + f / 2 };
+      huecos.push(h);
+      cortes.push(<CorteCubierta key={u.id} hueco={h} yTop={d.alto} espesor={ct} />);
+      continue;
+    }
     if (e.tipo === 'lavaplatos') {
       const tipo = e.modelo;
       const ancho = tipo === 'doble' ? 770 : 400;
@@ -297,6 +310,7 @@ function EquipoCocina({ d, l, extension, equipos }: { d: Diseno; l: Layout; exte
         })}
       {lavaplatos}
       {encimeras}
+      {cortes}
       {l.cuerpos
         .filter((c) => c.horno)
         .map((c) => (
@@ -327,6 +341,16 @@ function CocinaInfantil({ d, l, equipos }: { d: Diseno; l: Layout; equipos: Equi
   // Juguete: equipos a escala reducida, siempre dentro de la cubierta baja.
   const limitar = (x: number, media: number) => Math.max(xb0 + media, Math.min(xb1 - media, x));
   for (const { u, e } of equipos) {
+    if (e.soloCorte) {
+      const escala = e.tipo === 'lavaplatos' ? Math.min(0.5, (D - 60) / 460) : Math.min(0.45, (D - 40) / u.fondo);
+      const w = u.ancho * escala;
+      const f = u.fondo * escala;
+      const cx = limitar(u.x, w / 2 + 10);
+      const h: Hueco = { x0: cx - w / 2, x1: cx + w / 2, z0: D * 0.53 - f / 2, z1: D * 0.53 + f / 2 };
+      huecos.push(h);
+      enc.push(<CorteCubierta key={u.id} hueco={h} yTop={hb} espesor={ct} />);
+      continue;
+    }
     if (e.tipo === 'lavaplatos') {
       const escala = Math.min(0.5, (D - 60) / 460);
       const h = huecosLavaplatos('simple', limitar(u.x, 240 * escala), D * 0.55, escala);

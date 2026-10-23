@@ -1189,6 +1189,8 @@ export interface OpcionesEquipo {
   ubicacion?: Lavaplatos['posicion'];
   /** Lavaplatos pegado a un borde: distancia en mm (mínimo 50). */
   margen?: number;
+  /** Encimera o lavaplatos: solo el corte en la cubierta (el cliente trae el equipo). */
+  soloCorte?: boolean;
   /** Campana o llave: id de la encimera o del lavaplatos al que se agrega. */
   para?: string;
 }
@@ -1251,6 +1253,7 @@ function opAgregarEquipo(out: Diseno, ctx: CtxOp, tipo: TipoEquipoOp, o: Opcione
     const l = o.para ? buscarEquipo(out, o.para, 'lavaplatos') : lavs.find((x) => !x.llave);
     if (!l) rechazar(lavs.length ? (o.para ? 'Ese lavaplatos no existe.' : 'Todos los lavaplatos ya tienen llave.') : 'La llave va con un lavaplatos: agrega primero el lavaplatos.');
     if (l.llave) rechazar('Ese lavaplatos ya tiene llave.');
+    if (l.soloCorte) rechazar(SOLO_CORTE_SIN_LLAVE);
     l.llave = true;
     ctx.id = `${l.id}:llave`;
     return;
@@ -1271,7 +1274,7 @@ function opAgregarEquipo(out: Diseno, ctx: CtxOp, tipo: TipoEquipoOp, o: Opcione
   if (tipo === 'encimera') {
     const platos = o.platos ?? (esAdulta(out.plantilla) ? '4' : '2');
     if (!opc.platos.includes(platos)) rechazar(`La encimera de este mueble puede ser de ${opc.platos.join(' o ')} platos.`);
-    const e = nuevaEncimera(anfitrion.modulo, platos, anfitrion.tramo);
+    const e = { ...nuevaEncimera(anfitrion.modulo, platos, anfitrion.tramo), soloCorte: o.soloCorte === true };
     out.equipos.push(e);
     ctx.id = e.id;
     const choque = choqueEnModulo(out, e);
@@ -1279,7 +1282,9 @@ function opAgregarEquipo(out: Diseno, ctx: CtxOp, tipo: TipoEquipoOp, o: Opcione
   } else {
     const modelo = o.modelo ?? 'simple';
     if (!opc.lavaplatos.includes(modelo)) rechazar('Este mueble lleva solo lavaplatos simple.');
-    const l = { ...nuevoLavaplatos(anfitrion.modulo, modelo, anfitrion.tramo), llave: opc.llave && o.llave !== false };
+    const soloCorte = o.soloCorte === true;
+    if (soloCorte && o.llave === true) rechazar(SOLO_CORTE_SIN_LLAVE);
+    const l = { ...nuevoLavaplatos(anfitrion.modulo, modelo, anfitrion.tramo), llave: opc.llave && !soloCorte && o.llave !== false, soloCorte };
     out.equipos.push(l);
     configurarLavaplatos(out, ctx, l, { posicion: o.ubicacion, margen: o.margen });
     ctx.id = l.id;
@@ -1456,7 +1461,11 @@ export interface CambiosEquipo {
   llave?: boolean;
   posicion?: Lavaplatos['posicion'];
   margen?: number;
+  /** Solo el corte en la cubierta: el cliente trae el equipo (el lavaplatos queda sin llave). */
+  soloCorte?: boolean;
 }
+
+const SOLO_CORTE_SIN_LLAVE = 'El lavaplatos es solo corte: el cliente trae su equipo, así que no lleva llave.';
 
 function opConfigurarEquipo(out: Diseno, ctx: CtxOp, id: string, cambios: CambiosEquipo) {
   const opc = opcionesEquipo(out.plantilla);
@@ -1473,6 +1482,7 @@ function opConfigurarEquipo(out: Diseno, ctx: CtxOp, id: string, cambios: Cambio
       if (cambios.campana && !opc.campana) rechazar('Este mueble no lleva campana.');
       e.campana = cambios.campana;
     }
+    if (cambios.soloCorte != null) e.soloCorte = cambios.soloCorte;
     const choque = choqueEnModulo(out, e);
     if (choque && !yaChocaba) rechazar(choque);
     return;
@@ -1481,8 +1491,16 @@ function opConfigurarEquipo(out: Diseno, ctx: CtxOp, id: string, cambios: Cambio
     if (!opc.lavaplatos.includes(cambios.modelo)) rechazar('Este mueble lleva solo lavaplatos simple.');
     e.modelo = cambios.modelo;
   }
+  if (cambios.soloCorte != null) {
+    e.soloCorte = cambios.soloCorte;
+    if (e.soloCorte && e.llave && cambios.llave !== true) {
+      e.llave = false;
+      ctx.avisos.push('El lavaplatos queda solo con el corte: sin cubeta ni llave (el cliente trae su equipo).');
+    }
+  }
   if (cambios.llave != null) {
     if (cambios.llave && !opc.llave) rechazar('Este mueble no lleva llave.');
+    if (cambios.llave && e.soloCorte) rechazar(SOLO_CORTE_SIN_LLAVE);
     e.llave = cambios.llave;
   }
   configurarLavaplatos(out, ctx, e, cambios);
@@ -2056,7 +2074,7 @@ export function normalizar(entrada: Diseno | DisenoGuardado): Diseno {
     equipos: [],
   };
   // Equipamiento: la versión 1 lo guardaba por índice de módulo del tramo principal.
-  if (Array.isArray(g.equipos)) out.equipos = g.equipos.map((e) => ({ ...e }));
+  if (Array.isArray(g.equipos)) out.equipos = g.equipos.map((e) => ({ ...e, soloCorte: e.soloCorte === true }));
   else if (llevaEquipamiento(p) && out.cuerpos.length) {
     const n = out.cuerpos.length;
     const desde = p === 'cocina-infantil' && n > 1 ? 1 : 0;

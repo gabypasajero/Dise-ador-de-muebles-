@@ -3,6 +3,7 @@ import { useMemo, type ReactNode } from 'react';
 import {
   aMundoAereoLado,
   aMundoLado,
+  altoBaseInfantil,
   calcularLayout,
   calcularLayoutAereos,
   calcularLayoutAereosLado,
@@ -12,12 +13,14 @@ import {
   extremosPrincipal,
   LADOS,
   ladoAereoActivo,
+  largoEje,
   transformAereoLado,
   transformLado,
   ubicarEquipos,
   type LayoutAereos,
   type Transformacion,
 } from '../../shared/layout';
+import { distanciasEquipos } from '../../shared/equipos';
 import { formatear, nombreModuloEn } from '../../shared/reglas';
 import type { CatalogoMateriales, Diseno, LadoId, TramoBase, TramoId, Unidad } from '../../shared/tipos';
 import { Aereos3D } from './Aereos3D';
@@ -31,6 +34,8 @@ export interface OpcionesVista {
   cotas: boolean;
   etiquetasFrentes: boolean;
   unidad: Unidad;
+  /** Distancias libres entre los equipos de la cubierta (pestaña Equipamiento). */
+  distancias?: boolean;
   /** Numera los módulos del tramo elegido y marca el activo (pestaña «Módulos y espacios»). */
   modulos?: { tramo: TramoId; activo: number; nombre: (i: number) => string; onElegir: (i: number) => void } | null;
 }
@@ -115,6 +120,7 @@ export function Mueble3D({ diseno, materiales, vista }: { diseno: Diseno; materi
           </>
         )}
         {vista.cotas && <Cotas diseno={diseno} unidad={vista.unidad} />}
+        {vista.distancias && diseno.plantilla !== 'tocador' && <DistanciasEquipos diseno={diseno} unidad={vista.unidad} />}
         {vista.modulos && diseno.plantilla !== 'tocador' && <EtiquetasModulos diseno={diseno} unidad={vista.unidad} {...vista.modulos} />}
       </group>
     </MaterialesProvider>
@@ -223,6 +229,37 @@ function Cotas({ diseno: d, unidad }: { diseno: Diseno; unidad: Unidad }) {
             <Cota desde={[xr, yr, 0]} hasta={[xr, yr, r.largo]} normal={[0, 1, 0]} texto={`Lado ${lado === 'izq' ? 'izq.' : 'der.'} ${formatear(r.largo, unidad)}`} />
             {ref([xr, H, r.largo], [xr, yr + 40, r.largo], `r-${lado}`)}
           </group>
+        );
+      })}
+    </group>
+  );
+}
+
+/** Espacios libres entre los cortes de la cubierta (y hasta sus extremos), acotados sobre ella. */
+function DistanciasEquipos({ diseno: d, unidad }: { diseno: Diseno; unidad: Unidad }) {
+  const distancias = useMemo(() => distanciasEquipos(d), [d]);
+  if (!distancias.length) return null;
+  const db = disenoBase(d);
+  const yTop = (d.plantilla === 'cocina-infantil' ? altoBaseInfantil(d) : db.alto) + 6;
+  return (
+    // Mismo nombre que las cotas: se ocultan al capturar la imagen de la cotización.
+    <group name="cotas">
+      {(['base', 'izq', 'der'] as TramoBase[]).map((t) => {
+        const ds = distancias.filter((x) => x.tramo === t);
+        if (!ds.length) return null;
+        const tr = t === 'base' ? null : transformLado(d, t);
+        if (t !== 'base' && !tr) return null;
+        const fondo = t === 'base' ? db.profundidad : (d.lados?.[t]?.profundidad ?? db.profundidad);
+        const z = fondo - 45;
+        const x = (s: number) => (t === 'base' ? -db.ancho / 2 + s : s - largoEje(db, t) / 2);
+        return (
+          <EnTramo key={t} tr={tr}>
+            {ds.map((dd, k) =>
+              dd.mm > 0 ? (
+                <Cota key={k} desde={[x(dd.s0), yTop, z]} hasta={[x(dd.s1), yTop, z]} normal={[0, 0, 1]} texto={formatear(dd.mm, unidad)} />
+              ) : null,
+            )}
+          </EnTramo>
         );
       })}
     </group>

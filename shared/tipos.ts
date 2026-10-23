@@ -155,6 +155,8 @@ export interface Encimera {
   platos: '2' | '3' | '4';
   /** Campana sobre esta encimera (en el módulo de campana de los aéreos o mural). */
   campana: boolean;
+  /** Solo corte: el cliente trae su encimera; la cubierta lleva solo el hueco (no se cobra el equipo). */
+  soloCorte: boolean;
 }
 
 /** Lavaplatos empotrado en la cubierta sobre un módulo. */
@@ -170,6 +172,8 @@ export interface Lavaplatos {
   posicion: 'centro' | 'izq' | 'der';
   /** Distancia (mm) entre el borde elegido y la cubeta; mínimo 50. */
   margen: number;
+  /** Solo corte: el cliente trae su lavaplatos; la cubierta lleva solo el hueco (sin cubeta ni llave). */
+  soloCorte: boolean;
 }
 
 export type Equipo = Encimera | Lavaplatos;

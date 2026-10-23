@@ -407,6 +407,7 @@ export function Visor3D() {
   const escenario = useApp((s) => s.escenario);
   const abierto = useApp((s) => s.abierto);
   const cotas = useApp((s) => s.cotas);
+  const distancias = useApp((s) => s.distancias);
   const unidad = useApp((s) => s.unidad);
   const pestana = useApp((s) => s.pestana);
   const moduloActivo = useApp((s) => s.moduloActivo);
@@ -445,7 +446,7 @@ export function Visor3D() {
         <group name="escenario">
           <Escenario3D tipo={tipoEscena} diseno={diseno} />
         </group>
-        <Mueble3D diseno={diseno} materiales={materiales} vista={{ abierto, cotas, etiquetasFrentes, unidad, modulos }} />
+        <Mueble3D diseno={diseno} materiales={materiales} vista={{ abierto, cotas, distancias, etiquetasFrentes, unidad, modulos }} />
       </Suspense>
       <Camara />
       <Capturador />

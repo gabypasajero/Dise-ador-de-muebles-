@@ -22,6 +22,8 @@ export const TARIFAS = {
   lavaplatos: { simple: 40000, doble: 70000 } as Record<'simple' | 'doble', number>,
   /** Llave (grifería), una por lavaplatos que la lleve. */
   llave: 15000,
+  /** Solo corte: hueco en la cubierta para una encimera o un lavaplatos que trae el cliente (por cada corte). */
+  corte: 0,
   /** Campana, por cada una. */
   campana: 70000,
   /** Mueble aéreo: precio fijo para cualquier largo y forma (lineal, L o U). */
@@ -157,17 +159,22 @@ export function precioCocina(d: Diseno): PrecioCocina {
   const equipos = d.equipos ?? [];
   const encimeras = equipos.filter((e) => e.tipo === 'encimera');
   for (const platos of ['3', '4'] as const) {
-    const n = encimeras.filter((e) => (e.platos === '4' ? '4' : '3') === platos).length;
+    const n = encimeras.filter((e) => !e.soloCorte && (e.platos === '4' ? '4' : '3') === platos).length;
     if (n) lineas.push(lineaUnidades(`Encimera ${platos} platos`, n, TARIFAS.encimera[platos]));
   }
   const hornos = [d.cuerpos, d.lados?.izq?.cuerpos ?? [], d.lados?.der?.cuerpos ?? []].flat().filter((c) => c.tipo === 'horno').length;
   if (hornos) lineas.push(lineaUnidades('Horno eléctrico 58 L', hornos, TARIFAS.horno));
   const lavaplatos = equipos.filter((e) => e.tipo === 'lavaplatos');
   for (const modelo of ['simple', 'doble'] as const) {
-    const n = lavaplatos.filter((e) => e.modelo === modelo).length;
+    const n = lavaplatos.filter((e) => !e.soloCorte && e.modelo === modelo).length;
     if (n) lineas.push(lineaUnidades(`Lavaplatos ${modelo}`, n, TARIFAS.lavaplatos[modelo]));
   }
-  const llaves = lavaplatos.filter((e) => e.llave).length;
+  // Solo corte: el cliente trae el equipo; se cobra solo el hueco en la cubierta (TARIFAS.corte).
+  const cortesEncimera = encimeras.filter((e) => e.soloCorte).length;
+  if (cortesEncimera) lineas.push(lineaUnidades('Corte para encimera (sin equipo)', cortesEncimera, TARIFAS.corte));
+  const cortesLavaplatos = lavaplatos.filter((e) => e.soloCorte).length;
+  if (cortesLavaplatos) lineas.push(lineaUnidades('Corte para lavaplatos (sin equipo)', cortesLavaplatos, TARIFAS.corte));
+  const llaves = lavaplatos.filter((e) => e.llave && !e.soloCorte).length;
   if (llaves) lineas.push(lineaUnidades('Llave', llaves, TARIFAS.llave));
   const campanas = encimeras.filter((e) => e.campana).length;
   if (campanas) lineas.push(lineaUnidades('Campana', campanas, TARIFAS.campana));

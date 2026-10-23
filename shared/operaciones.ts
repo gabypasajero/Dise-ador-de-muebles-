@@ -65,6 +65,7 @@ const CAMBIOS_EQUIPO: Record<string, CampoOperacion> = {
   llave: { tipo: 'booleano', opcional: true, descripcion: 'lavaplatos: con o sin llave' },
   posicion: { tipo: 'opcion', valores: ['centro', 'izq', 'der'], opcional: true, descripcion: 'lavaplatos centrado o pegado a un borde de su módulo' },
   margen: mm('lavaplatos pegado a un borde: distancia al borde (mínimo 50)', true),
+  soloCorte: { tipo: 'booleano', opcional: true, descripcion: 'encimera o lavaplatos: solo el corte en la cubierta, el cliente trae su equipo (no se cobra; el lavaplatos queda sin llave)' },
 };
 
 /** Todas las operaciones con sus campos, para la interfaz, el asistente y la revisión. */
@@ -114,13 +115,14 @@ export const OPERACIONES: DescripcionOperacion[] = [
       llave: CAMBIOS_EQUIPO.llave,
       ubicacion: { ...CAMBIOS_EQUIPO.posicion, descripcion: 'lavaplatos: centrado o pegado a un borde' },
       margen: CAMBIOS_EQUIPO.margen,
+      soloCorte: CAMBIOS_EQUIPO.soloCorte,
       para: { tipo: 'texto', opcional: true, descripcion: 'campana o llave: id de la encimera o del lavaplatos' },
     },
     ejemplo: { op: 'agregarEquipo', equipo: 'lavaplatos', tramo: 'izq', modelo: 'doble', ubicacion: 'der', margen: 80 },
   },
   { op: 'quitarEquipo', descripcion: 'Quita un equipo: su id, el id del módulo del horno, `<encimera>:campana` o `<lavaplatos>:llave`.', campos: { id: { tipo: 'texto', descripcion: 'id de listarEquipamiento()' } }, ejemplo: { op: 'quitarEquipo', id: 'e123:campana' } },
   { op: 'moverEquipo', descripcion: 'Mueve encimera, lavaplatos u horno a otro módulo de cualquier tramo del base (la campana sigue a la encimera).', campos: { id: { tipo: 'texto', descripcion: 'id de listarEquipamiento()' }, tramo: tramo(), modulo }, ejemplo: { op: 'moverEquipo', id: 'e123', tramo: 'der', modulo: 0 } },
-  { op: 'configurarEquipo', descripcion: 'Cambia platos y campana de una encimera, o modelo, llave y posición de un lavaplatos.', campos: { id: { tipo: 'texto', descripcion: 'id del equipo' }, cambios: { tipo: 'objeto', campos: CAMBIOS_EQUIPO, descripcion: 'campos a cambiar' } }, ejemplo: { op: 'configurarEquipo', id: 'e124', cambios: { posicion: 'izq', margen: 100 } } },
+  { op: 'configurarEquipo', descripcion: 'Cambia platos, campana y solo corte de una encimera, o modelo, llave, posición y solo corte de un lavaplatos.', campos: { id: { tipo: 'texto', descripcion: 'id del equipo' }, cambios: { tipo: 'objeto', campos: CAMBIOS_EQUIPO, descripcion: 'campos a cambiar' } }, ejemplo: { op: 'configurarEquipo', id: 'e124', cambios: { posicion: 'izq', margen: 100 } } },
   { op: 'activarAereos', descripcion: 'Agrega (cuadrados con el base) o quita los muebles aéreos.', campos: { activo: { tipo: 'booleano', descripcion: 'con o sin aéreos' } }, ejemplo: { op: 'activarAereos', activo: true } },
   {
     op: 'fijarAereos',

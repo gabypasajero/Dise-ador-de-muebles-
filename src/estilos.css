@@ -3614,3 +3614,11 @@ h3 {
   color: var(--texto, #222);
   background: rgba(0, 0, 0, 0.05);
 }
+
+/* Distancias entre equipos (pestaña Equipamiento) */
+.lista-distancias {
+  margin: 4px 0 6px;
+  padding-left: 18px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}

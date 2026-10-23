@@ -5,7 +5,7 @@
 // medida: los módulos ajustables se reparten parejo el largo de su tramo.
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { destinosEquipo } from '../../shared/asistente';
-import { margenMaximo } from '../../shared/equipos';
+import { distanciasEquipos, margenMaximo, textoDistancia } from '../../shared/equipos';
 import {
   aperturaAjustable,
   calcularLayout,
@@ -1152,6 +1152,7 @@ function OpcionesEncimera({ d, e, campana, config }: { d: Diseno; e: Encimera; c
   return (
     <>
       <Segmentado etiqueta="Platos" valor={e.platos} onCambio={(v) => config({ platos: v })} opciones={ops.platos.map((p) => ({ valor: p, texto: `${p} platos` }))} />
+      <Interruptor activo={e.soloCorte} onCambio={(v) => config({ soloCorte: v })} texto="Solo corte (el cliente trae el equipo)" />
       {ops.campana && <Interruptor activo={e.campana} onCambio={(v) => config({ campana: v })} texto="Campana sobre la encimera" />}
       {e.campana && campana && (
         <p className={mural ? 'aviso-texto' : 'tenue'}>
@@ -1177,7 +1178,8 @@ function OpcionesLavaplatos({ d, l, unidad, config, ops }: { d: Diseno; l: Lavap
           opciones={ops.lavaplatos.map((m) => ({ valor: m, texto: m === 'simple' ? 'Simple' : 'Doble' }))}
         />
       )}
-      {ops.llave && <Interruptor activo={l.llave} onCambio={(v) => config({ llave: v })} texto="Con llave" />}
+      <Interruptor activo={l.soloCorte} onCambio={(v) => config({ soloCorte: v })} texto="Solo corte (el cliente trae el equipo)" />
+      {ops.llave && !l.soloCorte && <Interruptor activo={l.llave} onCambio={(v) => config({ llave: v })} texto="Con llave" />}
       <Segmentado
         etiqueta="Ubicación en su módulo"
         valor={l.posicion}
@@ -1215,7 +1217,10 @@ function EquipamientoCocina({ d, unidad }: { d: Diseno; unidad: Unidad }) {
     .map((t) => ({ t, items: principales.filter((i) => i.tramo === t) }))
     .filter((g) => g.items.length);
   const sinCampana = encimeras.find((e) => !e.campana);
-  const sinLlave = lavaplatos.find((l) => !l.llave);
+  const sinLlave = lavaplatos.find((l) => !l.llave && !l.soloCorte);
+  const verDistancias = useApp((s) => s.distancias);
+  const distancias = useMemo(() => distanciasEquipos(d), [d]);
+  const tramosDistancias = tramosOrdenados(d).filter((t) => distancias.some((x) => x.tramo === t));
   return (
     <div className="pestana-contenido">
       <div className="equipos-agregar" role="group" aria-label="Agregar equipamiento">
@@ -1252,7 +1257,28 @@ function EquipamientoCocina({ d, unidad }: { d: Diseno; unidad: Unidad }) {
           ...(grupos.length > 1 || g.t !== 'base' ? [<SeparadorTramo key={`sep-${g.t}`} titulo={nombreTramo(d, g.t)} />] : []),
           ...g.items.map((it) => <TarjetaEquipo key={it.id} d={d} item={it} items={items} unidad={unidad} />),
         ])}
-        {(lavaplatos.some((l) => l.llave) || (infantil && lavaplatos.length > 0)) && (
+        {distancias.length > 0 && (
+          <article className="tarjeta-cuerpo ancha">
+            <header className="tarjeta-cuerpo-cabeza">
+              <strong>Distancias entre equipos</strong>
+            </header>
+            <Interruptor activo={verDistancias} onCambio={(v) => useApp.getState().fijarVista({ distancias: v })} texto="Distancias" />
+            <p className="tenue">Espacio libre de cubierta entre los cortes y hasta sus extremos{verDistancias ? '; se acotan en el 3D.' : '.'}</p>
+            {tramosDistancias.map((t) => (
+              <Fragment key={t}>
+                {tramosDistancias.length > 1 || t !== 'base' ? <p className="campo-etiqueta">{nombreTramo(d, t)}</p> : null}
+                <ul className="lista-distancias">
+                  {distancias
+                    .filter((x) => x.tramo === t)
+                    .map((x, k) => (
+                      <li key={k}>{textoDistancia(x, unidad)}</li>
+                    ))}
+                </ul>
+              </Fragment>
+            ))}
+          </article>
+        )}
+        {(lavaplatos.some((l) => l.llave && !l.soloCorte) || (infantil && lavaplatos.some((l) => !l.soloCorte))) && (
           <article className="tarjeta-cuerpo ancha">
             <header className="tarjeta-cuerpo-cabeza">
               <strong>Grifería</strong>

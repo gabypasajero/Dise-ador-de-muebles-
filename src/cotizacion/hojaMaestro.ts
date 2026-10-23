@@ -68,11 +68,11 @@ export interface Muro {
 const NOMBRE_EQUIPO: Record<string, (d: Diseno, id: string) => string> = {
   encimera: (d, id) => {
     const e = d.equipos.find((x) => x.id === id);
-    return e && e.tipo === 'encimera' ? `Encimera ${e.platos} platos` : 'Encimera';
+    return e && e.tipo === 'encimera' ? (e.soloCorte ? 'Corte encimera' : `Encimera ${e.platos} platos`) : 'Encimera';
   },
   lavaplatos: (d, id) => {
     const e = d.equipos.find((x) => x.id === id);
-    return e && e.tipo === 'lavaplatos' ? `Lavaplatos ${e.modelo}` : 'Lavaplatos';
+    return e && e.tipo === 'lavaplatos' ? (e.soloCorte ? 'Corte lavaplatos' : `Lavaplatos ${e.modelo}`) : 'Lavaplatos';
   },
 };
 

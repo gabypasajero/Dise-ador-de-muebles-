@@ -100,6 +100,28 @@ export function Cubierta({
   );
 }
 
+// ---------- Solo corte ----------
+
+/**
+ * Corte en la cubierta para un equipo que trae el cliente: solo el hueco (ya restado de la
+ * losa) con su interior oscuro hundido, sin parrillas, cubeta ni llave.
+ */
+export function CorteCubierta({ hueco: h, yTop, espesor }: { hueco: Hueco; yTop: number; espesor: number }) {
+  const m = useMats();
+  // El fondo oscuro queda dentro del espesor de la cubierta: tapa el casco blanco de abajo.
+  const fondo = yTop - espesor + 3;
+  const e = 2;
+  return (
+    <group>
+      <Panel x0={h.x0} x1={h.x1} y0={fondo} y1={fondo + e} z0={h.z0} z1={h.z1} mat={m.negroMate} sombra={false} />
+      <Panel x0={h.x0} x1={h.x0 + e} y0={fondo} y1={yTop - 0.5} z0={h.z0} z1={h.z1} mat={m.grisOscuro} sombra={false} />
+      <Panel x0={h.x1 - e} x1={h.x1} y0={fondo} y1={yTop - 0.5} z0={h.z0} z1={h.z1} mat={m.grisOscuro} sombra={false} />
+      <Panel x0={h.x0} x1={h.x1} y0={fondo} y1={yTop - 0.5} z0={h.z0} z1={h.z0 + e} mat={m.grisOscuro} sombra={false} />
+      <Panel x0={h.x0} x1={h.x1} y0={fondo} y1={yTop - 0.5} z0={h.z1 - e} z1={h.z1} mat={m.grisOscuro} sombra={false} />
+    </group>
+  );
+}
+
 // ---------- Lavaplatos ----------
 
 export function huecosLavaplatos(tipo: 'simple' | 'doble', cx: number, cz: number, escala = 1): Hueco[] {

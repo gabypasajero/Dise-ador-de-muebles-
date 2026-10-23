@@ -19,12 +19,12 @@ export function nuevoId(prefijo = 'c'): string {
 
 /** Encimera nueva sobre un módulo del tramo principal (o del tramo indicado). */
 export function encimera(modulo: string, platos: Encimera['platos'], tramo: Encimera['tramo'] = 'base'): Encimera {
-  return { id: nuevoId('e'), tipo: 'encimera', tramo, modulo, platos, campana: false };
+  return { id: nuevoId('e'), tipo: 'encimera', tramo, modulo, platos, campana: false, soloCorte: false };
 }
 
 /** Lavaplatos nuevo con llave, centrado en su módulo. */
 export function lavaplatos(modulo: string, modelo: Lavaplatos['modelo'] = 'simple', tramo: Lavaplatos['tramo'] = 'base'): Lavaplatos {
-  return { id: nuevoId('e'), tipo: 'lavaplatos', tramo, modulo, modelo, llave: true, posicion: 'centro', margen: 50 };
+  return { id: nuevoId('e'), tipo: 'lavaplatos', tramo, modulo, modelo, llave: true, posicion: 'centro', margen: 50, soloCorte: false };
 }
 
 export function cuerpo(parcial: Partial<Cuerpo> & { ancho: number }): Cuerpo {
