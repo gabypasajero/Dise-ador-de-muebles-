@@ -19,7 +19,8 @@ export const TARIFAS = {
   encimera: { '3': 60000, '4': 85000 } as Record<'3' | '4', number>,
   /** Horno eléctrico de 58 L, por cada uno. */
   horno: 170000,
-  lavaplatos: { simple: 40000, doble: 70000 } as Record<'simple' | 'doble', number>,
+  /** Lavaplatos según modelo (simple con secador, doble, riñonera). */
+  lavaplatos: { simple: 40000, doble: 70000, rinonera: 40000 } as Record<'simple' | 'doble' | 'rinonera', number>,
   /** Llave (grifería), una por lavaplatos que la lleve. */
   llave: 15000,
   /** Solo corte: hueco en la cubierta para una encimera o un lavaplatos que trae el cliente (por cada corte). */
@@ -165,9 +166,9 @@ export function precioCocina(d: Diseno): PrecioCocina {
   const hornos = [d.cuerpos, d.lados?.izq?.cuerpos ?? [], d.lados?.der?.cuerpos ?? []].flat().filter((c) => c.tipo === 'horno').length;
   if (hornos) lineas.push(lineaUnidades('Horno eléctrico 58 L', hornos, TARIFAS.horno));
   const lavaplatos = equipos.filter((e) => e.tipo === 'lavaplatos');
-  for (const modelo of ['simple', 'doble'] as const) {
+  for (const modelo of ['simple', 'doble', 'rinonera'] as const) {
     const n = lavaplatos.filter((e) => !e.soloCorte && e.modelo === modelo).length;
-    if (n) lineas.push(lineaUnidades(`Lavaplatos ${modelo}`, n, TARIFAS.lavaplatos[modelo]));
+    if (n) lineas.push(lineaUnidades(`Lavaplatos ${modelo === 'rinonera' ? 'riñonera' : modelo}`, n, TARIFAS.lavaplatos[modelo]));
   }
   // Solo corte: el cliente trae el equipo; se cobra solo el hueco en la cubierta (TARIFAS.corte).
   const cortesEncimera = encimeras.filter((e) => e.soloCorte).length;

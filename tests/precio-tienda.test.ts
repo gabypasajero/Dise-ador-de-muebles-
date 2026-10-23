@@ -37,6 +37,6 @@ describe('precio de la tienda con descuentos por equipos', () => {
   });
 
   it('los valores de descuento son los de la tienda', () => {
-    expect(DESCUENTO_EQUIPO).toEqual({ encimera: { '3': 30000, '4': 60000 }, lavaplatos: { simple: 30000, doble: 35000 } });
+    expect(DESCUENTO_EQUIPO).toEqual({ encimera: { '3': 30000, '4': 60000 }, lavaplatos: { simple: 30000, doble: 35000, rinonera: 30000 } });
   });
 });

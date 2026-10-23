@@ -72,7 +72,7 @@ const NOMBRE_EQUIPO: Record<string, (d: Diseno, id: string) => string> = {
   },
   lavaplatos: (d, id) => {
     const e = d.equipos.find((x) => x.id === id);
-    return e && e.tipo === 'lavaplatos' ? (e.soloCorte ? 'Corte lavaplatos' : `Lavaplatos ${e.modelo}`) : 'Lavaplatos';
+    return e && e.tipo === 'lavaplatos' ? (e.soloCorte ? 'Corte lavaplatos' : `Lavaplatos ${e.modelo === 'rinonera' ? 'riñonera' : e.modelo}`) : 'Lavaplatos';
   },
 };
 

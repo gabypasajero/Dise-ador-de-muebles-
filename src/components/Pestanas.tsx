@@ -1167,7 +1167,7 @@ function OpcionesEncimera({ d, e, campana, config }: { d: Diseno; e: Encimera; c
 
 function OpcionesLavaplatos({ d, l, unidad, config, ops }: { d: Diseno; l: Lavaplatos; unidad: Unidad; config: Configurar; ops: ReturnType<typeof opcionesEquipo> }) {
   const modulo = cuerposDe(d, l.tramo).find((c) => c.id === l.modulo);
-  const max = modulo ? margenMaximo(modulo, l) : 50;
+  const max = modulo ? margenMaximo(modulo, l, d) : 50;
   return (
     <>
       {ops.lavaplatos.length > 1 && (
@@ -1175,7 +1175,7 @@ function OpcionesLavaplatos({ d, l, unidad, config, ops }: { d: Diseno; l: Lavap
           etiqueta="Modelo"
           valor={l.modelo}
           onCambio={(v) => config({ modelo: v })}
-          opciones={ops.lavaplatos.map((m) => ({ valor: m, texto: m === 'simple' ? 'Simple' : 'Doble' }))}
+          opciones={ops.lavaplatos.map((m) => ({ valor: m, texto: m === 'simple' ? 'Simple' : m === 'doble' ? 'Doble' : 'Riñonera' }))}
         />
       )}
       <Interruptor activo={l.soloCorte} onCambio={(v) => config({ soloCorte: v })} texto="Solo corte (el cliente trae el equipo)" />

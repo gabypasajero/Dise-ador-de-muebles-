@@ -234,7 +234,9 @@ export function PanelInferior() {
               : 'Valor registrado en la cotización.'
             : oficial
               ? precio?.lineas[0]?.concepto === 'Precio de la tienda'
-                ? 'Precio de la tienda del producto, menos los equipos que se quitan o van solo con el corte.'
+                ? esCocinaConEquipos
+                  ? 'Precio de la tienda del producto (mismas medidas), menos los equipos que se quitan o van solo con el corte.'
+                  : 'Precio de la tienda del producto: se mantiene mientras no cambien sus medidas.'
                 : 'Precio de la tienda: metro lineal según el fondo, equipamiento y aéreo.'
               : precio
                 ? 'Calculado desde el precio de la tienda; lo ajustas al cotizar.'

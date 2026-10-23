@@ -165,7 +165,8 @@ export interface Lavaplatos {
   tipo: 'lavaplatos';
   tramo: TramoBase;
   modulo: string;
-  modelo: 'simple' | 'doble';
+  /** Simple (cubeta + secador, 80 cm), doble (2 cubetas) o riñonera (1 cubeta redondeada, 61 cm). */
+  modelo: 'simple' | 'doble' | 'rinonera';
   /** Llave (grifería) incluida. */
   llave: boolean;
   /** Centrado en su módulo o pegado a su borde izquierdo o derecho. */
@@ -246,7 +247,7 @@ export interface DisenoGuardado extends Omit<Partial<Diseno>, 'version' | 'cocin
   cocina?: Partial<EquipamientoCocina> & {
     encimera?: 'ninguna' | '2' | '3' | '4';
     encimeraCuerpo?: number;
-    lavaplatos?: 'ninguno' | 'simple' | 'doble';
+    lavaplatos?: 'ninguno' | 'simple' | 'doble' | 'rinonera';
     lavaplatosCuerpo?: number;
   };
 }

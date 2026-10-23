@@ -3,8 +3,10 @@
 // central de las campanas sobre sus encimeras.
 import { cuerpo as nuevoCuerpo } from './catalogo';
 import {
+  anchoTotalEquipo,
   centroEncimera,
-  centroLavaplatos,
+  extensionEquipo,
+  ubicacionLavaplatos,
   disenoBase,
   esTramoAereo,
   extremosPrincipal,
@@ -51,7 +53,7 @@ export function opcionesEquipo(p: Plantilla): {
   llave: boolean;
 } {
   if (p === 'cocina-infantil') return { platos: ['2', '3', '4'], lavaplatos: ['simple'], campana: false, horno: false, llave: false };
-  if (esAdulta(p)) return { platos: ['3', '4'], lavaplatos: ['simple', 'doble'], campana: true, horno: true, llave: true };
+  if (esAdulta(p)) return { platos: ['3', '4'], lavaplatos: ['simple', 'doble', 'rinonera'], campana: true, horno: true, llave: true };
   return { platos: [], lavaplatos: [], campana: false, horno: false, llave: false };
 }
 
@@ -94,13 +96,13 @@ export function puedeLlevar(d: Diseno, tipo: TipoEquipo, t: TramoBase, c: Cuerpo
  * centro va sobre el módulo y a no menos de 30 cm de cada punta (lo que pide la campana).
  * Un módulo muy angosto en la punta del tramo no la puede llevar.
  */
-export function cabeEncimera(d: Diseno, t: TramoBase, i: number): boolean {
+export function cabeEncimera(d: Diseno, t: TramoBase, i: number, platos: Encimera['platos'] = '4'): boolean {
   if (!esAdulta(d.plantilla)) return true;
   const db = disenoBase(d);
   const pos = posicionesModulos(db, t)[i];
   if (!pos) return false;
   const L = largoEje(db, t);
-  const media = Math.max(MEDIDAS_EQUIPO.encimera['4'].ancho, MEDIDAS_EQUIPO.campana.ancho) / 2;
+  const media = Math.max(MEDIDAS_EQUIPO.encimera[platos].anchoTotal, MEDIDAS_EQUIPO.campana.ancho) / 2;
   return Math.max(pos.s0, media) <= Math.min(pos.s1, L - media) + 0.5;
 }
 
@@ -156,7 +158,7 @@ export function elegirAnfitrion(
       // cajones) y con el ancho que pide su cubeta; la encimera sobre un módulo de su ancho.
       if (adulta && tipo === 'lavaplatos' && c.ancho < MODULO_MIN_LAVAPLATOS[modelo]) puntaje += 200;
       if (tipo === 'lavaplatos' && esCajonera(c)) puntaje += 40;
-      if (adulta && tipo === 'encimera' && c.tipo !== 'horno' && c.ancho < MEDIDAS_EQUIPO.encimera['4'].ancho) puntaje += 60;
+      if (adulta && tipo === 'encimera' && c.tipo !== 'horno' && c.ancho < MEDIDAS_EQUIPO.encimera['4'].anchoTotal) puntaje += 60;
       if (tipo === 'encimera' && !cabeEncimera(d, t, i)) puntaje += 400;
       if (ocupado(d, otro, t, c.id)) puntaje += 300;
       if (!cerca && tipo === 'lavaplatos') {
@@ -173,9 +175,12 @@ export function elegirAnfitrion(
   return { tramo, modulo, indice };
 }
 
-/** Margen máximo (mm) del lavaplatos pegado a un borde dentro de su módulo. */
-export function margenMaximo(c: Cuerpo, l: Lavaplatos): number {
-  return Math.max(MARGEN_MIN_LAVAPLATOS, c.ancho - MEDIDAS_EQUIPO.lavaplatos[l.modelo].ancho - 15);
+/**
+ * Margen máximo (mm) del lavaplatos pegado a un borde dentro de su módulo: el equipo completo
+ * (con su secador) no pasa del otro borde. Nunca bajo el mínimo de 5 cm.
+ */
+export function margenMaximo(c: Cuerpo, l: Lavaplatos, d?: Pick<Diseno, 'plantilla'>): number {
+  return Math.max(MARGEN_MIN_LAVAPLATOS, c.ancho - anchoTotalEquipo(d ?? { plantilla: 'cocina' }, l) - 15);
 }
 
 /**
@@ -187,9 +192,11 @@ export function choqueEnModulo(d: Diseno, e: Equipo): string | null {
   if (!otro) return null;
   const db = disenoBase(d);
   const tramo = (x: Equipo) => {
-    const s = x.tipo === 'encimera' ? centroEncimera(db, x) : centroLavaplatos(db, x);
-    const w = x.tipo === 'encimera' ? MEDIDAS_EQUIPO.encimera[x.platos].ancho : MEDIDAS_EQUIPO.lavaplatos[x.modelo].ancho;
-    return s == null ? null : [s - w / 2, s + w / 2];
+    const ul = x.tipo === 'lavaplatos' ? ubicacionLavaplatos(db, x) : null;
+    const s = x.tipo === 'encimera' ? centroEncimera(db, x) : (ul?.s ?? null);
+    // Se topan los equipos completos (la placa de la encimera, el lavaplatos con su secador).
+    const [ei, ed] = ul ? ul.ext : extensionEquipo(db, x);
+    return s == null ? null : [s - ei, s + ed];
   };
   const a = tramo(e);
   const b = tramo(otro);
@@ -199,8 +206,13 @@ export function choqueEnModulo(d: Diseno, e: Equipo): string | null {
   return `La encimera y el lavaplatos no caben juntos en el ${nombreModuloEn(d, e.tramo, i)} (${Math.round(cs[i].ancho / 10)} cm): se toparían. Elige otro módulo o pega el lavaplatos a un borde de un módulo más ancho.`;
 }
 
+/** «simple», «doble», «riñonera». */
+export function nombreModeloLavaplatos(m: Lavaplatos['modelo']): string {
+  return m === 'rinonera' ? 'riñonera' : m;
+}
+
 function nombreEquipo(e: Equipo): string {
-  return e.tipo === 'encimera' ? `La encimera de ${e.platos} platos` : `El lavaplatos ${e.modelo}`;
+  return e.tipo === 'encimera' ? `La encimera de ${e.platos} platos` : `El lavaplatos ${nombreModeloLavaplatos(e.modelo)}`;
 }
 
 /**
@@ -225,7 +237,7 @@ export function repararEquipos(d: Diseno, ctx: Ctx, cerca: Map<string, { tramo: 
       e.campana = adulta && e.campana === true;
     } else {
       if (!adulta) e.modelo = 'simple';
-      if (e.modelo !== 'doble') e.modelo = 'simple';
+      if (e.modelo !== 'doble' && e.modelo !== 'rinonera') e.modelo = 'simple';
       // La llave es de la cocina adulta (la grifería de la infantil es de juguete y no se cobra).
       e.llave = adulta && e.llave !== false;
       if (e.posicion !== 'izq' && e.posicion !== 'der') e.posicion = 'centro';
@@ -251,7 +263,7 @@ export function repararEquipos(d: Diseno, ctx: Ctx, cerca: Map<string, { tramo: 
     }
     if (e.tipo === 'lavaplatos') {
       const c = cuerposDe(d, e.tramo).find((x) => x.id === e.modulo)!;
-      e.margen = Math.min(e.margen, margenMaximo(c, e));
+      e.margen = Math.min(e.margen, margenMaximo(c, e, d));
     }
     quedan.push(e);
   }
@@ -309,7 +321,7 @@ export function listarEquipamiento(d: Diseno): ItemEquipo[] {
       }
     } else {
       const pos = e.posicion === 'centro' ? 'centrado en su módulo' : `pegado al borde ${e.posicion === 'izq' ? 'izquierdo' : 'derecho'} a ${e.margen / 10} cm`;
-      out.push({ id: e.id, tipo: 'lavaplatos', nombre: `Lavaplatos ${e.modelo}`, tramo: e.tramo, indice: i, modulo: e.modulo, donde, detalle: `${pos}${e.soloCorte ? '; solo corte (el cliente trae el equipo)' : ''}` });
+      out.push({ id: e.id, tipo: 'lavaplatos', nombre: `Lavaplatos ${nombreModeloLavaplatos(e.modelo)}`, tramo: e.tramo, indice: i, modulo: e.modulo, donde, detalle: `${pos}${e.soloCorte ? '; solo corte (el cliente trae el equipo)' : ''}` });
       if (e.llave && !e.soloCorte) out.push({ id: `${e.id}:llave`, tipo: 'llave', nombre: 'Llave', tramo: e.tramo, indice: i, modulo: e.modulo, donde, detalle: 'con el lavaplatos', de: e.id });
     }
   }
@@ -665,7 +677,7 @@ export { esTramoAereo };
 
 // ---------- Distancias entre equipos ----------
 
-/** Un espacio libre de la cubierta a lo largo de un tramo: entre dos cortes o entre un corte y un extremo. */
+/** Un espacio libre de la cubierta a lo largo de un tramo: entre dos equipos o entre un equipo y un extremo. */
 export interface DistanciaEquipos {
   tramo: TramoBase;
   /** Qué hay a cada lado, en minúsculas: «borde izquierdo», «encimera», «lavaplatos», «esquina», «punta». */
@@ -683,8 +695,9 @@ export interface DistanciaEquipos {
 
 /**
  * Espacios libres de la cubierta de cada tramo base (principal y lados de la L o la U):
- * de un extremo de la cubierta al primer corte, entre cortes consecutivos (encimeras y
- * lavaplatos, con su ancho real de corte) y del último corte al otro extremo.
+ * de un extremo de la cubierta al primer equipo, entre equipos consecutivos (encimeras y
+ * lavaplatos, con su ancho total: la placa, el lavaplatos con su secador; no el corte) y del
+ * último equipo al otro extremo.
  * En el tramo principal los extremos son los bordes de la cubierta (con las esquinas);
  * en los lados, la esquina (borde de la cubierta principal) y la punta.
  */
@@ -696,7 +709,7 @@ export function distanciasEquipos(d: Diseno): DistanciaEquipos[] {
   for (const t of TRAMOS_BASE) {
     const cortes = ubic
       .filter((u) => u.tramo === t && (u.tipo === 'encimera' || u.tipo === 'lavaplatos'))
-      .map((u) => ({ id: u.id, nombre: u.tipo as string, a: u.s - u.ancho / 2, b: u.s + u.ancho / 2 }))
+      .map((u) => ({ id: u.id, nombre: u.tipo as string, a: u.total?.s0 ?? u.s - u.ancho / 2, b: u.total?.s1 ?? u.s + u.ancho / 2 }))
       .sort((x, y) => x.a - y.a);
     if (!cortes.length) continue;
     let ini: number, fin: number, nIni: string, nFin: string;

@@ -61,10 +61,10 @@ const CAMBIOS_MODULO: Record<string, CampoOperacion> = {
 const CAMBIOS_EQUIPO: Record<string, CampoOperacion> = {
   platos: { tipo: 'opcion', valores: ['2', '3', '4'], opcional: true, descripcion: "encimera: '3' o '4' (la infantil también '2')" },
   campana: { tipo: 'booleano', opcional: true, descripcion: 'encimera: con o sin campana encima' },
-  modelo: { tipo: 'opcion', valores: ['simple', 'doble'], opcional: true, descripcion: 'lavaplatos simple o doble' },
+  modelo: { tipo: 'opcion', valores: ['simple', 'doble', 'rinonera'], opcional: true, descripcion: "lavaplatos: 'simple' (1 cubeta con secador, 80 cm), 'doble' (2 cubetas, 77 cm) o 'rinonera' (riñonera: 1 cubeta redondeada sin secador, 61 cm)" },
   llave: { tipo: 'booleano', opcional: true, descripcion: 'lavaplatos: con o sin llave' },
   posicion: { tipo: 'opcion', valores: ['centro', 'izq', 'der'], opcional: true, descripcion: 'lavaplatos centrado o pegado a un borde de su módulo' },
-  margen: mm('lavaplatos pegado a un borde: distancia al borde (mínimo 50)', true),
+  margen: mm('lavaplatos pegado a un borde: distancia del borde del módulo al borde del lavaplatos completo (mínimo 50)', true),
   soloCorte: { tipo: 'booleano', opcional: true, descripcion: 'encimera o lavaplatos: solo el corte en la cubierta, el cliente trae su equipo (no se cobra; el lavaplatos queda sin llave)' },
 };
 

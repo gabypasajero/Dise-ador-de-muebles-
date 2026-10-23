@@ -334,7 +334,7 @@ describe('precio y resumen', () => {
     const eq = detalle.find((l) => l.etiqueta === 'Equipamiento')!.valor;
     expect(eq).toContain('encimera 4 platos (módulo 1)');
     expect(eq).toContain('horno eléctrico 58 L (módulo 1)');
-    expect(eq).toContain('lavaplatos 1 cubeta (módulo 3), llave negro mate');
+    expect(eq).toContain('lavaplatos 1 cubeta con secador (módulo 3), llave negro mate');
   });
 
   it('el texto de la cotización termina con vendedor, fecha y valor del mueble', () => {

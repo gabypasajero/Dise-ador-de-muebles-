@@ -95,7 +95,7 @@ describe('diseños guardados con la versión anterior', () => {
     const enc = u.find((x) => x.tipo === 'encimera')!;
     expect(campana.montaje).toBe('aereo');
     expect(Math.abs(campana.mundo.x - enc.mundo.x)).toBeLessThan(1);
-    expect(d.aereos.cuerpos.reduce((s, c) => s + c.ancho, 0)).toBe(1933);
+    expect(d.aereos.cuerpos.reduce((s, c) => s + c.ancho, 0)).toBe(1870); // la encimera de 3 platos mide 73 cm: queda más adentro de la punta
     expect(validarDiseno(d)).toEqual([]);
   });
 

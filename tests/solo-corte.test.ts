@@ -16,10 +16,10 @@ const lavaplatos = (d: Diseno) => d.equipos.find((e): e is Lavaplatos => e.tipo 
 /** Cocina libre (1,5 m): horno con encimera de 4 platos y lavaplatos simple en el tramo principal. */
 const cocina = (): Diseno => disenoLibre('cocina');
 const sinEquipos = (): Diseno => ({ ...disenoLibre('cocina'), equipos: [] });
-/** Largo libre + cortes de un tramo. */
+/** Largo libre + equipos completos de un tramo. */
 const suma = (d: Diseno, t: 'base' | 'izq' | 'der') =>
   distanciasEquipos(d).filter((x) => x.tramo === t).reduce((s, x) => s + x.mm, 0) +
-  ubicarEquipos(d).filter((u) => u.tramo === t && (u.tipo === 'encimera' || u.tipo === 'lavaplatos')).reduce((s, u) => s + u.ancho, 0);
+  ubicarEquipos(d).filter((u) => u.tramo === t && (u.tipo === 'encimera' || u.tipo === 'lavaplatos')).reduce((s, u) => s + (u.total!.s1 - u.total!.s0), 0);
 
 describe('distancias entre equipos', () => {
   it('mide del borde al primer corte, entre cortes y del último corte al otro borde', () => {
@@ -32,12 +32,18 @@ describe('distancias entre equipos', () => {
     expect(ds[0].hasta).toBe(ub[0].tipo);
     expect(ds[1].desde).toBe(ub[0].tipo);
     expect(ds[1].hasta).toBe(ub[1].tipo);
-    // Cada distancia usa el ancho real del corte.
-    expect(ds[0].mm).toBe(Math.round(ub[0].s - ub[0].ancho / 2));
-    expect(ds[1].mm).toBe(Math.round(ub[1].s - ub[1].ancho / 2 - (ub[0].s + ub[0].ancho / 2)));
+    // Cada distancia se mide entre los equipos completos (placa de la encimera, lavaplatos con secador), no entre cortes.
+    expect(ds[0].mm).toBe(Math.round(ub[0].total!.s0));
+    expect(ds[1].mm).toBe(Math.round(ub[1].total!.s0 - ub[0].total!.s1));
+    expect(ub.find((u) => u.tipo === 'encimera')!.total).toMatchObject({ s0: expect.any(Number) });
+    const enc = ub.find((u) => u.tipo === 'encimera')!;
+    expect(enc.total!.s1 - enc.total!.s0).toBe(600);
+    const lav = ub.find((u) => u.tipo === 'lavaplatos')!;
+    expect(lav.total!.s1 - lav.total!.s0).toBe(800);
     // Distancias + cortes = largo de la cubierta.
     expect(Math.abs(suma(d, 'base') - d.ancho)).toBeLessThanOrEqual(2);
     expect(MEDIDAS_EQUIPO.encimera['4'].ancho).toBe(580);
+    expect(MEDIDAS_EQUIPO.encimera['4'].anchoTotal).toBe(600);
   });
 
   it('en texto: «Encimera ↔ lavaplatos: 42 cm»', () => {

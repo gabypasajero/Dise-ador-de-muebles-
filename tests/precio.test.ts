@@ -179,12 +179,13 @@ describe('precio oficial de la cocina', () => {
     expect(valor(l, 'Aéreo: fondo adicional')).toBe(15000 + 10000);
   });
 
-  it('el compacto, la cocina infantil y los demás muebles conservan su precio referencial', () => {
+  it('el compacto y los demás muebles del catálogo valen el precio de la tienda con sus medidas', () => {
     for (const id of [153, 154]) {
       const p = prod(id);
       const d = disenoInicial(p);
       expect(precioReferencial(d, p, d)).toBe(Math.round((p.precio_oferta ?? p.precio) / 1000) * 1000 - 10);
-      expect(precioDiseno(d, p, d)).toMatchObject({ metodo: 'referencial', lineas: [] });
+      expect(precioDiseno(d, p, d)).toMatchObject({ metodo: 'oficial', total: p.precio_oferta ?? p.precio });
+      expect(precioDiseno(d, p, d)!.lineas[0].concepto).toBe('Precio de la tienda');
     }
     const infantil = disenoLibre('cocina-infantil');
     expect(precioReferencial(infantil, null, null)).toBeNull();

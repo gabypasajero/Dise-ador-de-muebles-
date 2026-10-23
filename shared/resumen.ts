@@ -26,7 +26,7 @@ import {
 import { advertencias, formatear, formatoPrecio } from './reglas';
 import { precioCocina } from './tarifas';
 import { cuerposDe, tramosDe } from './tramos';
-import type { CatalogoMateriales, Cotizacion, Cuerpo, Diseno, Encimera, Equipo, LineaDetalle, ProductoCatalogo, TramoId, Unidad } from './tipos';
+import type { CatalogoMateriales, Cotizacion, Cuerpo, Diseno, Encimera, Equipo, Lavaplatos, LineaDetalle, ProductoCatalogo, TramoId, Unidad } from './tipos';
 
 function nombreMaterial(lista: { id: string; nombre: string }[] | undefined, id: string) {
   return lista?.find((m) => m.id === id)?.nombre ?? id;
@@ -65,6 +65,13 @@ function layoutAereo(d: Diseno, t: TramoId): LayoutAereos | null {
   return null;
 }
 
+/** «Lavaplatos simple (1 cubeta con secador, 80 cm)», «Lavaplatos doble (2 cubetas)», «Lavaplatos riñonera (1 cubeta, 61 cm)». */
+export function textoModeloLavaplatos(m: Lavaplatos['modelo']): string {
+  if (m === 'doble') return 'Lavaplatos doble (2 cubetas)';
+  const w = MEDIDAS_EQUIPO.lavaplatos[m].anchoTotal / 10;
+  return m === 'rinonera' ? `Lavaplatos riñonera (1 cubeta, ${w} cm)` : `Lavaplatos simple (1 cubeta con secador, ${w} cm)`;
+}
+
 /** Corte en la cubierta de un equipo que trae el cliente: «solo corte de 58 × 51 cm (el cliente aporta el equipo)». */
 export function textoSoloCorte(e: Equipo, unidad: Unidad | ((mm: number, conU?: boolean) => string) = 'cm'): string {
   const m = e.tipo === 'encimera' ? MEDIDAS_EQUIPO.encimera[e.platos] : MEDIDAS_EQUIPO.lavaplatos[e.modelo];
@@ -81,7 +88,7 @@ function equiposDelModulo(d: Diseno, t: TramoId, c: Cuerpo): string[] {
     else if (e.tipo === 'encimera') out.push(`encimera ${e.platos} platos${e.campana ? ' con campana' : ''}`);
     else {
       const pos = e.posicion === 'centro' ? 'centrado' : `pegado a la ${e.posicion === 'izq' ? 'izquierda' : 'derecha'} a ${formatear(e.margen, 'cm')} del borde`;
-      out.push(`lavaplatos ${e.modelo} ${pos}${e.llave ? ', con llave' : ', sin llave'}`);
+      out.push(`lavaplatos ${e.modelo === 'rinonera' ? 'riñonera' : e.modelo} ${pos}${e.llave ? ', con llave' : ', sin llave'}`);
     }
   }
   return out;
@@ -177,7 +184,7 @@ function textoEquipamiento(d: Diseno): string[] {
         continue;
       }
       const llave = l.llave ? `, llave ${d.cocina.grifo === 'negro' ? 'negro mate' : 'cromada'}` : d.plantilla === 'cocina-infantil' ? `, grifería ${d.cocina.grifo === 'negro' ? 'negro mate' : 'cromada'}` : ', sin llave';
-      eq.push(`lavaplatos ${l.modelo === 'doble' ? '2 cubetas' : '1 cubeta'} (${donde(it.tramo, it.indice)}${pos})${llave}`);
+      eq.push(`lavaplatos ${l.modelo === 'doble' ? '2 cubetas' : l.modelo === 'rinonera' ? 'riñonera (1 cubeta)' : '1 cubeta con secador'} (${donde(it.tramo, it.indice)}${pos})${llave}`);
     }
   }
   return eq;
@@ -429,7 +436,7 @@ function interiorModulo(
     } else {
       const pos = e.posicion === 'centro' ? 'centrado' : `pegado al borde ${e.posicion === 'izq' ? 'izquierdo' : 'derecho'} a ${f(e.margen)}`;
       const llave = e.llave ? `con llave ${d.cocina.grifo === 'negro' ? 'negro mate' : 'cromada'}` : 'sin llave';
-      out.push(`Lavaplatos ${e.modelo === 'doble' ? 'doble (2 cubetas)' : 'simple (1 cubeta)'}, ${pos}, ${llave}${corte}`);
+      out.push(`${textoModeloLavaplatos(e.modelo)}, ${pos}, ${llave}${corte}`);
     }
   }
   for (const u of ubic) {
@@ -603,7 +610,7 @@ function seccionEquipamiento(d: Diseno, unidad: Unidad, ubic: EquipoUbicado[]): 
     if (it.tipo === 'lavaplatos') {
       const e = d.equipos.find((x) => x.id === it.id);
       if (!e || e.tipo !== 'lavaplatos') return { celdas: ['Lavaplatos', it.nombre, lugar, pos], texto };
-      const tipo = `${e.modelo === 'doble' ? 'Doble (2 cubetas)' : 'Simple (1 cubeta)'}, ${e.llave ? `con llave ${grifo}` : 'sin llave'}`;
+      const tipo = `${textoModeloLavaplatos(e.modelo).replace(/^Lavaplatos /, '').replace(/^./, (c) => c.toUpperCase())}, ${e.llave ? `con llave ${grifo}` : 'sin llave'}`;
       const enModulo = e.posicion === 'centro' ? 'Centrado en su módulo' : `Pegado al borde ${e.posicion === 'izq' ? 'izquierdo' : 'derecho'} del módulo, a ${f(e.margen)}`;
       return { celdas: ['Lavaplatos', tipo, lugar, [enModulo, pos, corte].filter(Boolean).join('\n')], texto };
     }
@@ -630,7 +637,7 @@ function seccionEquipamiento(d: Diseno, unidad: Unidad, ubic: EquipoUbicado[]): 
   const lineas: LineaDetalle[] = [];
   for (const t of ['izq', 'base', 'der'] as const) {
     const ds = distancias.filter((x) => x.tramo === t);
-    if (ds.length) lineas.push({ etiqueta: `Distancias · ${nombreTramo(d, t).toLowerCase()}`, valor: 'espacio libre de cubierta entre cortes y hasta sus extremos', sub: ds.map((x) => textoDistancia(x, unidad)) });
+    if (ds.length) lineas.push({ etiqueta: `Distancias · ${nombreTramo(d, t).toLowerCase()}`, valor: 'espacio libre de cubierta entre los equipos (ancho total) y hasta sus extremos', sub: ds.map((x) => textoDistancia(x, unidad)) });
   }
   return {
     titulo: 'Equipamiento',
@@ -746,7 +753,7 @@ export function fichaFabricacion(
       .filter((u) => u.tipo === 'encimera' || u.tipo === 'lavaplatos')
       .map((u) => {
         const e = d.equipos.find((x) => x.id === u.id)!;
-        const que = `${e.tipo === 'encimera' ? `encimera ${e.platos} platos` : `lavaplatos ${e.modelo}`}${e.soloCorte ? ' (solo corte: el cliente aporta el equipo)' : ''}`;
+        const que = `${e.tipo === 'encimera' ? `encimera ${e.platos} platos` : `lavaplatos ${e.modelo === 'rinonera' ? 'riñonera' : e.modelo}`}${e.soloCorte ? ' (solo corte: el cliente aporta el equipo)' : ''}`;
         const borde = e.tipo === 'lavaplatos' && e.posicion !== 'centro' ? `, a ${f(e.margen)} del borde ${e.posicion === 'izq' ? 'izquierdo' : 'derecho'} de su módulo` : '';
         return `${que}: ${f(u.ancho, false)} × ${f(u.fondo)} (${nombreModuloEn(d, u.tramo, u.indice)}), ${donde(u)}${borde}`;
       });

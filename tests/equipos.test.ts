@@ -169,18 +169,24 @@ describe('lavaplatos centrado o pegado a un borde', () => {
       return { s0, s1: s0 + d.cuerpos[i].ancho };
     };
     const centro = () => ubicarEquipos(d).find((u) => u.tipo === 'lavaplatos')!.s;
-    expect(centro()).toBe((modulo().s0 + modulo().s1) / 2);
+    // s es el centro del corte; el simple mide 80 cm con la cubeta (44 cm) a la izquierda y el secador a la derecha.
+    const total = () => ubicarEquipos(d).find((u) => u.tipo === 'lavaplatos')!.total!;
+    expect((total().s0 + total().s1) / 2).toBe((modulo().s0 + modulo().s1) / 2);
+    expect(centro()).toBe((modulo().s0 + modulo().s1) / 2 - 180);
     d = configurarEquipo(d, l0.id, { posicion: 'izq' });
-    expect(centro() - 200).toBe(modulo().s0 + 50);
-    d = configurarEquipo(d, l0.id, { posicion: 'der', margen: 120 });
-    expect(centro() + 200).toBe(modulo().s1 - 120);
+    expect(centro() - 220).toBe(modulo().s0 + 50);
+    expect(total().s0).toBe(modulo().s0 + 50);
+    d = configurarEquipo(d, l0.id, { posicion: 'der', margen: 80 });
+    // Pegado al borde derecho el secador pasa a la izquierda (hacia adentro del módulo).
+    expect(centro() + 220).toBe(modulo().s1 - 80);
+    expect(total().s1).toBe(modulo().s1 - 80);
     const r = ejecutar(d, { op: 'configurarEquipo', id: l0.id, cambios: { margen: 20 } });
     expect(lavaplatos(r.diseno).margen).toBe(50);
     expect(r.avisos.join(' ')).toMatch(/al menos a 5 cm/);
     // No puede salirse de su módulo.
     const lejos = ejecutar(d, { op: 'configurarEquipo', id: l0.id, cambios: { margen: 2000 } });
     const ancho = lejos.diseno.cuerpos.find((c) => c.id === l0.modulo)!.ancho;
-    expect(lavaplatos(lejos.diseno).margen).toBe(ancho - 400 - 15);
+    expect(lavaplatos(lejos.diseno).margen).toBe(Math.max(50, ancho - 800 - 15));
     expect(validarDiseno(lejos.diseno)).toEqual([]);
   });
 });

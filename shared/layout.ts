@@ -2,7 +2,7 @@
 // cada cuerpo, puerta y cajón. Lo usan el visor 3D y los paneles de medidas.
 // Ejes (mm): x de izquierda a derecha centrado en 0, y desde el piso hacia
 // arriba, z desde el muro (0) hacia el frente.
-import type { Bisagra, Cuerpo, Diseno, Encimera, Lado, LadoId, Lavaplatos, Retorno, TramoAereo, TramoBase, TramoId } from './tipos';
+import type { Bisagra, Cuerpo, Diseno, Encimera, Equipo, Lado, LadoId, Lavaplatos, Retorno, TramoAereo, TramoBase, TramoId } from './tipos';
 
 export interface Rect {
   x0: number;
@@ -691,10 +691,25 @@ export function transformTramo(d: Diseno, t: TramoId): Transformacion | null {
 
 // ---------- Equipamiento ----------
 
-/** Medidas nominales (mm) del equipamiento para ubicarlo y dibujarlo. Lavaplatos: el corte de las cubetas. */
+/**
+ * Medidas nominales (mm) del equipamiento. `ancho` × `fondo` es el corte (orificio) en la
+ * cubierta; `anchoTotal` es el ancho del equipo completo apoyado sobre la cubierta (la placa de la
+ * encimera, el lavaplatos con su secador). El lavaplatos simple lleva la cubeta a la izquierda y el
+ * secador estriado a la derecha (como el modelo de la tienda), así que su corte no va centrado:
+ * `cubeta` es el ancho de la zona de la cubeta, con el corte al medio de ella.
+ * Riñonera: una sola cubeta redondeada sin secador; corte de 55 × 40 cm en un equipo de 61 cm.
+ */
 export const MEDIDAS_EQUIPO = {
-  encimera: { '2': { ancho: 300, fondo: 520 }, '3': { ancho: 580, fondo: 500 }, '4': { ancho: 580, fondo: 510 } },
-  lavaplatos: { simple: { ancho: 400, fondo: 360 }, doble: { ancho: 770, fondo: 380 } },
+  encimera: {
+    '2': { ancho: 300, fondo: 520, anchoTotal: 300 },
+    '3': { ancho: 580, fondo: 500, anchoTotal: 730 },
+    '4': { ancho: 580, fondo: 510, anchoTotal: 600 },
+  },
+  lavaplatos: {
+    simple: { ancho: 400, fondo: 360, anchoTotal: 800, cubeta: 440 },
+    doble: { ancho: 770, fondo: 380, anchoTotal: 770, cubeta: 770 },
+    rinonera: { ancho: 550, fondo: 400, anchoTotal: 610, cubeta: 610 },
+  },
   campana: { ancho: 600, fondo: 480 },
   horno: { ancho: 595, alto: ALTO_HORNO },
 } as const;
@@ -702,7 +717,71 @@ export const MEDIDAS_EQUIPO = {
 /** Distancia mínima (mm) entre el lavaplatos y el borde al que va pegado. */
 export const MARGEN_MIN_LAVAPLATOS = 50;
 /** Ancho de módulo con el que el lavaplatos queda dentro de su mueble. */
-export const MODULO_MIN_LAVAPLATOS = { simple: 450, doble: 800 } as const;
+export const MODULO_MIN_LAVAPLATOS = { simple: 450, doble: 800, rinonera: 600 } as const;
+
+/**
+ * Cuánto se extiende el equipo completo (mm) a la izquierda y a la derecha del centro de su
+ * corte. La cocina infantil es de juguete: su equipo mide lo mismo que el corte. El lavaplatos
+ * simple lleva el secador a la derecha (o a la izquierda si `secador` lo dice).
+ */
+export function extensionEquipo(d: Pick<Diseno, 'plantilla'>, e: Equipo, secador: 'izq' | 'der' = 'der'): [number, number] {
+  if (e.tipo === 'encimera') {
+    const m = MEDIDAS_EQUIPO.encimera[e.platos];
+    const w = d.plantilla === 'cocina-infantil' ? m.ancho : m.anchoTotal;
+    return [w / 2, w / 2];
+  }
+  const m = MEDIDAS_EQUIPO.lavaplatos[e.modelo];
+  if (d.plantilla === 'cocina-infantil') return [m.ancho / 2, m.ancho / 2];
+  const cubeta = m.cubeta / 2;
+  const resto = m.anchoTotal - cubeta;
+  return secador === 'der' ? [cubeta, resto] : [resto, cubeta];
+}
+
+/**
+ * Dónde va el lavaplatos: centro del corte (s), su extensión a cada lado y el lado del secador.
+ * El secador del simple va hacia adentro del módulo: a la derecha por defecto y pegado al borde
+ * izquierdo; a la izquierda si va pegado al borde derecho, o si centrado a la derecha se saldría
+ * de la cubierta.
+ */
+export function ubicacionLavaplatos(d: Diseno, l: Lavaplatos): { s: number; ext: [number, number]; secador: 'izq' | 'der' } | null {
+  const pos = posicionesModulos(d, l.tramo);
+  const m = pos.find((p) => p.id === l.modulo);
+  if (!m) return null;
+  const L = largoEje(d, l.tramo);
+  const colocar = (secador: 'izq' | 'der') => {
+    const ext = extensionEquipo(d, l, secador);
+    const [ei, ed] = ext;
+    let s: number;
+    if (l.posicion === 'izq') s = dentro(m.s0 + l.margen + ei, m);
+    else if (l.posicion === 'der') s = dentro(m.s1 - l.margen - ed, m);
+    else {
+      // Centrado: el equipo completo queda al medio del módulo, sin salirse de la cubierta.
+      const c = (m.s0 + m.s1) / 2 - (ed - ei) / 2;
+      const lo = ei + 45;
+      const hi = L - ed - 45;
+      s = dentro(lo <= hi ? Math.max(lo, Math.min(hi, c)) : L / 2, m);
+    }
+    return { s, ext, secador, sale: Math.max(0, -(s - ei)) + Math.max(0, s + ed - L) };
+  };
+  if (l.modelo !== 'simple' || d.plantilla === 'cocina-infantil') {
+    const r = colocar('der');
+    return { s: r.s, ext: r.ext, secador: r.secador };
+  }
+  if (l.posicion === 'der') {
+    const r = colocar('izq');
+    return { s: r.s, ext: r.ext, secador: r.secador };
+  }
+  const der = colocar('der');
+  const izq = l.posicion === 'centro' && der.sale > 0.5 ? colocar('izq') : null;
+  const r = izq && izq.sale < der.sale ? izq : der;
+  return { s: r.s, ext: r.ext, secador: r.secador };
+}
+
+/** Ancho del equipo completo sobre la cubierta (mm). */
+export function anchoTotalEquipo(d: Pick<Diseno, 'plantilla'>, e: Equipo): number {
+  const [a, b] = extensionEquipo(d, e);
+  return a + b;
+}
 
 export interface EquipoUbicado {
   /** Id del equipo; el horno usa el id de su módulo y la campana `<id encimera>:campana`. */
@@ -718,6 +797,10 @@ export interface EquipoUbicado {
   x: number;
   ancho: number;
   fondo: number;
+  /** Encimera y lavaplatos: inicio y fin (s) del equipo completo sobre la cubierta. */
+  total?: { s0: number; s1: number };
+  /** Lavaplatos simple: lado del secador (respecto de s creciente). */
+  secador?: 'izq' | 'der';
   /** Centro en planta, sobre el muro del tramo (coordenadas del mueble). */
   mundo: { x: number; z: number };
   /** Campana: alojada en un módulo de los aéreos o mural (sin aéreos encima). */
@@ -752,7 +835,7 @@ export function centroEncimera(d: Diseno, e: Encimera): number | null {
   const L = largoEje(d, e.tramo);
   // Con campana se aleja de la punta lo que pide la campana (60 cm): así la campana queda
   // centrada sobre ella sin salirse del aéreo, que termina donde termina la cubierta.
-  const media = Math.max(MEDIDAS_EQUIPO.encimera[e.platos].ancho, e.campana ? MEDIDAS_EQUIPO.campana.ancho : 0) / 2;
+  const media = Math.max(anchoTotalEquipo(d, e), e.campana ? MEDIDAS_EQUIPO.campana.ancho : 0) / 2;
   const c = (m.s0 + m.s1) / 2;
   // No se sale de la cubierta y su centro queda siempre sobre su módulo.
   return dentro(L > 2 * media ? Math.max(media, Math.min(L - media, c)) : L / 2, m);
@@ -764,16 +847,7 @@ function dentro(s: number, m: { s0: number; s1: number }): number {
 
 /** Centro (s) de un lavaplatos: centrado en su módulo o pegado a uno de sus bordes con su margen. */
 export function centroLavaplatos(d: Diseno, l: Lavaplatos): number | null {
-  const pos = posicionesModulos(d, l.tramo);
-  const m = pos.find((p) => p.id === l.modulo);
-  if (!m) return null;
-  const w = MEDIDAS_EQUIPO.lavaplatos[l.modelo].ancho;
-  if (l.posicion === 'izq') return dentro(m.s0 + l.margen + w / 2, m);
-  if (l.posicion === 'der') return dentro(m.s1 - l.margen - w / 2, m);
-  const L = largoEje(d, l.tramo);
-  const media = w / 2 + 45;
-  const c = (m.s0 + m.s1) / 2;
-  return dentro(L > 2 * media ? Math.max(media, Math.min(L - media, c)) : L / 2, m);
+  return ubicacionLavaplatos(d, l)?.s ?? null;
 }
 
 /** x local del layout de un tramo a partir de s. */
@@ -805,10 +879,12 @@ export function ubicarEquipos(d: Diseno): EquipoUbicado[] {
   for (const e of d.equipos ?? []) {
     const i = cuerposTramo(db, e.tramo).findIndex((c) => c.id === e.modulo);
     if (i < 0) continue;
-    const s = e.tipo === 'encimera' ? centroEncimera(db, e) : centroLavaplatos(db, e);
+    const ul = e.tipo === 'lavaplatos' ? ubicacionLavaplatos(db, e) : null;
+    const s = e.tipo === 'encimera' ? centroEncimera(db, e) : (ul?.s ?? null);
     if (s == null) continue;
     const med = e.tipo === 'encimera' ? MEDIDAS_EQUIPO.encimera[e.platos] : MEDIDAS_EQUIPO.lavaplatos[e.modelo];
-    out.push({ id: e.id, tipo: e.tipo, tramo: e.tramo, indice: i, modulo: e.modulo, s, x: xLocal(db, e.tramo, s), ancho: med.ancho, fondo: med.fondo, mundo: posEnMundo(db, e.tramo, s) });
+    const [ei, ed] = ul ? ul.ext : extensionEquipo(db, e);
+    out.push({ id: e.id, tipo: e.tipo, tramo: e.tramo, indice: i, modulo: e.modulo, s, x: xLocal(db, e.tramo, s), ancho: med.ancho, fondo: med.fondo, total: { s0: s - ei, s1: s + ed }, ...(ul && e.tipo === 'lavaplatos' && e.modelo === 'simple' && d.plantilla !== 'cocina-infantil' ? { secador: ul.secador } : {}), mundo: posEnMundo(db, e.tramo, s) });
     if (e.tipo !== 'encimera' || !e.campana) continue;
     const mundo = posEnMundo(db, e.tramo, s);
     const ta = tramoAereoDe(e.tramo);

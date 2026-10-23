@@ -274,15 +274,19 @@ function EquipoCocina({ d, l, extension, equipos }: { d: Diseno; l: Layout; exte
     }
     if (e.tipo === 'lavaplatos') {
       const tipo = e.modelo;
-      const ancho = tipo === 'doble' ? 770 : 400;
-      const fondo = tipo === 'doble' ? 380 : 360;
-      const escala = Math.min(1, (D - r - 120) / (fondo + 76), (W - 60) / (ancho + 76));
+      const ancho = u.ancho;
+      const fondo = u.fondo;
+      // Equipo completo: a la izquierda y a la derecha del centro del corte (el simple lleva el secador a la derecha).
+      const ei = u.total ? u.s - u.total.s0 : ancho / 2 + 38;
+      const ed = u.total ? u.total.s1 - u.s : ancho / 2 + 38;
+      const escala = Math.min(1, (D - r - 120) / (fondo + 76), (W - 60) / (ei + ed));
       // El motor ya lo corre al borde elegido con su margen: solo se cuida no salir de la cubierta.
-      const cx = limitar(u.x, (ancho * escala) / 2 + 40);
+      const cx = Math.max(cx0 + ei * escala + 20, Math.min(cx1 - ed * escala - 20, u.x));
       const cz = Math.max((D - r) * 0.55, 14 + 70 + (fondo * escala) / 2);
       const h = huecosLavaplatos(tipo, cx, Math.min(cz, D - r - 45 - (fondo * escala) / 2), escala);
       huecos.push(...h);
-      lavaplatos.push(<Lavaplatos key={u.id} huecos={h} yTop={d.alto} profundidadCuba={170} grifo={d.cocina.grifo} escala={escala} llave={e.llave !== false} />);
+      const contorno = { x0: cx - ei * escala, x1: cx + ed * escala };
+      lavaplatos.push(<Lavaplatos key={u.id} huecos={h} yTop={d.alto} profundidadCuba={Math.max(12, ct - 3)} grifo={d.cocina.grifo} escala={escala} llave={e.llave !== false} modelo={tipo} contorno={contorno} />);
     } else {
       const def = medidasEncimera(e.platos);
       const escala = Math.min(1, (D - r - 30) / def.fondo, (W - 40) / def.ancho);

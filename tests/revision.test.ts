@@ -169,11 +169,12 @@ describe('encimera y lavaplatos no se topan', () => {
 
   it('en un módulo ancho caben si el lavaplatos va pegado a un borde', () => {
     // Al agrandar el mueble también crece la puerta nueva: se ensancha a mano el módulo del lavaplatos.
-    let d = fijarAncho(agregarModulo(fijarAncho(full(), 3000), preset('puerta'), 1), 3600);
+    // Encimera centrada (60 cm) + lavaplatos simple completo (80 cm, con secador) al borde: el módulo necesita más de 2,3 m.
+    let d = fijarAncho(agregarModulo(fijarAncho(full(), 3000), preset('puerta'), 1), 4400);
     const i = d.cuerpos.findIndex((c) => c.id === lavaplatos(d).modulo);
-    d = ejecutar(d, { op: 'fijarAnchoModulo', tramo: 'base', modulo: i, ancho: 1500 }).diseno;
-    expect(d.cuerpos[i].ancho).toBe(1500);
-    expect(d.ancho).toBe(3600);
+    d = ejecutar(d, { op: 'fijarAnchoModulo', tramo: 'base', modulo: i, ancho: 2400 }).diseno;
+    expect(d.cuerpos[i].ancho).toBe(2400);
+    expect(d.ancho).toBe(4400);
     d = configurarEquipo(d, lavaplatos(d).id, { posicion: 'der', margen: 50 });
     const r = ejecutar(d, { op: 'moverEquipo', id: encimera(d).id, tramo: 'base', modulo: i });
     expect(r.ok).toBe(true);
@@ -318,13 +319,13 @@ describe('documentos', () => {
   it('la ficha del maestro trae piezas y cortes de cubierta, cotas desde los muros y la campana', () => {
     let d = enU();
     d = moverEquipo(d, encimera(d).id, 'der', 0);
-    d = configurarEquipo(d, lavaplatos(d).id, { posicion: 'izq', margen: 100 });
+    d = configurarEquipo(d, lavaplatos(d).id, { posicion: 'izq', margen: 80 });
     const texto = textoFicha(fichaFabricacion(d, prod(16), 'cm', null));
     expect(texto).toContain('Módulo 2 · 90 cm: Cajonera de 3 cajones');
     expect(texto).toContain('tramo principal: 360 × 60 cm (cubre las esquinas)');
     expect(texto).toContain('lado derecho: 140 × 60 cm');
     expect(texto).toMatch(/encimera 4 platos: 58 × 51 cm \(módulo 1 del lado derecho\), centro a 130 cm del muro principal/);
-    expect(texto).toMatch(/lavaplatos simple: 40 × 36 cm \(módulo 3\), centro a 240 cm del muro izquierdo, a 10 cm del borde izquierdo/);
+    expect(texto).toMatch(/lavaplatos simple: 40 × 36 cm \(módulo 3\), centro a 240 cm del muro izquierdo, a 8 cm del borde izquierdo/);
     expect(texto).toContain('Llave negro mate');
     expect(texto).toMatch(/de 60 a 120 cm del muro izquierdo/);
     expect(texto).toMatch(/Frentes: \d+ módulos/);

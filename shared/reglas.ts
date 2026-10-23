@@ -19,7 +19,6 @@ import {
   LADOS,
   ladoAereoActivo,
   ladoDeTramo,
-  MEDIDAS_EQUIPO,
   MODULO_MIN_LAVAPLATOS,
   posEnMundo,
   posEnTramo,
@@ -28,6 +27,7 @@ import {
   tramoAereoDe,
   tramoBaseDe,
   type Frente,
+  anchoTotalEquipo,
 } from './layout';
 import { absorberCercanos, ajustarSuma, holgura, repartirParejo, type Limite } from './reparto';
 import {
@@ -1941,7 +1941,7 @@ export function formaAereos(d: Diseno): Forma {
 export function equipoLegado(d: Diseno): {
   encimera: 'ninguna' | '2' | '3' | '4';
   encimeraCuerpo: number;
-  lavaplatos: 'ninguno' | 'simple' | 'doble';
+  lavaplatos: 'ninguno' | 'simple' | 'doble' | 'rinonera';
   lavaplatosCuerpo: number;
 } {
   const equipos = d.equipos ?? [];
@@ -2080,7 +2080,7 @@ export function normalizar(entrada: Diseno | DisenoGuardado): Diseno {
     const desde = p === 'cocina-infantil' && n > 1 ? 1 : 0;
     const modulo = (v: number | undefined) => out.cuerpos[Math.max(desde, Math.min(n - 1, Math.round(numero(v, 0))))].id;
     if (k.encimera && k.encimera !== 'ninguna') out.equipos.push(nuevaEncimera(modulo(k.encimeraCuerpo), k.encimera));
-    if (k.lavaplatos && k.lavaplatos !== 'ninguno') out.equipos.push(nuevoLavaplatos(modulo(k.lavaplatosCuerpo), k.lavaplatos === 'doble' ? 'doble' : 'simple'));
+    if (k.lavaplatos && k.lavaplatos !== 'ninguno') out.equipos.push(nuevoLavaplatos(modulo(k.lavaplatosCuerpo), k.lavaplatos === 'doble' || k.lavaplatos === 'rinonera' ? k.lavaplatos : 'simple'));
     // El módulo de campana de los aéreos activos pasa a ser la campana de la encimera.
     const enc = out.equipos.find((e): e is Encimera => e.tipo === 'encimera');
     const campanas = aereos.cuerpos.filter((c) => c.tipo === 'campana');
@@ -2201,8 +2201,8 @@ function advertenciasTodas(d: Diseno, unidad: Unidad): Advertencia[] {
       const nombre = nombreModuloEn(d, e.tramo, i);
       if (e.tipo === 'lavaplatos') {
         const necesita = MODULO_MIN_LAVAPLATOS[e.modelo];
-        if (c.ancho < necesita) out.push({ nivel: 'aviso', texto: `El lavaplatos ${e.modelo} necesita un módulo de al menos ${f(necesita)} (el ${nombre} mide ${f(c.ancho)}).` });
-        else if (e.posicion !== 'centro' && c.ancho < MEDIDAS_EQUIPO.lavaplatos[e.modelo].ancho + e.margen + 15) {
+        if (c.ancho < necesita) out.push({ nivel: 'aviso', texto: `El lavaplatos ${e.modelo === 'rinonera' ? 'riñonera' : e.modelo} necesita un módulo de al menos ${f(necesita)} (el ${nombre} mide ${f(c.ancho)}).` });
+        else if (e.posicion !== 'centro' && c.ancho < anchoTotalEquipo(d, e) + e.margen + 15) {
           out.push({ nivel: 'aviso', texto: `El lavaplatos pegado al borde no cabe en el ${nombre} con ${f(e.margen)} de margen.` });
         }
         if (choqueEnModulo(d, e)) {
@@ -2210,7 +2210,7 @@ function advertenciasTodas(d: Diseno, unidad: Unidad): Advertencia[] {
         }
       } else {
         const minimo = e.platos === '4' ? 580 : esCocinaAdulta(d) ? 400 : 250;
-        if (!cabeEncimera(d, e.tramo, i)) out.push({ nivel: 'aviso', texto: `La encimera del ${nombre} queda en la punta y se sale de la cubierta: muévela a un módulo más ancho o más adentro.` });
+        if (!cabeEncimera(d, e.tramo, i, e.platos)) out.push({ nivel: 'aviso', texto: `La encimera del ${nombre} queda en la punta y se sale de la cubierta: muévela a un módulo más ancho o más adentro.` });
         else if (c.ancho < minimo) out.push({ nivel: 'info', texto: `La encimera sobresale del ${nombre}; la cubierta igual la soporta.` });
       }
     }
@@ -2346,11 +2346,11 @@ export function precioReferencial(d: Diseno, base: ProductoCatalogo | null, dise
  */
 export const DESCUENTO_EQUIPO = {
   encimera: { '3': 30000, '4': 60000 } as Record<'3' | '4', number>,
-  lavaplatos: { simple: 30000, doble: 35000 } as Record<'simple' | 'doble', number>,
+  lavaplatos: { simple: 30000, doble: 35000, rinonera: 30000 } as Record<'simple' | 'doble' | 'rinonera', number>,
 };
 
 /** Las medidas del mueble (ancho, alto, fondo, forma, lados y aéreos) siguen iguales a las del producto. */
-function mismasMedidas(d: Diseno, b: Diseno): boolean {
+export function mismasMedidas(d: Diseno, b: Diseno): boolean {
   const lado = (x: Diseno, l: 'izq' | 'der') => {
     const r = x.lados?.[l];
     return r ? `${r.largo}x${r.profundidad}` : '-';
@@ -2370,12 +2370,13 @@ function mismasMedidas(d: Diseno, b: Diseno): boolean {
 }
 
 /**
- * Cocina del catálogo con sus medidas de la tienda: vale el precio de la tienda menos las
+ * Mueble del catálogo (cualquier plantilla) con sus medidas de la tienda: vale el precio de la tienda menos las
  * encimeras y lavaplatos que se quitaron o que van como solo corte (y más los que se agregaron,
- * a tarifa). null si cambiaron las medidas: entonces rige el precio por metro lineal.
+ * a tarifa). Cambiar módulos, colores o tiradores no cambia el precio. null si cambiaron las
+ * medidas: entonces rige el precio por metro lineal (cocina) o el referencial (el resto).
  */
 function precioTiendaConDescuentos(d: Diseno, base: ProductoCatalogo | null, disenoBase: Diseno | null): { total: number; metodo: 'oficial'; lineas: LineaPrecio[] } | null {
-  if (!base || !disenoBase || disenoBase.plantilla !== 'cocina') return null;
+  if (!base || !disenoBase || disenoBase.plantilla !== d.plantilla) return null;
   const precioBase = base.precio_oferta ?? base.precio;
   if (!precioBase || !mismasMedidas(d, disenoBase)) return null;
   const linea = (concepto: string, cantidad: number, unitario: number, detalle: string): LineaPrecio => ({ concepto, detalle, cantidad, unidad: 'unidad', unitario, valor: cantidad * unitario });
@@ -2385,8 +2386,9 @@ function precioTiendaConDescuentos(d: Diseno, base: ProductoCatalogo | null, dis
   const tipos: { nombre: string; f: (e: Equipo) => boolean; descuento: number; tarifa: number }[] = [
     { nombre: 'Encimera 4 platos', f: (e) => e.tipo === 'encimera' && e.platos === '4', descuento: DESCUENTO_EQUIPO.encimera['4'], tarifa: TARIFAS.encimera['4'] },
     { nombre: 'Encimera 3 platos', f: (e) => e.tipo === 'encimera' && e.platos !== '4', descuento: DESCUENTO_EQUIPO.encimera['3'], tarifa: TARIFAS.encimera['3'] },
-    { nombre: 'Lavaplatos simple', f: (e) => e.tipo === 'lavaplatos' && e.modelo !== 'doble', descuento: DESCUENTO_EQUIPO.lavaplatos.simple, tarifa: TARIFAS.lavaplatos.simple },
+    { nombre: 'Lavaplatos simple', f: (e) => e.tipo === 'lavaplatos' && e.modelo === 'simple', descuento: DESCUENTO_EQUIPO.lavaplatos.simple, tarifa: TARIFAS.lavaplatos.simple },
     { nombre: 'Lavaplatos doble', f: (e) => e.tipo === 'lavaplatos' && e.modelo === 'doble', descuento: DESCUENTO_EQUIPO.lavaplatos.doble, tarifa: TARIFAS.lavaplatos.doble },
+    { nombre: 'Lavaplatos riñonera', f: (e) => e.tipo === 'lavaplatos' && e.modelo === 'rinonera', descuento: DESCUENTO_EQUIPO.lavaplatos.rinonera, tarifa: TARIFAS.lavaplatos.rinonera },
   ];
   for (const t of tipos) {
     const dif = cuenta(d, t.f) - cuenta(disenoBase, t.f);
@@ -2394,7 +2396,7 @@ function precioTiendaConDescuentos(d: Diseno, base: ProductoCatalogo | null, dis
       lineas.push(linea(`Sin ${t.nombre.toLowerCase()}`, -dif, -t.descuento, `${-dif} × −${formatoPrecio(t.descuento)}`));
       total += dif * t.descuento;
     } else if (dif > 0) {
-      lineas.push(linea(`${t.nombre} agregada`, dif, t.tarifa, `${dif} × ${formatoPrecio(t.tarifa)}`));
+      lineas.push(linea(`${t.nombre} ${t.nombre.startsWith('Encimera') ? 'agregada' : 'agregado'}`, dif, t.tarifa, `${dif} × ${formatoPrecio(t.tarifa)}`));
       total += dif * t.tarifa;
     }
   }
@@ -2407,9 +2409,9 @@ export function precioDiseno(
   base: ProductoCatalogo | null,
   disenoBase: Diseno | null,
 ): { total: number; metodo: 'oficial' | 'referencial'; lineas: LineaPrecio[] } | null {
+  const tienda = precioTiendaConDescuentos(d, base, disenoBase);
+  if (tienda) return tienda;
   if (d.plantilla === 'cocina') {
-    const tienda = precioTiendaConDescuentos(d, base, disenoBase);
-    if (tienda) return tienda;
     const p = precioCocina(d);
     return { total: p.total, metodo: 'oficial', lineas: p.lineas };
   }
