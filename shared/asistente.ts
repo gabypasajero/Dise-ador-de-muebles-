@@ -10,6 +10,7 @@ import {
   largoTramo,
   limitesModulo,
   nombreModulo,
+  aplicarAjustes,
   precioDiseno,
   presetsModulo,
   rolModulo,
@@ -122,7 +123,7 @@ export function contextoAsistente(d: Diseno, producto: ProductoCatalogo | null =
   const [x0, x1] = extremosPrincipal(d);
   const a = d.aereos;
   const conAereos = a.activo && a.cuerpos.length > 0;
-  const precio = precioDiseno(d, producto, disenoProducto);
+  const precio = aplicarAjustes(precioDiseno(d, producto, disenoProducto), d.ajustesPrecio);
   return {
     plantilla: d.plantilla,
     forma: formaDe(d.lados),

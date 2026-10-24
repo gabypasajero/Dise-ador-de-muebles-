@@ -76,6 +76,7 @@ import {
 import { revisarOperacion } from './operaciones';
 import { precioAereo, precioCocina, TARIFAS, type LineaPrecio } from './tarifas';
 import type {
+  AjustesPrecio,
   Aereos,
   Cuerpo,
   Diseno,
@@ -2144,6 +2145,9 @@ export function normalizar(entrada: Diseno | DisenoGuardado): Diseno {
   }
   if (out.plantilla === 'compacto' || out.plantilla === 'cocina') opFijarAereos(out, {});
   finalizar(out, ctx, true);
+  const aj = normalizarAjustes((g as { ajustesPrecio?: unknown }).ajustesPrecio);
+  if (aj) out.ajustesPrecio = aj;
+  else delete out.ajustesPrecio;
   return out;
 }
 
@@ -2479,6 +2483,82 @@ export function precioDiseno(
   return total == null ? null : { total, metodo: 'referencial', lineas: [] };
 }
 
+/** Clave estable de cada línea del desglose (concepto + detalle; las repetidas llevan #n). */
+export function clavesLineas(lineas: LineaPrecio[]): string[] {
+  const vistos = new Map<string, number>();
+  return lineas.map((l) => {
+    const base = `${l.concepto}|${l.detalle}`;
+    const n = vistos.get(base) ?? 0;
+    vistos.set(base, n + 1);
+    return n ? `${base}#${n + 1}` : base;
+  });
+}
+
+export interface LineaAjustada extends LineaPrecio {
+  clave: string;
+  calculado: number;
+  editado: boolean;
+}
+
+export interface PrecioAjustado {
+  total: number;
+  /** Total sin las correcciones del vendedor. */
+  totalCalculado: number;
+  metodo: 'oficial' | 'referencial';
+  lineas: LineaAjustada[];
+  extras: AjustesPrecio['extras'];
+  ajustado: boolean;
+}
+
+/**
+ * Aplica al precio calculado las correcciones del vendedor: valores editados por línea
+ * (las claves que ya no existen se ignoran) y ajustes libres. El total es la suma de las
+ * líneas (o el total calculado si no hay desglose) más los ajustes, nunca negativo.
+ */
+export function aplicarAjustes(
+  precio: { total: number; metodo: 'oficial' | 'referencial'; lineas: LineaPrecio[] } | null,
+  ajustes: AjustesPrecio | undefined,
+): PrecioAjustado | null {
+  if (!precio) return null;
+  const claves = clavesLineas(precio.lineas);
+  const valores = ajustes?.valores ?? {};
+  const lineas: LineaAjustada[] = precio.lineas.map((l, i) => {
+    const v = valores[claves[i]];
+    const editado = typeof v === 'number' && Number.isFinite(v) && v !== l.valor;
+    return { ...l, clave: claves[i], calculado: l.valor, valor: editado ? v : l.valor, editado };
+  });
+  const extras = ajustes?.extras ?? [];
+  const delta = sumar(lineas.map((l) => l.valor - l.calculado)) + sumar(extras.map((e) => e.valor));
+  const total = Math.max(0, Math.round(precio.total + delta));
+  return { total, totalCalculado: precio.total, metodo: precio.metodo, lineas, extras, ajustado: lineas.some((l) => l.editado) || extras.length > 0 };
+}
+
+/** Quita las correcciones de líneas que ya no están en el desglose; null si no queda nada. */
+export function limpiarAjustes(ajustes: AjustesPrecio | undefined, lineas: LineaPrecio[]): AjustesPrecio | undefined {
+  if (!ajustes) return undefined;
+  const claves = new Set(clavesLineas(lineas));
+  const valores = Object.fromEntries(Object.entries(ajustes.valores).filter(([k]) => claves.has(k)));
+  if (!Object.keys(valores).length && !ajustes.extras.length) return undefined;
+  return { valores, extras: ajustes.extras };
+}
+
+/** Acepta ajustes guardados (o ausentes) y descarta lo que no sea válido. */
+export function normalizarAjustes(x: unknown): AjustesPrecio | undefined {
+  if (!x || typeof x !== 'object') return undefined;
+  const o = x as { valores?: unknown; extras?: unknown };
+  const valores: Record<string, number> = {};
+  if (o.valores && typeof o.valores === 'object')
+    for (const [k, v] of Object.entries(o.valores as Record<string, unknown>)) if (typeof v === 'number' && Number.isFinite(v)) valores[k] = Math.round(v);
+  const extras = Array.isArray(o.extras)
+    ? o.extras
+        .filter((e): e is { id?: unknown; concepto?: unknown; valor: number } => !!e && typeof e === 'object' && typeof (e as { valor?: unknown }).valor === 'number' && Number.isFinite((e as { valor: number }).valor))
+        .map((e) => ({ id: typeof e.id === 'string' && e.id ? e.id : nuevoId(), concepto: typeof e.concepto === 'string' ? e.concepto : 'Ajuste', valor: Math.round(e.valor) }))
+    : [];
+  if (!Object.keys(valores).length && !extras.length) return undefined;
+  return { valores, extras };
+}
+
 export function formatoPrecio(n: number): string {
-  return '$' + Math.round(n).toLocaleString('es-CL');
+  const r = Math.round(n);
+  return (r < 0 ? '\u2212$' : '$') + Math.abs(r).toLocaleString('es-CL');
 }

@@ -232,6 +232,20 @@ export interface Diseno {
   lados: Lados;
   /** Encimeras y lavaplatos, cada uno sobre un módulo (los hornos son módulos). */
   equipos: Equipo[];
+  /** Correcciones del vendedor al desglose del precio (valores editados y ajustes libres). */
+  ajustesPrecio?: AjustesPrecio;
+}
+
+export interface AjustePrecioExtra {
+  id: string;
+  concepto: string;
+  valor: number;
+}
+
+export interface AjustesPrecio {
+  /** Valor editado por clave de línea (ver claveLinea). */
+  valores: Record<string, number>;
+  extras: AjustePrecioExtra[];
 }
 
 /**

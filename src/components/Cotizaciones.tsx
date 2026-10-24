@@ -1,7 +1,7 @@
 // Registro de cotizaciones y ventas del vendedor.
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { NOMBRE_PLANTILLA } from '../../shared/catalogo';
-import { formatoPrecio, precioDiseno } from '../../shared/reglas';
+import { aplicarAjustes, formatoPrecio, precioDiseno } from '../../shared/reglas';
 import { detalleCotizacion, formatoFecha, hoy } from '../../shared/resumen';
 import type { SeccionFicha, TablaFicha } from '../../shared/resumen';
 import type { Cliente, Cotizacion, DatosCotizacion, EstadoCotizacion } from '../../shared/tipos';
@@ -521,7 +521,7 @@ export function ModalRegistrarCotizacion() {
   const s = useApp();
   const actual =
     s.cotizacionActual && s.cotizacionActual.estado === 'cotizada' && s.cotizacionActual.vendedor.id === s.usuario?.id ? s.cotizacionActual : null;
-  const precio = precioDiseno(s.diseno, s.producto, s.disenoBase);
+  const precio = aplicarAjustes(precioDiseno(s.diseno, s.producto, s.disenoBase), s.diseno.ajustesPrecio);
   const referencial = precio?.total ?? null;
   const [cliente, setCliente] = useState<Cliente>(actual?.cliente ?? { nombre: '', telefono: '', email: '', direccion: '' });
   const [observaciones, setObservaciones] = useState(actual?.observaciones ?? '');

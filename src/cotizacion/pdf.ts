@@ -80,6 +80,7 @@ export function latin1(s: string): string {
     .replace(/≤/g, '<=')
     .replace(/→/g, '->')
     .replace(/[‐‑‒]/g, '-')
+    .replace(/\u2212/g, '–')
     .replace(/[^\u0000-ÿ–—‘’“”•…€™ŒœŠšŸŽž]/g, '');
 }
 
@@ -326,7 +327,7 @@ export function crearPdf(d: DatosDocumento): jsPDF {
   color(acento);
   doc.text('Valor mueble', xValor + 4.5, y + 9.4);
   letra('bold', 15);
-  doc.text(formatoPrecio(d.valor), derecha - 4.5, y + 9.8, { align: 'right' });
+  doc.text(latin1(formatoPrecio(d.valor)), derecha - 4.5, y + 9.8, { align: 'right' });
   y += 20;
 
   if (d.venta) {
@@ -335,7 +336,7 @@ export function crearPdf(d: DatosDocumento): jsPDF {
     letra('bold', 9.5);
     color(COLOR_ESTADO.vendida);
     const extra = [d.venta.medioPago, d.venta.nota].filter(Boolean).join(' · ');
-    doc.text(`Venta registrada el ${formatoFecha(d.venta.fecha)} por ${formatoPrecio(d.venta.valor)}${extra ? ` · ${extra}` : ''}`, MARGEN + 4, y + 6.4);
+    doc.text(latin1(`Venta registrada el ${formatoFecha(d.venta.fecha)} por ${formatoPrecio(d.venta.valor)}${extra ? ` · ${extra}` : ''}`), MARGEN + 4, y + 6.4);
     y += 14;
   }
 

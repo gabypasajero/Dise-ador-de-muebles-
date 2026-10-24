@@ -1,7 +1,8 @@
 import { useRef, useState, type PointerEvent as EventoPuntero } from 'react';
 import { largoPrincipalConEsquinas } from '../../shared/layout';
-import { LIMITES, advertencias, aUnidad, formatear, formatoPrecio, precioDiseno } from '../../shared/reglas';
-import type { Unidad } from '../../shared/tipos';
+import { LIMITES, advertencias, aUnidad, aplicarAjustes, formatear, formatoPrecio, limpiarAjustes, precioDiseno, type PrecioAjustado } from '../../shared/reglas';
+import { nuevoId } from '../../shared/catalogo';
+import type { AjustesPrecio, Diseno, Unidad } from '../../shared/tipos';
 import { useApp } from '../store/useApp';
 import { CampoMedida, Segmentado } from './Controles';
 import { backend } from '../datos';
@@ -49,6 +50,152 @@ function FilaMedida({
   );
 }
 
+/** Lee un monto en pesos escrito por el vendedor ("-20.000", "$15000"). */
+function leerPesos(t: string): number | null {
+  const limpio = t.replace(/[$\s.]/g, '').replace(/[−–]/g, '-').replace(',', '.');
+  if (!/^-?\d+(\.\d+)?$/.test(limpio)) return null;
+  return Math.round(Number(limpio));
+}
+
+/** Monto editable: clic en el valor o el lápiz → campo; Enter o salir guarda, Esc cancela. */
+function MontoEditable({ valor, etiqueta, onGuardar }: { valor: number; etiqueta: string; onGuardar: (v: number) => void }) {
+  const [texto, setTexto] = useState<string | null>(null);
+  const cancelado = useRef(false);
+  if (texto === null)
+    return (
+      <button type="button" className="monto-editable" aria-label={`Editar valor de ${etiqueta}`} title="Editar valor" onClick={() => setTexto(String(valor))}>
+        {formatoPrecio(valor)} <span aria-hidden="true">✎</span>
+      </button>
+    );
+  const guardar = () => {
+    if (cancelado.current) {
+      cancelado.current = false;
+      return;
+    }
+    const v = leerPesos(texto);
+    if (v !== null && v !== valor) onGuardar(v);
+    setTexto(null);
+  };
+  return (
+    <input
+      className="campo-monto"
+      inputMode="numeric"
+      autoFocus
+      aria-label={`Valor de ${etiqueta} en pesos`}
+      value={texto}
+      onChange={(e) => setTexto(e.target.value)}
+      onFocus={(e) => e.target.select()}
+      onBlur={guardar}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') {
+          cancelado.current = true;
+          setTexto(null);
+        }
+      }}
+    />
+  );
+}
+
+function TablaDesglose({ precio, lineasBase, cambiar }: { precio: PrecioAjustado; lineasBase: Parameters<typeof limpiarAjustes>[1]; cambiar: (f: (d: Diseno) => Diseno, grupo?: string) => void }) {
+  const [concepto, setConcepto] = useState('');
+  const [monto, setMonto] = useState('');
+  const fijar = (f: (a: AjustesPrecio) => AjustesPrecio) =>
+    cambiar((d) => {
+      const a = f(limpiarAjustes(d.ajustesPrecio, lineasBase) ?? { valores: {}, extras: [] });
+      const limpio = limpiarAjustes(a, lineasBase);
+      const { ajustesPrecio: _, ...resto } = d;
+      return limpio ? { ...resto, ajustesPrecio: limpio } : (resto as Diseno);
+    });
+  const agregar = () => {
+    const v = leerPesos(monto);
+    if (v === null || v === 0) return;
+    fijar((a) => ({ ...a, extras: [...a.extras, { id: nuevoId(), concepto: concepto.trim() || (v < 0 ? 'Descuento' : 'Ajuste'), valor: v }] }));
+    setConcepto('');
+    setMonto('');
+  };
+  return (
+    <>
+      <table>
+        <tbody>
+          {precio.lineas.map((l) => (
+            <tr key={l.clave} className={l.editado ? 'editada' : undefined}>
+              <th scope="row">
+                {l.concepto}
+                <span>{l.detalle}</span>
+                {l.editado && (
+                  <span className="marca-editado">
+                    editado · calculado {formatoPrecio(l.calculado)}{' '}
+                    <button
+                      type="button"
+                      className="enlace"
+                      onClick={() =>
+                        fijar((a) => {
+                          const { [l.clave]: _, ...valores } = a.valores;
+                          return { ...a, valores };
+                        })
+                      }
+                    >
+                      Restaurar
+                    </button>
+                  </span>
+                )}
+              </th>
+              <td>
+                <MontoEditable valor={l.valor} etiqueta={l.concepto} onGuardar={(v) => fijar((a) => ({ ...a, valores: { ...a.valores, [l.clave]: v } }))} />
+              </td>
+            </tr>
+          ))}
+          {precio.extras.map((e) => (
+            <tr key={e.id} className="editada extra">
+              <th scope="row">
+                {e.concepto}
+                <span className="marca-editado">
+                  ajuste manual{' '}
+                  <button type="button" className="enlace" aria-label={`Eliminar ajuste ${e.concepto}`} onClick={() => fijar((a) => ({ ...a, extras: a.extras.filter((x) => x.id !== e.id) }))}>
+                    Eliminar
+                  </button>
+                </span>
+              </th>
+              <td>
+                <MontoEditable
+                  valor={e.valor}
+                  etiqueta={e.concepto}
+                  onGuardar={(v) => fijar((a) => ({ ...a, extras: a.extras.map((x) => (x.id === e.id ? { ...x, valor: v } : x)) }))}
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr>
+            <th scope="row">Total{precio.ajustado && <span>Calculado: {formatoPrecio(precio.totalCalculado)}</span>}</th>
+            <td>{formatoPrecio(precio.total)}</td>
+          </tr>
+        </tfoot>
+      </table>
+      <form
+        className="nuevo-ajuste"
+        onSubmit={(e) => {
+          e.preventDefault();
+          agregar();
+        }}
+      >
+        <input aria-label="Concepto del ajuste" placeholder="Ajuste (ej. Descuento cliente frecuente)" value={concepto} onChange={(e) => setConcepto(e.target.value)} />
+        <input aria-label="Monto del ajuste en pesos" placeholder="-20.000" inputMode="numeric" value={monto} onChange={(e) => setMonto(e.target.value)} />
+        <button type="submit" className="boton secundario" disabled={leerPesos(monto) === null}>
+          Agregar
+        </button>
+      </form>
+      {precio.ajustado && (
+        <button type="button" className="enlace restaurar-todo" onClick={() => fijar(() => ({ valores: {}, extras: [] }))}>
+          Restaurar valores calculados
+        </button>
+      )}
+    </>
+  );
+}
+
 export function PanelInferior() {
   const d = useApp((s) => s.diseno);
   const unidad = useApp((s) => s.unidad);
@@ -89,7 +236,8 @@ export function PanelInferior() {
   const pestanas = pestanasDe(d.plantilla);
   const actual = pestanas.find((p) => p.id === pestana)?.id ?? pestanas[0].id;
   const avisos = advertencias(d, unidad);
-  const precio = precioDiseno(d, producto, disenoBase);
+  const calculado = precioDiseno(d, producto, disenoBase);
+  const precio = aplicarAjustes(calculado, d.ajustesPrecio);
   const oficial = precio?.metodo === 'oficial';
   const esCocinaConEquipos = d.plantilla === 'cocina' || d.plantilla === 'compacto' || d.plantilla === 'cocina-infantil';
   const props = { d, unidad, cambiar };
@@ -248,26 +396,8 @@ export function PanelInferior() {
               {verDesglose ? '▾ Ocultar desglose' : '▸ Ver desglose'}
             </button>
             {verDesglose && (
-              <div className="desglose-lista" role="region" aria-label="Desglose del precio oficial">
-                <table>
-                  <tbody>
-                    {precio.lineas.map((l, i) => (
-                      <tr key={i}>
-                        <th scope="row">
-                          {l.concepto}
-                          <span>{l.detalle}</span>
-                        </th>
-                        <td>{formatoPrecio(l.valor)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <th scope="row">Total</th>
-                      <td>{formatoPrecio(precio.total)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
+              <div className="desglose-lista" role="region" aria-label="Desglose del precio">
+                <TablaDesglose precio={precio} lineasBase={calculado!.lineas} cambiar={cambiar} />
               </div>
             )}
           </div>
