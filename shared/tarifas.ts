@@ -27,8 +27,9 @@ export const TARIFAS = {
   corte: 0,
   /** Campana, por cada una. */
   campana: 70000,
-  /** Mueble aéreo: precio fijo para cualquier largo y forma (lineal, L o U). */
+  /** Mueble aéreo: valor por metro lineal (lineal, L o U; cada lado a su largo completo) más los recargos de alto y fondo. */
   aereo: {
+    /** Valor por metro lineal del aéreo estándar (alto y fondo base incluidos). */
     base: 130000,
     altoBaseCm: 60,
     fondoBaseCm: 30,
@@ -88,7 +89,13 @@ export function recargoAereo(excesoMm: number): number {
   return diez * a.cada10Cm + (resto >= a.pasoCm * 10 ? a.resto5Cm : 0);
 }
 
-/** Precio oficial del aéreo (fijo + recargos por alto y por el mayor fondo de sus lados). null si no lleva. */
+/** Largo total (mm) del aéreo para el precio: el principal más cada lado de la L/U a su largo completo. */
+export function largoAereo(d: Diseno): number {
+  const a = d.aereos;
+  return a.cuerpos.reduce((s, c) => s + c.ancho, 0) + LADOS.reduce((s, l) => s + (ladoAereoActivo(d, l)?.largo ?? 0), 0);
+}
+
+/** Precio oficial del aéreo (metros lineales × valor por metro + recargos por alto y por el mayor fondo de sus lados). null si no lleva. */
 export function precioAereo(d: Diseno): { valor: number; lineas: LineaPrecio[] } | null {
   const a = d.aereos;
   if (d.plantilla !== 'cocina' || !a.activo || !a.cuerpos.length) return null;
@@ -97,14 +104,15 @@ export function precioAereo(d: Diseno): { valor: number; lineas: LineaPrecio[] }
   const fondo = Math.max(...fondos);
   const lados = LADOS.filter((l) => ladoAereoActivo(d, l)).length;
   const forma = lados === 2 ? 'en U' : lados === 1 ? 'en L' : 'lineal';
+  const largo = largoAereo(d);
   const lineas: LineaPrecio[] = [
     {
       concepto: 'Mueble aéreo',
-      detalle: `${forma}, precio fijo (alto ${t.altoBaseCm} cm y fondo ${t.fondoBaseCm} cm incluidos)`,
-      cantidad: 1,
-      unidad: 'unidad',
+      detalle: `${forma}, ${fmtM(largo)}${lados ? ' (cada lado a su largo completo)' : ''} × ${fmtPesos(t.base)} por metro (alto ${t.altoBaseCm} cm y fondo ${t.fondoBaseCm} cm incluidos)`,
+      cantidad: largo / 1000,
+      unidad: 'm',
       unitario: t.base,
-      valor: t.base,
+      valor: Math.round((largo * t.base) / 1000),
     },
   ];
   const extraAlto = excesoAereo(a.alto, t.altoBaseCm);

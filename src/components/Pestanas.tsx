@@ -112,6 +112,7 @@ const NOMBRE_TIPO: Record<Cuerpo['tipo'], string> = {
   campana: 'Campana',
   nicho: 'Nicho microondas',
   especiero: 'Especiero',
+  'espacio-campana': 'Espacio campana',
 };
 
 // ---------- Tramos ----------
@@ -469,6 +470,8 @@ function ayudaModulo(d: Diseno, c: Cuerpo, tramo: TramoId): string {
   if (c.tipo === 'especiero') return 'Cajón extraíble de alto completo, con sus pisos interiores.';
   if (c.tipo === 'escritorio') return 'Cubierta de trabajo: ajusta aquí su ancho y su alto.';
   if (c.tipo === 'campana') return c.campanaDe ? 'Aloja la campana: va centrado sobre su encimera.' : 'Mueble más bajo con puertas: abajo queda la campana.';
+  if (c.tipo === 'espacio-campana')
+    return c.campanaDe ? 'Hueco abierto de 60 cm con la campana instalada: va centrado sobre su encimera.' : 'Hueco abierto de 60 cm para instalar la campana (sin puertas ni repisas).';
   if (c.tipo === 'nicho') return 'Puerta abatible arriba y nicho abierto con repisa para el microondas.';
   if (contenidoEnEditor(d)) return '';
   const pestanas = pestanasDe(d.plantilla).filter(

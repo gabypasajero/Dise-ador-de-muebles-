@@ -56,9 +56,11 @@ export interface Cuerpo {
    * escritorio: superficie de trabajo con pata lateral (clóset escritorio).
    * campana (aéreos): mueble más bajo con puertas arriba que aloja la campana de una encimera.
    * nicho (aéreos): puerta abatible arriba y nicho abierto con repisa (microondas).
+   * espacio-campana (aéreos de cocina): hueco abierto de 60 cm fijos, sin puertas ni repisas,
+   *   para instalar la campana; si la encimera de abajo lleva campana, este espacio la aloja.
    * especiero: cajón extraíble de 20 cm fijos y alto completo, con 2 o 3 pisos interiores.
    */
-  tipo: 'frentes' | 'horno' | 'hueco' | 'escritorio' | 'campana' | 'nicho' | 'especiero';
+  tipo: 'frentes' | 'horno' | 'hueco' | 'escritorio' | 'campana' | 'nicho' | 'especiero' | 'espacio-campana';
   ancho: number;
   puertas: number;
   /** Apertura de la puerta única (1 puerta) o de la puerta impar (la 1, a la izquierda) de un módulo de 3. */

@@ -52,7 +52,7 @@ export function validarDiseno(d: Diseno): string[] {
       const minimo = c.tipo === 'hueco' ? ANCHO_MIN_HUECO : ANCHO_MIN_CUERPO;
       if (c.ancho < minimo) out.push(`${donde}: ${c.ancho} bajo el mínimo ${minimo}`);
       if (aereo && c.cajones > 0) out.push(`${donde}: cajones en un aéreo`);
-      if (!aereo && (c.tipo === 'campana' || c.tipo === 'nicho')) out.push(`${donde}: ${c.tipo} en el mueble base`);
+      if (!aereo && (c.tipo === 'campana' || c.tipo === 'nicho' || c.tipo === 'espacio-campana')) out.push(`${donde}: ${c.tipo} en el mueble base`);
       if (aereo && (c.tipo === 'horno' || c.tipo === 'especiero')) out.push(`${donde}: ${c.tipo} en los aéreos`);
       if (c.puertas < 0 || c.puertas > 4 || c.cajones < 0 || c.cajones > 12) out.push(`${donde}: puertas o cajones fuera de rango`);
     });
@@ -119,7 +119,8 @@ export function validarDiseno(d: Diseno): string[] {
     if (!visible) continue;
     const pos = posicionesModulos(d, ta);
     cuerposDe(d, ta).forEach((c, k) => {
-      if (c.tipo !== 'campana') return;
+      if (c.tipo === 'espacio-campana' && !c.campanaDe) return;
+      if (c.tipo !== 'campana' && c.tipo !== 'espacio-campana') return;
       const e = equipos.find((x): x is Encimera => x.tipo === 'encimera' && x.id === c.campanaDe);
       if (!e || !e.campana || tramoAereoDe(e.tramo) !== ta) {
         out.push(`${ta}[${k}]: módulo de campana sin su encimera`);

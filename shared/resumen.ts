@@ -110,6 +110,7 @@ export function describirTramo(d: Diseno, t: TramoId, unidad: Unidad): string[] 
     const con = equipo.length ? `; con ${equipo.join(' y ')}` : '';
     if (c.tipo === 'horno') return `${nombre}: ${d.plantilla === 'cocina-infantil' ? 'horno de juguete' : 'horno empotrado'}${con}`;
     if (c.tipo === 'hueco') return `${nombre}: espacio libre`;
+    if (c.tipo === 'espacio-campana') return `${nombre}: espacio para campana ${formatear(c.ancho, unidad)} (sin puertas)${con}`;
     if (c.tipo === 'escritorio') return `${nombre}: escritorio de ${formatear(c.alto || 750, unidad)} de alto`;
     if (c.tipo === 'especiero') return `${nombre}: especiero extraíble de alto completo con ${c.pisos ?? 2} pisos${con}`;
     const partes: string[] = [];
@@ -335,6 +336,8 @@ function queEsModulo(d: Diseno, c: Cuerpo, f: (mm: number) => string): string {
       return 'Mueble de campana (puertas arriba, campana abajo)';
     case 'nicho':
       return 'Nicho para microondas con repisa y puerta abatible arriba';
+    case 'espacio-campana':
+      return `Espacio para campana ${f(c.ancho)} (sin puertas)`;
   }
   if (c.abatible) return 'Puerta abatible';
   if (c.puertas && c.cajones) return `${n(c.puertas, 'puerta', 'puertas')} y ${n(c.cajones, 'cajón', 'cajones')} ${c.cajonesArriba ? 'arriba' : 'abajo'}`;
@@ -421,6 +424,7 @@ function interiorModulo(
   if (c.tipo === 'nicho') out.push('Nicho para microondas con repisa');
   if (c.tipo === 'escritorio') out.push(`Cubierta de escritorio a ${f(c.alto || 750)}`);
   if (c.tipo === 'hueco') out.push('Sin casco ni frentes');
+  if (c.tipo === 'espacio-campana') out.push(`Espacio para campana ${f(c.ancho)} (sin puertas): costados, techo y fondo, sin base ni repisas`);
   if ((c.tipo === 'frentes' || c.tipo === 'campana') && c.repisas > 0 && (puertas || !cajones)) out.push(cuantos(c.repisas, 'repisa', 'repisas'));
   if (c.colgador) out.push('Barra para colgar');
   for (const e of d.equipos ?? []) {

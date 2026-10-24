@@ -27,7 +27,7 @@ export interface DescripcionOperacion {
 export const TRAMOS_OPERACION = ['base', 'izq', 'der', 'aereos', 'aereos-izq', 'aereos-der', 'retorno'] as const;
 export const FORMAS = ['lineal', 'L-izq', 'L-der', 'U'] as const;
 const LADOS = ['izq', 'der'] as const;
-const TIPOS_MODULO = ['frentes', 'horno', 'hueco', 'escritorio', 'campana', 'nicho', 'especiero'] as const;
+const TIPOS_MODULO = ['frentes', 'horno', 'hueco', 'escritorio', 'campana', 'nicho', 'especiero', 'espacio-campana'] as const;
 
 const mm = (descripcion: string, opcional = false): CampoOperacion => ({ tipo: 'mm', descripcion, opcional });
 const tramo = (opcional = false): CampoOperacion => ({
@@ -84,7 +84,7 @@ export const OPERACIONES: DescripcionOperacion[] = [
   {
     op: 'agregarModulo',
     descripcion: 'Agrega un módulo de la lista presetsModulo(plantilla, tramo) sin cambiar el largo: el nuevo y los módulos ajustables del tramo se reparten parejo el espacio (horno, especiero y módulos con encimera, lavaplatos o campana conservan su ancho).',
-    campos: { tramo: tramo(), preset: { tipo: 'texto', descripcion: "id del preset: 'puerta', 'dos-puertas', 'cajonera', 'cajon-puerta', 'especiero', 'horno', 'hueco', 'aereo-puerta', 'aereo-dos', 'abatible', 'nicho'" }, posicion: { tipo: 'entero', opcional: true, descripcion: 'dónde se inserta (0 = al comienzo; sin dar = al final)' }, ajustarLargo },
+    campos: { tramo: tramo(), preset: { tipo: 'texto', descripcion: "id del preset: 'puerta', 'dos-puertas', 'cajonera', 'cajon-puerta', 'especiero', 'horno', 'hueco', 'aereo-puerta', 'aereo-dos', 'abatible', 'nicho', 'espacio-campana' (aéreos de cocina: hueco abierto de 60 cm sin puertas para la campana; si la encimera de abajo lleva campana, la aloja y se centra sobre ella)" }, posicion: { tipo: 'entero', opcional: true, descripcion: 'dónde se inserta (0 = al comienzo; sin dar = al final)' }, ajustarLargo },
     ejemplo: { op: 'agregarModulo', tramo: 'base', preset: 'especiero', posicion: 1 },
   },
   {

@@ -365,6 +365,11 @@ function dibujarMuro(doc: jsPDF, m: Muro, x: number, y: number, escala: number, 
         colorTexto(doc, [70, 74, 80]);
         doc.text('CAMPANA', X((h0 + h1) / 2), Y((mod.caja.y0 + lc.y0) / 2) + 1, { align: 'center' });
       }
+      if (lc.cuerpo.tipo === 'espacio-campana') {
+        fuente(doc, 'bold', 6);
+        colorTexto(doc, [70, 74, 80]);
+        doc.text('ESPACIO CAMPANA', X((h0 + h1) / 2), Y((mod.caja.y0 + mod.caja.y1) / 2) + 1, { align: 'center' });
+      }
       if (lc.nicho) {
         fuente(doc, 'normal', 6);
         colorTexto(doc, GRIS);

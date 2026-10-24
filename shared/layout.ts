@@ -566,7 +566,8 @@ function layoutAereosTramo(d: Diseno, cuerpos: Cuerpo[], x0: number, profundidad
     cursor = cx1;
     const lc: LayoutAereoCuerpo = { indice: i, cuerpo: c, x0: cx0, x1: cx1, y0, y1, nicho: null };
     lcs.push(lc);
-    if (c.tipo === 'hueco') return;
+    // Espacio campana: caja abierta sin frentes.
+    if (c.tipo === 'hueco' || c.tipo === 'espacio-campana') return;
     const fx0 = cx0 + luz / 2;
     const fx1 = cx1 - luz / 2;
     const puerta = (k: number, n: number, ry0: number, ry1: number, abatible: boolean) => {
@@ -889,7 +890,7 @@ export function ubicarEquipos(d: Diseno): EquipoUbicado[] {
     const mundo = posEnMundo(db, e.tramo, s);
     const ta = tramoAereoDe(e.tramo);
     const ca = cuerposTramo(d, ta);
-    const ia = ca.findIndex((c) => c.tipo === 'campana' && c.campanaDe === e.id);
+    const ia = ca.findIndex((c) => (c.tipo === 'campana' || c.tipo === 'espacio-campana') && c.campanaDe === e.id);
     const aereoVisible = d.aereos.activo && (ta === 'aereos' || ladoAereoActivo(d, ladoDeTramo(ta)!));
     if (ia >= 0 && aereoVisible) {
       const pa = posicionesModulos(d, ta)[ia];

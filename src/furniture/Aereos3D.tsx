@@ -90,7 +90,29 @@ function Modulo({ d, la, lc, campana }: { d: Diseno; la: LayoutAereos; lc: Layou
     piezas.push(<Panel key="li" x0={lc.x0} x1={lc.x0 + t} y0={yCaja} y1={lc.y1} z0={0} z1={Dz} mat={m.casco} />);
     piezas.push(<Panel key="ld" x0={lc.x1 - t} x1={lc.x1} y0={yCaja} y1={lc.y1} z0={0} z1={Dz} mat={m.casco} />);
     piezas.push(<Panel key="techo" x0={ix0} x1={ix1} y0={lc.y1 - t} y1={lc.y1} z0={0} z1={Dz} mat={m.casco} />);
-    piezas.push(<Panel key="fondo" x0={ix0} x1={ix1} y0={yCaja + (esCampana ? 0 : t)} y1={lc.y1 - t} z0={0} z1={4} mat={m.fondo} sombra={false} />);
+    piezas.push(<Panel key="fondo" x0={ix0} x1={ix1} y0={yCaja + (esCampana || c.tipo === 'espacio-campana' ? 0 : t)} y1={lc.y1 - t} z0={0} z1={4} mat={m.fondo} sombra={false} />);
+  }
+
+  if (c.tipo === 'espacio-campana') {
+    // Hueco abierto para la campana: costados, techo y fondo, sin base, puertas ni repisas. En el
+    // techo queda la salida del ducto. Si la encimera de abajo lleva campana, va alojada aquí.
+    const espacio: JSX.Element[] = [];
+    if (apoyado) espacio.push(<Panel key="fondo-a" x0={ix0} x1={ix1} y0={la.y0} y1={lc.y1 - t} z0={6} z1={8} mat={m.fondo} sombra={false} />);
+    else espacio.push(...piezas);
+    espacio.push(
+      <mesh key="ducto" position={[(ix0 + ix1) / 2, lc.y1 - t - 0.5, Dz / 2]} rotation={[Math.PI / 2, 0, 0]} material={m.negroMate}>
+        <circleGeometry args={[75, 32]} />
+      </mesh>,
+    );
+    if (campana) {
+      const w = Math.min(campana.ancho, ix1 - ix0 - 4);
+      const cx = Math.max(ix0 + w / 2 + 2, Math.min(ix1 - w / 2 - 2, campana.x));
+      const yTope = la.y0 + Math.min(lc.y1 - t - la.y0 - 20, Math.max(200, Math.round((lc.y1 - la.y0) * 0.35)));
+      espacio.push(<CampanaAlojada key="campana" cx={cx} ancho={w} y0={la.y0} y1={yTope} zFrente={la.zFrente} espesorFrente={la.espesor} />);
+      // Ducto de la campana hasta el techo.
+      espacio.push(<Panel key="chimenea" x0={cx - 110} x1={cx + 110} y0={yTope} y1={lc.y1 - t} z0={40} z1={Math.min(Dz - 30, 260)} mat={m.aceroCepillado} />);
+    }
+    return <group>{espacio}</group>;
   }
 
   if (c.tipo === 'nicho' && lc.nicho) {

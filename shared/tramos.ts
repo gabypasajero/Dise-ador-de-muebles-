@@ -114,7 +114,7 @@ export function anchoFijo(p: Plantilla, c: Pick<Cuerpo, 'tipo'>): number | null 
   if (c.tipo === 'horno' && (p === 'cocina' || p === 'compacto')) return ANCHO_HORNO;
   if (c.tipo === 'especiero') return ANCHO_ESPECIERO;
   // La campana y el nicho del microondas miden siempre 60 cm.
-  if ((c.tipo === 'campana' || c.tipo === 'nicho') && (p === 'cocina' || p === 'compacto')) return ANCHO_CAMPANA;
+  if ((c.tipo === 'campana' || c.tipo === 'nicho' || c.tipo === 'espacio-campana') && (p === 'cocina' || p === 'compacto')) return ANCHO_CAMPANA;
   return null;
 }
 
@@ -132,15 +132,25 @@ export function rolModulo(d: Diseno, t: TramoId, c: Cuerpo): Rol {
   if (anchoFijo(d.plantilla, c) != null) return 'fijo';
   // Solo el módulo que aloja la campana se ubica solo (centrado sobre su encimera). La encimera y el
   // lavaplatos no fijan el ancho de su módulo, y el espacio libre se ajusta (de 20 a 50 cm).
-  if (esTramoAereo(t) && c.tipo === 'campana' && c.campanaDe) return 'equipado';
+  if (esTramoAereo(t) && alojaCampana(c)) return 'equipado';
   return 'ajustable';
+}
+
+/** Módulo aéreo que puede alojar la campana de una encimera: el de campana (con puertas) o el espacio campana (abierto). */
+export function esModuloCampana(c: Pick<Cuerpo, 'tipo'>): boolean {
+  return c.tipo === 'campana' || c.tipo === 'espacio-campana';
+}
+
+/** Módulo aéreo que hoy aloja la campana de una encimera. */
+export function alojaCampana(c: Pick<Cuerpo, 'tipo' | 'campanaDe'>): boolean {
+  return esModuloCampana(c) && !!c.campanaDe;
 }
 
 /** Ancho mínimo y máximo de un módulo en su tramo. */
 export function limitesModulo(d: Diseno, t: TramoId, c: Cuerpo): Limite {
   const fijo = anchoFijo(d.plantilla, c);
   if (fijo != null) return { min: fijo, max: fijo };
-  if (esTramoAereo(t) && c.tipo === 'campana' && c.campanaDe) {
+  if (esTramoAereo(t) && alojaCampana(c)) {
     return { min: Math.min(ANCHO_CAMPANA, Math.max(ANCHO_MIN_CUERPO, largoObjetivo(d, t))), max: Infinity };
   }
   const min = c.tipo === 'hueco' ? ANCHO_MIN_HUECO : ANCHO_MIN_CUERPO;

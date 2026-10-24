@@ -18,7 +18,7 @@ import {
   presetsModulo,
   quitarEquipo,
 } from '../shared/reglas';
-import { excesoAereo, precioCocina, recargoAereo, TARIFAS, valorMetro } from '../shared/tarifas';
+import { excesoAereo, largoAereo, precioCocina, recargoAereo, TARIFAS, valorMetro } from '../shared/tarifas';
 import type { Diseno, ProductoTienda } from '../shared/tipos';
 
 const productos = JSON.parse(fs.readFileSync('public/datos/productos-respaldo.json', 'utf8')) as ProductoTienda[];
@@ -149,13 +149,24 @@ describe('precio oficial de la cocina', () => {
     expect(precioCocina(con).total).toBe(precioCocina(d).total);
   });
 
-  it('el aéreo tiene precio fijo sin importar su largo ni su forma', () => {
+  it('el aéreo vale $130.000 por metro lineal (cada lado de la L/U a su largo completo)', () => {
     const lineal = activarAereos(full(), true);
-    expect(valor(lineal, 'Mueble aéreo')).toBe(130000);
-    expect(precioCocina(lineal).total).toBe(550000 + 130000);
+    const m = largoAereo(lineal) / 1000;
+    expect(m).toBeGreaterThan(0);
+    expect(valor(lineal, 'Mueble aéreo')).toBe(Math.round(m * 130000));
+    expect(precioCocina(lineal).total).toBe(550000 + Math.round(m * 130000));
+    const linea = precioCocina(lineal).lineas.find((l) => l.concepto === 'Mueble aéreo')!;
+    expect(linea.detalle).toContain('× $130.000 por metro');
+    // 1,8 m de aéreo: 1,8 × 130.000 = 234.000.
+    const a180 = structuredClone(lineal);
+    a180.aereos.cuerpos = [{ ...a180.aereos.cuerpos[0], ancho: 1800 }];
+    expect(largoAereo(a180)).toBe(1800);
+    expect(valor(a180, 'Mueble aéreo')).toBe(234000);
     const u = activarAereos(fijarForma(fijarAncho(full(), 3000), 'U'), true);
     expect(u.aereos.lados.izq && u.aereos.lados.der).toBeTruthy();
-    expect(valor(u, 'Mueble aéreo')).toBe(130000);
+    const largoU = u.aereos.cuerpos.reduce((s, c) => s + c.ancho, 0) + u.aereos.lados.izq!.largo + u.aereos.lados.der!.largo;
+    expect(largoAereo(u)).toBe(largoU);
+    expect(valor(u, 'Mueble aéreo')).toBe(Math.round((largoU * 130000) / 1000));
     expect(precioCocina(u).lineas.find((l) => l.concepto === 'Mueble aéreo')!.detalle).toContain('en U');
   });
 

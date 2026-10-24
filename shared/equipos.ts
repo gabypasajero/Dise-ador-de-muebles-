@@ -24,7 +24,7 @@ import {
   ubicarEquipos,
 } from './layout';
 import { repartirConLimites, type Limite } from './reparto';
-import { ANCHO_CAMPANA, ANCHO_MIN_CUERPO, ANCHO_MIN_HUECO, cuerposDe, esCajonera, ladoDe, LIMITES_AEREOS, limitesModulo, resolverTramo, TRAMOS_AEREOS, TRAMOS_BASE } from './tramos';
+import { alojaCampana, ANCHO_CAMPANA, ANCHO_MIN_CUERPO, ANCHO_MIN_HUECO, cuerposDe, esCajonera, ladoDe, LIMITES_AEREOS, limitesModulo, resolverTramo, TRAMOS_AEREOS, TRAMOS_BASE } from './tramos';
 import type { Cuerpo, Diseno, Encimera, Equipo, Lavaplatos, Plantilla, TramoAereo, TramoBase, TramoId, Unidad } from './tipos';
 
 /** Mensajes informativos que juntan las operaciones (se devuelven en Resultado.avisos). */
@@ -305,7 +305,7 @@ export function listarEquipamiento(d: Diseno): ItemEquipo[] {
       out.push({ id: e.id, tipo: 'encimera', nombre: `Encimera ${e.platos} platos`, tramo: e.tramo, indice: i, modulo: e.modulo, donde, detalle: `centrada en su módulo${e.soloCorte ? '; solo corte (el cliente trae el equipo)' : ''}` });
       if (e.campana) {
         const ta = tramoAereoDe(e.tramo);
-        const ia = cuerposDe(d, ta).findIndex((c) => c.tipo === 'campana' && c.campanaDe === e.id);
+        const ia = cuerposDe(d, ta).findIndex((c) => alojaCampana(c) && c.campanaDe === e.id);
         const enAereo = ia >= 0 && d.aereos.activo && (ta === 'aereos' || !!ladoAereoActivo(d, ladoDeTramo(ta)!));
         out.push({
           id: `${e.id}:campana`,
@@ -573,9 +573,13 @@ export function largoAereoSinCortarCampanas(d: Diseno, ta: TramoAereo, pedido: n
   return { largo, fuera: prohibidos.filter((x) => largo <= x.hasta + TOL_CAMPANA).map((x) => x.id) };
 }
 
-/** Los módulos de campana de esas encimeras en el tramo pasan a ser de puertas (la campana queda mural). */
+/** Los módulos de campana de esas encimeras en el tramo pasan a ser de puertas (la campana queda mural); el espacio campana queda vacío. */
 export function soltarCampanas(d: Diseno, ta: TramoAereo, encimeras: string[]) {
-  for (const c of cuerposDe(d, ta)) if (c.tipo === 'campana' && c.campanaDe && encimeras.includes(c.campanaDe)) moduloPuertas(c);
+  for (const c of cuerposDe(d, ta)) {
+    if (!alojaCampana(c) || !encimeras.includes(c.campanaDe!)) continue;
+    if (c.tipo === 'espacio-campana') delete c.campanaDe;
+    else moduloPuertas(c);
+  }
 }
 
 function tramoBaseDeAereo(t: TramoAereo): TramoBase {
@@ -607,18 +611,31 @@ export function alinearCampanas(d: Diseno, ctx: Ctx): string[] {
       if (cob && cob.estado !== 'fuera') objetivoEnc.set(e.id, cob.s);
     }
     // Módulos de campana: cada encimera conserva el suyo; los demás se vinculan o pasan a ser de puertas.
+    // El espacio campana (hueco abierto de 60 cm) es el lugar preferido para alojarla: una encimera con
+    // campana sin módulo toma el espacio más cercano antes que un módulo de campana suelto o uno nuevo.
     const vinculado = new Map<string, Cuerpo>();
     const sueltos: Cuerpo[] = [];
+    const espacios: Cuerpo[] = [];
     for (const c of cs) {
-      if (c.tipo !== 'campana') continue;
+      if (c.tipo !== 'campana' && c.tipo !== 'espacio-campana') continue;
       if (c.campanaDe && objetivoEnc.has(c.campanaDe) && !vinculado.has(c.campanaDe)) vinculado.set(c.campanaDe, c);
-      else sueltos.push(c);
+      else if (c.tipo === 'espacio-campana') {
+        delete c.campanaDe;
+        espacios.push(c);
+      } else sueltos.push(c);
     }
     let cursor = 0;
     const centros = new Map<Cuerpo, number>();
     for (const c of cs) {
       centros.set(c, cursor + c.ancho / 2);
       cursor += c.ancho;
+    }
+    for (const [id, s] of objetivoEnc) {
+      if (vinculado.has(id) || !espacios.length) continue;
+      const cercano = espacios.reduce((a, b) => (Math.abs(centros.get(b)! - s) < Math.abs(centros.get(a)! - s) ? b : a));
+      espacios.splice(espacios.indexOf(cercano), 1);
+      cercano.campanaDe = id;
+      vinculado.set(id, cercano);
     }
     for (const [id, s] of objetivoEnc) {
       if (vinculado.has(id) || !sueltos.length) continue;
@@ -667,7 +684,7 @@ export function alinearCampanas(d: Diseno, ctx: Ctx): string[] {
 export function moduloCampana(d: Diseno, encimeraId: string): { tramo: TramoAereo; indice: number } | null {
   for (const t of TRAMOS_AEREOS) {
     if (!aereoVisible(d, t)) continue;
-    const i = cuerposDe(d, t).findIndex((c) => c.tipo === 'campana' && c.campanaDe === encimeraId);
+    const i = cuerposDe(d, t).findIndex((c) => alojaCampana(c) && c.campanaDe === encimeraId);
     if (i >= 0) return { tramo: t, indice: i };
   }
   return null;

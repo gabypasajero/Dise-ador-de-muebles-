@@ -37,8 +37,10 @@ import {
   ANCHO_MAX_HUECO,
   ANCHO_MIN_HUECO,
   ANCHO_POR_PUERTA,
+  alojaCampana,
   anchoFijo,
   cuerposDe,
+  esModuloCampana,
   esCajonera,
   largoObjetivo,
   largoTramo,
@@ -72,7 +74,7 @@ import {
   type Ctx,
 } from './equipos';
 import { revisarOperacion } from './operaciones';
-import { precioCocina, TARIFAS, type LineaPrecio } from './tarifas';
+import { precioAereo, precioCocina, TARIFAS, type LineaPrecio } from './tarifas';
 import type {
   Aereos,
   Cuerpo,
@@ -134,7 +136,7 @@ export const LIMITES: Record<Plantilla, Limites> = {
   compacto: { ancho: [600, SIN_TOPE], alto: [1500, SIN_TOPE], profundidad: [350, SIN_TOPE] },
   'cocina-infantil': { ancho: [500, SIN_TOPE], alto: [800, SIN_TOPE], profundidad: [250, SIN_TOPE] },
   closet: { ancho: [400, SIN_TOPE], alto: [1200, SIN_TOPE], profundidad: [300, SIN_TOPE] },
-  comoda: { ancho: [400, SIN_TOPE], alto: [500, SIN_TOPE], profundidad: [300, SIN_TOPE] },
+  comoda: { ancho: [300, SIN_TOPE], alto: [500, SIN_TOPE], profundidad: [300, SIN_TOPE] },
   tocador: { ancho: [600, SIN_TOPE], alto: [1000, SIN_TOPE], profundidad: [300, SIN_TOPE] },
   escritorio: { ancho: [700, SIN_TOPE], alto: [500, SIN_TOPE], profundidad: [350, SIN_TOPE] },
 };
@@ -452,7 +454,7 @@ function razonesRigidez(d: Diseno, t: TramoId, signo: 1 | -1, excluir: Cuerpo[])
 
 /** Suma de los mínimos de un tramo aéreo contando los módulos de campana como módulos comunes. */
 function minimoSinCampanas(d: Diseno, t: TramoAereo): number {
-  return sumar(cuerposDe(d, t).map((c) => (c.tipo === 'campana' && c.campanaDe ? ANCHO_MIN_CUERPO : limitesModulo(d, t, c).min)));
+  return sumar(cuerposDe(d, t).map((c) => (alojaCampana(c) ? ANCHO_MIN_CUERPO : limitesModulo(d, t, c).min)));
 }
 
 /** Datos del lado (base o aéreo) de un tramo lateral, para cambiar su largo. */
@@ -472,13 +474,14 @@ const NOMBRE_TIPO: Record<Cuerpo['tipo'], string> = {
   campana: 'Campana',
   nicho: 'Nicho microondas',
   especiero: 'Especiero',
+  'espacio-campana': 'Espacio campana',
 };
 
 /** Tipos de módulo que acepta un tramo. */
 export function tiposPermitidos(d: Diseno, tramo: Tramo): Cuerpo['tipo'][] {
   const t = resolverTramo(d, tramo) ?? 'base';
   const p = d.plantilla;
-  if (esTramoAereo(t)) return p === 'compacto' ? ['frentes', 'nicho', 'campana'] : ['frentes', 'campana', 'nicho', 'hueco'];
+  if (esTramoAereo(t)) return p === 'compacto' ? ['frentes', 'nicho', 'campana', 'espacio-campana'] : ['frentes', 'campana', 'espacio-campana', 'nicho', 'hueco'];
   if (t !== 'base') return ['frentes', 'horno', 'hueco', 'especiero'];
   if (p === 'cocina') return ['frentes', 'horno', 'hueco', 'especiero'];
   if (p === 'compacto') return ['frentes', 'horno', 'especiero'];
@@ -504,6 +507,7 @@ const NOMBRE_CORTO: Record<Exclude<Cuerpo['tipo'], 'frentes' | 'especiero'>, str
   escritorio: 'Escritorio',
   campana: 'Campana',
   nicho: 'Nicho microondas',
+  'espacio-campana': 'Espacio campana',
 };
 
 /** Módulo listo para agregar desde el panel «Módulos y espacios». */
@@ -536,6 +540,7 @@ export function presetsModulo(p: Plantilla, tramo: Tramo = 'base'): PresetModulo
       { id: 'aereo-dos', texto: 'Aéreo 2 puertas', ayuda: 'Dos puertas con repisa', tipo: 'frentes', ancho: 2 * ANCHO_POR_PUERTA, cambios: { puertas: 2, repisas: 1 } },
       { id: 'abatible', texto: 'Abatible', ayuda: 'Puerta que se abre hacia arriba', tipo: 'frentes', ancho: 600, cambios: { puertas: 1, abatible: true, repisas: 0 } },
       { id: 'nicho', texto: 'Nicho microondas', ayuda: 'Abatible arriba y nicho abierto con repisa', tipo: 'nicho', ancho: 600, cambios: { puertas: 1, abatible: true, repisas: 0 } },
+      { id: 'espacio-campana', texto: 'Espacio campana', ayuda: 'Hueco abierto de 60 cm para instalar la campana', tipo: 'espacio-campana', ancho: 600, cambios: { puertas: 0, repisas: 0 } },
     ];
     if (p === 'compacto') return aereos;
     return [...aereos, { id: 'hueco', texto: 'Espacio libre', ayuda: 'Sin mueble, de 20 a 50 cm', tipo: 'hueco', ancho: 500, cambios: {} }];
@@ -600,6 +605,12 @@ function sanear(c: Cuerpo, t: TramoId) {
     c.cajones = 0;
     c.puertas = 1;
     c.abatible = true;
+  } else if (c.tipo === 'espacio-campana') {
+    // Hueco abierto para la campana: sin puertas ni repisas.
+    c.puertas = 0;
+    c.cajones = 0;
+    c.repisas = 0;
+    c.abatible = false;
   } else if (c.tipo === 'especiero') {
     c.puertas = 0;
     c.cajones = 0;
@@ -610,7 +621,7 @@ function sanear(c: Cuerpo, t: TramoId) {
     c.cajones = 0;
   }
   if (c.tipo !== 'especiero') delete c.pisos;
-  if (c.tipo !== 'campana') delete c.campanaDe;
+  if (!esModuloCampana(c)) delete c.campanaDe;
   if (esTramoAereo(t)) c.cajones = 0;
 }
 
@@ -1036,7 +1047,7 @@ function opQuitar(out: Diseno, ctx: CtxOp, tramo: Tramo, ref: RefModulo, ajustar
   }
   const c = cs[i];
   const nombre = nombreModuloEn(out, t, i);
-  if (esTramoAereo(t) && c.tipo === 'campana' && c.campanaDe) {
+  if (esTramoAereo(t) && alojaCampana(c)) {
     const e = (out.equipos.find((x) => x.id === c.campanaDe) as Encimera | undefined) ?? null;
     if (e?.campana) {
       e.campana = false;
@@ -1073,9 +1084,9 @@ function opMover(out: Diseno, tramo: Tramo, ref: RefModulo, delta: -1 | 1) {
   const i = indiceO(out, t, ref);
   let j = i + delta;
   if (esTramoAereo(t)) {
-    if (cs[i].tipo === 'campana' && cs[i].campanaDe) rechazar('La campana va siempre sobre su encimera: para moverla, mueve la encimera.');
+    if (alojaCampana(cs[i])) rechazar('La campana va siempre sobre su encimera: para moverla, mueve la encimera.');
     // Los módulos se intercambian saltando las campanas, que no se mueven.
-    while (j >= 0 && j < cs.length && cs[j].tipo === 'campana' && cs[j].campanaDe) j += delta;
+    while (j >= 0 && j < cs.length && alojaCampana(cs[j])) j += delta;
   }
   if (j < 0 || j >= cs.length) rechazar('El módulo ya está en la punta.');
   if (Math.min(i, j) < posicionMinima(out, t)) rechazar('La despensa va siempre primero.');
@@ -1092,7 +1103,7 @@ function opActualizar(out: Diseno, ctx: CtxOp, tramo: Tramo, ref: RefModulo, cam
   Object.assign(c, resto);
   if (!tiposPermitidos(out, t).includes(c.tipo)) rechazar(`${NOMBRE_TIPO[c.tipo]} no va en ${enTramo(out, t)}.`);
   if (esTramoAereo(t)) {
-    if (c.tipo === 'campana' && antes.tipo !== 'campana') {
+    if (c.tipo === 'campana' && !alojaCampana(antes)) {
       // Pasar un aéreo a campana es agregar la campana de la encimera que tiene debajo.
       const tb = tramoBaseDe(t);
       const db = disenoBase(out);
@@ -1108,7 +1119,7 @@ function opActualizar(out: Diseno, ctx: CtxOp, tramo: Tramo, ref: RefModulo, cam
       const e = candidatas.reduce((a, b) => (distancia(b) < distancia(a) ? b : a));
       e.campana = true;
       c.campanaDe = e.id;
-    } else if (antes.tipo === 'campana' && c.tipo !== 'campana' && antes.campanaDe) {
+    } else if (esModuloCampana(antes) && !esModuloCampana(c) && antes.campanaDe) {
       const e = out.equipos.find((x) => x.id === antes.campanaDe) as Encimera | undefined;
       if (e?.campana) {
         e.campana = false;
@@ -1117,7 +1128,7 @@ function opActualizar(out: Diseno, ctx: CtxOp, tramo: Tramo, ref: RefModulo, cam
     }
   }
   sanear(c, t);
-  if (antes.campanaDe && c.tipo === 'campana') c.campanaDe = antes.campanaDe;
+  if (antes.campanaDe && esModuloCampana(c)) c.campanaDe = antes.campanaDe;
   const lim = limitesModulo(out, t, c);
   const objetivo = Math.max(lim.min, Math.min(lim.max, c.ancho));
   if (objetivo !== c.ancho) {
@@ -1136,7 +1147,7 @@ function opAnchoModulo(out: Diseno, ctx: Ctx, tramo: Tramo, ref: RefModulo, anch
   const c = cs[i];
   const lim = limitesModulo(out, t, c);
   const nombre = nombreModuloEn(out, t, i);
-  if (esTramoAereo(t) && c.tipo === 'campana' && c.campanaDe) {
+  if (esTramoAereo(t) && alojaCampana(c)) {
     if (Math.round(ancho) === c.ancho) return;
     rechazar('El módulo de la campana se ajusta solo para quedar centrado sobre la encimera.');
   }
@@ -1989,7 +2000,7 @@ export function fijarCocinaLegado(d: Diseno, cambios: Partial<EquipamientoCocina
 
 // ---------- Diseños guardados ----------
 
-const TIPOS: Cuerpo['tipo'][] = ['frentes', 'horno', 'hueco', 'escritorio', 'campana', 'nicho', 'especiero'];
+const TIPOS: Cuerpo['tipo'][] = ['frentes', 'horno', 'hueco', 'escritorio', 'campana', 'nicho', 'especiero', 'espacio-campana'];
 
 const numero = (v: unknown, defecto: number) => (typeof v === 'number' && Number.isFinite(v) ? v : defecto);
 
@@ -2351,7 +2362,11 @@ export const DESCUENTO_EQUIPO = {
   lavaplatos: { simple: 30000, doble: 35000, rinonera: 30000 } as Record<'simple' | 'doble' | 'rinonera', number>,
 };
 
-/** Las medidas del mueble (ancho, alto, fondo, forma, lados y aéreos) siguen iguales a las del producto. */
+/**
+ * Las medidas del mueble (ancho, alto, fondo, forma y lados) siguen iguales a las del producto. En la
+ * cocina el aéreo no cuenta: se cobra aparte con su tarifa (precioAereo) sobre el precio de la tienda.
+ * En los demás muebles (compacto) el mueble superior es parte del mueble y sí cuenta.
+ */
 export function mismasMedidas(d: Diseno, b: Diseno): boolean {
   const lado = (x: Diseno, l: 'izq' | 'der') => {
     const r = x.lados?.[l];
@@ -2367,7 +2382,7 @@ export function mismasMedidas(d: Diseno, b: Diseno): boolean {
     d.profundidad === b.profundidad &&
     lado(d, 'izq') === lado(b, 'izq') &&
     lado(d, 'der') === lado(b, 'der') &&
-    aereo(d) === aereo(b)
+    (d.plantilla === 'cocina' || aereo(d) === aereo(b))
   );
 }
 
@@ -2419,6 +2434,30 @@ function precioTiendaConDescuentos(d: Diseno, base: ProductoCatalogo | null, dis
       const nombre = c.nombre(e);
       lineas.push(linea(`${nombre[0].toUpperCase()}${nombre.slice(1)} ${c.agregado}`, 1, v, formatoPrecio(v)));
       total += v;
+    }
+  }
+  // Campanas agregadas sobre las del producto, a tarifa; las que se quitan no se descuentan.
+  const campanas = (x: Diseno) => (x.equipos ?? []).filter((e) => e.tipo === 'encimera' && e.campana).length;
+  const extraCampanas = campanas(d) - campanas(disenoBase);
+  for (let k = 0; k < extraCampanas; k++) {
+    lineas.push(linea('Campana agregada', 1, TARIFAS.campana, formatoPrecio(TARIFAS.campana)));
+    total += TARIFAS.campana;
+  }
+  // Aéreo de la cocina: se cobra aparte con su tarifa. Si el producto ya lo traía, solo se suma la
+  // diferencia cuando el nuevo vale más (no se descuenta el aéreo incluido salvo que se apague).
+  if (d.plantilla === 'cocina') {
+    const ahora = precioAereo(d);
+    const antes = precioAereo(disenoBase);
+    if (ahora && !antes) {
+      lineas.push(...ahora.lineas);
+      total += ahora.valor;
+    } else if (ahora && antes && ahora.valor > antes.valor) {
+      const v = ahora.valor - antes.valor;
+      lineas.push(linea('Aéreo: diferencia sobre el incluido', 1, v, `${ahora.lineas.map((l) => l.detalle).join('; ')} (${formatoPrecio(ahora.valor)} − ${formatoPrecio(antes.valor)} incluido)`));
+      total += v;
+    } else if (!ahora && antes) {
+      lineas.push(linea('Sin mueble aéreo', 1, -antes.valor, `−${formatoPrecio(antes.valor)}`));
+      total -= antes.valor;
     }
   }
   return { total: Math.max(0, total), metodo: 'oficial', lineas };

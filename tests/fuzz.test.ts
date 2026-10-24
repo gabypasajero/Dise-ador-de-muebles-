@@ -129,7 +129,7 @@ function revisarReparto(antes: Diseno, despues: Diseno, tramo: Tramo, donde: str
   expect(largoTramo(despues, t), donde).toBe(largoTramo(antes, t));
   if (t === 'base') expect(despues.ancho, donde).toBe(antes.ancho);
   const cs = cuerposDe(despues, t);
-  if (t.startsWith('aereos') && cs.some((c) => c.tipo === 'campana' && c.campanaDe)) return;
+  if (t.startsWith('aereos') && cs.some((c) => (c.tipo === 'campana' || c.tipo === 'espacio-campana') && c.campanaDe)) return;
   // Solo se reparten los que absorben (en las cocinas, las cajoneras del base y los abatibles de
   // los aéreos, de 60 a 90 cm o desde lo que medían si ya eran más angostas).
   const previos = new Map(cuerposDe(antes, t).map((c) => [c.id, c]));
