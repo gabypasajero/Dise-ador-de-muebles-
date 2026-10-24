@@ -6,7 +6,7 @@
     { "id": "pino-nebraska", "nombre": "Pino Nebraska", "tipo": "madera", "color": "#c8ad96", "veta": "#957864", "rugosidad": 0.6, "origen": "catalogo-dto", "cocina": true, "textura": "/texturas/pino-nebraska.jpg", "tamanoMm": 320 },
     { "id": "verde-salvia", "nombre": "Verde Salvia", "tipo": "liso", "color": "#b5bbaf", "rugosidad": 0.5, "origen": "catalogo-dto", "cocina": true, "textura": "/texturas/verde-salvia.jpg", "tamanoMm": 410 },
     { "id": "rojo", "nombre": "Rojo", "tipo": "liso", "color": "#c42537", "rugosidad": 0.45, "origen": "catalogo-dto", "cocina": true, "textura": "/texturas/rojo.jpg", "tamanoMm": 410 },
-    { "id": "verde-glaciar", "nombre": "Verde Jade", "tipo": "liso", "color": "#9aac8c", "rugosidad": 0.45, "origen": "catalogo-dto", "cocina": true },
+    { "id": "verde-glaciar", "nombre": "Verde Jade", "tipo": "liso", "color": "#4f8a76", "rugosidad": 0.45, "origen": "catalogo-dto", "cocina": true },
     { "id": "gris-sombra", "nombre": "Gris Sombra", "tipo": "liso", "color": "#85888a", "rugosidad": 0.45, "origen": "catalogo-dto", "cocina": true },
     { "id": "blanco", "nombre": "Blanco", "tipo": "liso", "color": "#f2f1ec", "rugosidad": 0.5, "origen": "generico" },
     { "id": "roble-natural", "nombre": "Roble Natural", "tipo": "madera", "color": "#b98c5a", "veta": "#7f5a34", "rugosidad": 0.6, "origen": "generico" },
