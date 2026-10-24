@@ -2340,6 +2340,8 @@ export function precioReferencial(d: Diseno, base: ProductoCatalogo | null, dise
   return Math.round(precio / 1000) * 1000 - 10;
 }
 
+const NOMBRE_MODELO_LAVAPLATOS: Record<string, string> = { simple: 'simple', doble: 'doble', rinonera: 'riñonera' };
+
 /**
  * Descuento al quitar un equipo de un mueble del catálogo (o pedirlo como solo corte): el mueble
  * conserva el precio de la tienda y se le resta el equipo que no lleva.
@@ -2382,22 +2384,41 @@ function precioTiendaConDescuentos(d: Diseno, base: ProductoCatalogo | null, dis
   const linea = (concepto: string, cantidad: number, unitario: number, detalle: string): LineaPrecio => ({ concepto, detalle, cantidad, unidad: 'unidad', unitario, valor: cantidad * unitario });
   const lineas: LineaPrecio[] = [linea('Precio de la tienda', 1, precioBase, base.nombre)];
   let total = precioBase;
-  const cuenta = (x: Diseno, f: (e: Equipo) => boolean) => (x.equipos ?? []).filter((e) => !(e as { soloCorte?: boolean }).soloCorte && f(e)).length;
-  const tipos: { nombre: string; f: (e: Equipo) => boolean; descuento: number; tarifa: number }[] = [
-    { nombre: 'Encimera 4 platos', f: (e) => e.tipo === 'encimera' && e.platos === '4', descuento: DESCUENTO_EQUIPO.encimera['4'], tarifa: TARIFAS.encimera['4'] },
-    { nombre: 'Encimera 3 platos', f: (e) => e.tipo === 'encimera' && e.platos !== '4', descuento: DESCUENTO_EQUIPO.encimera['3'], tarifa: TARIFAS.encimera['3'] },
-    { nombre: 'Lavaplatos simple', f: (e) => e.tipo === 'lavaplatos' && e.modelo === 'simple', descuento: DESCUENTO_EQUIPO.lavaplatos.simple, tarifa: TARIFAS.lavaplatos.simple },
-    { nombre: 'Lavaplatos doble', f: (e) => e.tipo === 'lavaplatos' && e.modelo === 'doble', descuento: DESCUENTO_EQUIPO.lavaplatos.doble, tarifa: TARIFAS.lavaplatos.doble },
-    { nombre: 'Lavaplatos riñonera', f: (e) => e.tipo === 'lavaplatos' && e.modelo === 'rinonera', descuento: DESCUENTO_EQUIPO.lavaplatos.rinonera, tarifa: TARIFAS.lavaplatos.rinonera },
+  // Cambiar un equipo por otro modelo (lavaplatos simple por riñonera, encimera de 3 por 4 platos)
+  // no cambia el precio: solo se descuenta el equipo que se saca o queda como solo corte, y se
+  // suma a tarifa el que se agrega de más.
+  type Clase = { nombre: (e: Equipo) => string; f: (e: Equipo) => boolean; descuento: (e: Equipo) => number; tarifa: (e: Equipo) => number; agregado: string };
+  const clases: Clase[] = [
+    {
+      f: (e) => e.tipo === 'encimera',
+      nombre: (e) => `encimera ${(e as Encimera).platos === '4' ? 4 : 3} platos`,
+      descuento: (e) => DESCUENTO_EQUIPO.encimera[(e as Encimera).platos === '4' ? '4' : '3'],
+      tarifa: (e) => TARIFAS.encimera[(e as Encimera).platos === '4' ? '4' : '3'],
+      agregado: 'agregada',
+    },
+    {
+      f: (e) => e.tipo === 'lavaplatos',
+      nombre: (e) => `lavaplatos ${NOMBRE_MODELO_LAVAPLATOS[(e as Lavaplatos).modelo] ?? (e as Lavaplatos).modelo}`,
+      descuento: (e) => DESCUENTO_EQUIPO.lavaplatos[(e as Lavaplatos).modelo as keyof typeof DESCUENTO_EQUIPO.lavaplatos] ?? DESCUENTO_EQUIPO.lavaplatos.simple,
+      tarifa: (e) => TARIFAS.lavaplatos[(e as Lavaplatos).modelo as keyof typeof TARIFAS.lavaplatos] ?? TARIFAS.lavaplatos.simple,
+      agregado: 'agregado',
+    },
   ];
-  for (const t of tipos) {
-    const dif = cuenta(d, t.f) - cuenta(disenoBase, t.f);
-    if (dif < 0) {
-      lineas.push(linea(`Sin ${t.nombre.toLowerCase()}`, -dif, -t.descuento, `${-dif} × −${formatoPrecio(t.descuento)}`));
-      total += dif * t.descuento;
-    } else if (dif > 0) {
-      lineas.push(linea(`${t.nombre} ${t.nombre.startsWith('Encimera') ? 'agregada' : 'agregado'}`, dif, t.tarifa, `${dif} × ${formatoPrecio(t.tarifa)}`));
-      total += dif * t.tarifa;
+  const activos = (x: Diseno, c: Clase) => (x.equipos ?? []).filter((e) => !(e as { soloCorte?: boolean }).soloCorte && c.f(e));
+  for (const c of clases) {
+    const antes = activos(disenoBase, c);
+    const ahora = activos(d, c);
+    // Se descuentan los del producto que ya no están (por su modelo original).
+    for (const e of antes.slice(ahora.length)) {
+      const v = c.descuento(e);
+      lineas.push(linea(`Sin ${c.nombre(e)}`, 1, -v, `−${formatoPrecio(v)}`));
+      total -= v;
+    }
+    for (const e of ahora.slice(antes.length)) {
+      const v = c.tarifa(e);
+      const nombre = c.nombre(e);
+      lineas.push(linea(`${nombre[0].toUpperCase()}${nombre.slice(1)} ${c.agregado}`, 1, v, formatoPrecio(v)));
+      total += v;
     }
   }
   return { total: Math.max(0, total), metodo: 'oficial', lineas };

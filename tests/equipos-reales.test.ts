@@ -104,14 +104,14 @@ describe('lavaplatos riñonera', () => {
     expect(precioCocina(d).lineas.find((l) => l.concepto === 'Lavaplatos riñonera')!.valor).toBe(40000);
   });
 
-  it('en una cocina del catálogo: cambiar el simple por riñonera descuenta uno y suma el otro', () => {
+  it('en una cocina del catálogo: cambiar el simple por riñonera mantiene el precio de la tienda', () => {
     const p = prod(160);
     const base = disenoInicial(p);
     const tienda = p.precio_oferta ?? p.precio;
     const d = ejecutar(base, { op: 'configurarEquipo', id: lavaplatos(base).id, cambios: { modelo: 'rinonera' } }).diseno;
     const precio = precioDiseno(d, p, base)!;
-    expect(precio.total).toBe(tienda - DESCUENTO_EQUIPO.lavaplatos.simple + TARIFAS.lavaplatos.rinonera);
-    expect(precio.lineas.map((l) => l.concepto)).toEqual(['Precio de la tienda', 'Sin lavaplatos simple', 'Lavaplatos riñonera agregado']);
+    expect(precio.total).toBe(tienda);
+    expect(precio.lineas.map((l) => l.concepto)).toEqual(['Precio de la tienda']);
   });
 });
 

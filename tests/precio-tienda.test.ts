@@ -36,6 +36,18 @@ describe('precio de la tienda con descuentos por equipos', () => {
     expect(precio(fijarAncho(base, 2000)).lineas[0].concepto).not.toBe('Precio de la tienda');
   });
 
+  it('cambiar el modelo de un equipo no cambia el precio; solo sacarlo lo descuenta', () => {
+    const lav = base.equipos.find((e) => e.tipo === 'lavaplatos')!;
+    const enc = base.equipos.find((e) => e.tipo === 'encimera')!;
+    let d = ejecutar(base, { op: 'configurarEquipo', id: lav.id, cambios: { modelo: 'rinonera' } }).diseno;
+    d = ejecutar(d, { op: 'configurarEquipo', id: enc.id, cambios: { platos: '4' } }).diseno;
+    expect(precio(d).total).toBe(tienda);
+    expect(precio(d).lineas).toHaveLength(1);
+    // Sacar la riñonera descuenta el lavaplatos que traía el producto (simple).
+    d = ejecutar(d, { op: 'quitarEquipo', id: lav.id }).diseno;
+    expect(precio(d).total).toBe(tienda - DESCUENTO_EQUIPO.lavaplatos.simple);
+  });
+
   it('los valores de descuento son los de la tienda', () => {
     expect(DESCUENTO_EQUIPO).toEqual({ encimera: { '3': 30000, '4': 60000 }, lavaplatos: { simple: 30000, doble: 35000, rinonera: 30000 } });
   });
