@@ -1,5 +1,18 @@
 [
   {
+    "id": 241,
+    "nombre": "Mueble de cocina tamaño L con horno, encimera 3 quemadores y lavaplatos",
+    "categoria": "cocina",
+    "descripcion": "Nueva línea \"todo en uno\". Horno integrado, encimera de 3 quemadores, lavaplatos tipo riñón de acero inoxidable con llave monomando extraíble, 3 cajones y 1 puerta. Cubierta: Módena, Classic, Florentino negro, Granitino negro, Granito o Granito Kombi. Melamina: gris blanqueado, pino Nebraska, pino Casina, gris sombra, rojo o verde glaciar.",
+    "medidas": null,
+    "precio": 469990,
+    "precio_oferta": 429990,
+    "imagen_url": "https://mueblesyhogarmolina.cl/wp-content/uploads/2026/10/Mueble-de-cocina-L-con-horno-encimera-3-quemadores-y-lavaplatos-modena-rojo-1.jpg",
+    "personalizable": false,
+    "destacado": true,
+    "orden": 0
+  },
+  {
     "id": 100,
     "nombre": "Clóset 2 puertas 4 cajones personalizable",
     "categoria": "closets",
@@ -35,6 +48,19 @@
     "precio_oferta": 519990,
     "imagen_url": "https://mueblesyhogarmolina.cl/wp-content/uploads/2026/07/Mueble-de-cocina-full-equipo-clasic-pino-casina-1.jpg",
     "personalizable": false,
+    "destacado": true,
+    "orden": 1
+  },
+  {
+    "id": 236,
+    "nombre": "Velador 3 cajones personalizable",
+    "categoria": "veladores",
+    "descripcion": "Mini cómoda de 3 cajones con riel metálico. Melamina blanca con la imagen que elijas en el frente.",
+    "medidas": "30 × 37 × 70 cm",
+    "precio": 37990,
+    "precio_oferta": null,
+    "imagen_url": "https://mueblesyhogarmolina.cl/wp-content/uploads/2025/03/mini-comodin-blanco-rosado-3-cajones-pers.jpg",
+    "personalizable": true,
     "destacado": true,
     "orden": 1
   },
@@ -611,13 +637,26 @@
     "orden": 0
   },
   {
+    "id": 240,
+    "nombre": "Mueble de cocina tamaño M con encimera 3 quemadores",
+    "categoria": "cocina",
+    "descripcion": "Nueva línea. Encimera de 3 quemadores a gas sobre cubierta MDF postformada y estructura de melamina 15 mm. Elige color de cubierta y de melamina.",
+    "medidas": null,
+    "precio": 209990,
+    "precio_oferta": 169990,
+    "imagen_url": "https://mueblesyhogarmolina.cl/wp-content/uploads/2026/10/mueble-de-cocina-M-con-encimera-3-quemadores-33.jpg",
+    "personalizable": false,
+    "destacado": false,
+    "orden": 0
+  },
+  {
     "id": 160,
     "nombre": "Mueble de cocina XL con encimera lavaplatos cubierta Módena y melamina color",
     "categoria": "cocina",
     "descripcion": "Encimera y lavaplatos en 180 cm, 4 puertas y 3 cajones. En rojo, verde glaciar o gris sombra.",
     "medidas": "90 x 180 x 55 cm (alto x ancho x fondo)",
     "precio": 319990,
-    "precio_oferta": null,
+    "precio_oferta": 299990,
     "imagen_url": "https://mueblesyhogarmolina.cl/wp-content/uploads/2026/10/Mueble-de-cocina-con-encimera-y-lavaplatos-4-puertas-3-cajones-verde-glaciar.jpg",
     "personalizable": false,
     "destacado": false,
@@ -1092,45 +1131,6 @@
     "orden": 0
   },
   {
-    "id": 170,
-    "nombre": "Velador 3 cajones blanco morado",
-    "categoria": "veladores",
-    "descripcion": "Velador de 3 cajones con riel metálico, el compañero ideal junto a la cama.",
-    "medidas": null,
-    "precio": 37990,
-    "precio_oferta": null,
-    "imagen_url": "https://mueblesyhogarmolina.cl/wp-content/uploads/2025/03/mini-comodin-blanco-morado-3-cajones.jpg",
-    "personalizable": false,
-    "destacado": false,
-    "orden": 0
-  },
-  {
-    "id": 169,
-    "nombre": "Velador 3 cajones blanco rosado",
-    "categoria": "veladores",
-    "descripcion": "Velador de 3 cajones con riel metálico, el compañero ideal junto a la cama.",
-    "medidas": null,
-    "precio": 37990,
-    "precio_oferta": null,
-    "imagen_url": "https://mueblesyhogarmolina.cl/wp-content/uploads/2025/03/mini-comodin-blanco-rosado-3-cajones.jpg",
-    "personalizable": false,
-    "destacado": false,
-    "orden": 0
-  },
-  {
-    "id": 191,
-    "nombre": "Velador Infantil bicolor",
-    "categoria": "veladores",
-    "descripcion": "Velador de 3 cajones con riel metálico, el compañero ideal junto a la cama.",
-    "medidas": null,
-    "precio": 38000,
-    "precio_oferta": null,
-    "imagen_url": "https://mueblesyhogarmolina.cl/wp-content/uploads/2025/01/Velador-infantil-rosado-blanco-frontal.jpg",
-    "personalizable": false,
-    "destacado": false,
-    "orden": 0
-  },
-  {
     "id": 15,
     "nombre": "Cocina full equipo: horno, encimera y lavaplatos · Clasic Gris Blanqueado",
     "categoria": "cocina",
@@ -1469,6 +1469,19 @@
     "orden": 2
   },
   {
+    "id": 237,
+    "nombre": "Velador 3 cajones · Blanco y rosado",
+    "categoria": "veladores",
+    "descripcion": "Mini cómoda de 3 cajones con riel metálico.",
+    "medidas": "30 × 37 × 70 cm",
+    "precio": 37990,
+    "precio_oferta": null,
+    "imagen_url": "https://mueblesyhogarmolina.cl/wp-content/uploads/2025/03/mini-comodin-blanco-rosado-3-cajones.jpg",
+    "personalizable": true,
+    "destacado": false,
+    "orden": 2
+  },
+  {
     "id": 147,
     "nombre": "Clóset escritorio · Diseño 01",
     "categoria": "escritorios",
@@ -1646,6 +1659,19 @@
     "precio": 119990,
     "precio_oferta": 94990,
     "imagen_url": "https://mueblesyhogarmolina.cl/wp-content/uploads/2025/10/prod-m-y-h-molina-63.jpg",
+    "personalizable": true,
+    "destacado": false,
+    "orden": 3
+  },
+  {
+    "id": 238,
+    "nombre": "Velador 3 cajones · Blanco y morado",
+    "categoria": "veladores",
+    "descripcion": "Mini cómoda de 3 cajones con riel metálico.",
+    "medidas": "30 × 37 × 70 cm",
+    "precio": 37990,
+    "precio_oferta": null,
+    "imagen_url": "https://mueblesyhogarmolina.cl/wp-content/uploads/2025/03/mini-comodin-blanco-morado-3-cajones.jpg",
     "personalizable": true,
     "destacado": false,
     "orden": 3
@@ -1829,6 +1855,19 @@
     "precio_oferta": 94990,
     "imagen_url": "https://mueblesyhogarmolina.cl/wp-content/uploads/2025/10/prod-m-y-h-molina-60.jpg",
     "personalizable": true,
+    "destacado": false,
+    "orden": 4
+  },
+  {
+    "id": 239,
+    "nombre": "Velador infantil bicolor",
+    "categoria": "veladores",
+    "descripcion": "Velador infantil en dos colores.",
+    "medidas": null,
+    "precio": 38000,
+    "precio_oferta": null,
+    "imagen_url": "https://mueblesyhogarmolina.cl/wp-content/uploads/2025/01/Velador-infantil-rosado-blanco-frontal.jpg",
+    "personalizable": false,
     "destacado": false,
     "orden": 4
   },

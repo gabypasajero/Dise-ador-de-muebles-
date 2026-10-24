@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "vite",
     "dev:local": "VITE_BACKEND=local vite",
-    "build": "tsc -p tsconfig.json && vite build && node scripts/construir-api.mjs",
+    "build": "node scripts/sync-productos.mjs --sin-fallar && tsc -p tsconfig.json && vite build && node scripts/construir-api.mjs",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
