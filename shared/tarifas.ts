@@ -21,7 +21,7 @@ export const TARIFAS = {
   /** Horno eléctrico 58 L Sindelen, por cada uno. */
   horno: 170000,
   /** Lavaplatos según modelo (simple con secador, doble, riñonera). */
-  lavaplatos: { simple: 40000, doble: 70000, rinonera: 40000 } as Record<'simple' | 'doble' | 'rinonera', number>,
+  lavaplatos: { simple: 40000, doble: 55000, rinonera: 40000 } as Record<'simple' | 'doble' | 'rinonera', number>,
   /** Llave monomando, una por lavaplatos que la lleve. */
   llave: 16000,
   /** Especiero extraíble, por cada uno. */

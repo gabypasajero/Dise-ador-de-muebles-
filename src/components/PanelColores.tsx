@@ -176,8 +176,7 @@ export function PanelColores() {
           opciones={[
             { valor: 'barra', texto: 'Barra' },
             { valor: 'boton', texto: 'Botón' },
-            { valor: 'unero', texto: 'Uñero' },
-            { valor: 'sin', texto: 'Sin' },
+            { valor: 'sin', texto: 'Sin manilla' },
           ]}
         />
         {d.tirador !== 'sin' && (

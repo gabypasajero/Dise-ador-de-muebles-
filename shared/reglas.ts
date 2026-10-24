@@ -1701,7 +1701,7 @@ export interface CambiosAcabados {
 }
 
 function opFijarAcabados(out: Diseno, c: CambiosAcabados) {
-  if (c.tirador) out.tirador = c.tirador;
+  if (c.tirador) out.tirador = c.tirador === 'unero' ? 'sin' : c.tirador;
   if (typeof c.cierreSuave === 'boolean') out.cierreSuave = c.cierreSuave;
   if (c.zocalo != null) out.zocalo = limitar(Math.round(c.zocalo), [0, 200]);
   if (c.luzFrentes != null) out.luzFrentes = limitar(Math.round(c.luzFrentes), [1, 10]);
@@ -2071,7 +2071,8 @@ export function normalizar(entrada: Diseno | DisenoGuardado): Diseno {
     zocalo: numero(g.zocalo, defecto.zocalo),
     espesor: g.espesor === 18 ? 18 : 15,
     estructura: g.estructura === 'unica' || g.estructura === 'modular' ? g.estructura : defecto.estructura,
-    tirador: g.tirador ?? defecto.tirador,
+    // El perfil uñero se unificó con el sistema sin manilla.
+    tirador: g.tirador === 'unero' ? 'sin' : (g.tirador ?? defecto.tirador),
     cierreSuave: g.cierreSuave === true,
     materiales: { ...defecto.materiales, ...(g.materiales ?? {}) },
     cocina: {

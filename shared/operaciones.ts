@@ -160,7 +160,7 @@ export const OPERACIONES: DescripcionOperacion[] = [
     op: 'fijarAcabados',
     descripcion: 'Tiradores (o sin manilla), cierre suave, zócalo, luz entre frentes, espesor de melamina, estructura y colores (ids de materiales.json).',
     campos: {
-      tirador: { tipo: 'opcion', valores: ['barra', 'boton', 'unero', 'sin'], opcional: true, descripcion: "tipo de tirador ('sin' = sistema sin manilla, se cobra aparte)" },
+      tirador: { tipo: 'opcion', valores: ['barra', 'boton', 'sin'], opcional: true, descripcion: "tipo de tirador ('sin' = sistema sin manilla, se cobra aparte)" },
       cierreSuave: { tipo: 'booleano', opcional: true, descripcion: 'bisagras y correderas de cierre suave (se cobra una vez por mueble)' },
       zocalo: mm('alto del zócalo', true),
       luzFrentes: mm('holgura entre frentes', true),
@@ -178,7 +178,7 @@ export const OPERACIONES: DescripcionOperacion[] = [
         },
       },
     },
-    ejemplo: { op: 'fijarAcabados', tirador: 'unero' },
+    ejemplo: { op: 'fijarAcabados', tirador: 'sin' },
   },
 ];
 

@@ -263,7 +263,6 @@ export function PestanaPuertas({ d, unidad }: PropsPestana) {
           opciones={[
             { valor: 'barra', texto: 'Barra' },
             { valor: 'boton', texto: 'Botón' },
-            { valor: 'unero', texto: 'Perfil uñero' },
             { valor: 'sin', texto: 'Sin manilla' },
           ]}
         />
@@ -1073,7 +1072,6 @@ function EstructuraTocador({ d, unidad, cambiar }: PropsPestana) {
           opciones={[
             { valor: 'boton', texto: 'Botón' },
             { valor: 'barra', texto: 'Barra' },
-            { valor: 'unero', texto: 'Uñero' },
             { valor: 'sin', texto: 'Sin manilla' },
           ]}
         />

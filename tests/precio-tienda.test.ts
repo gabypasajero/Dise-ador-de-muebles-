@@ -159,3 +159,11 @@ describe('espacio campana en los aéreos', () => {
     expect(validarDiseno(sin)).toEqual([]);
   });
 });
+
+describe('perfil uñero unificado con sin manilla', () => {
+  it('un diseño guardado con perfil uñero abre como sin manilla', async () => {
+    const { normalizar } = await import('../shared/reglas');
+    const viejo = { ...base, tirador: 'unero' } as unknown as Diseno;
+    expect(normalizar(viejo).tirador).toBe('sin');
+  });
+});

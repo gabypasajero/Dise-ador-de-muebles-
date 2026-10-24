@@ -136,7 +136,7 @@ describe('precio oficial de la cocina', () => {
     expect(d.lados.der!.cuerpos.some((c) => c.tipo === 'horno')).toBe(true);
     expect(precioCocina(d).total - base).toBe(TARIFAS.horno);
     d = agregarEquipo(d, 'lavaplatos', { tramo: 'izq', modelo: 'doble' });
-    expect(valor(d, 'Lavaplatos doble')).toBe(70000);
+    expect(valor(d, 'Lavaplatos doble')).toBe(55000);
     expect(valor(d, 'Llave monomando')).toBe(2 * 16000);
     const lav = d.equipos.find((e) => e.tipo === 'lavaplatos' && e.modelo === 'doble')!;
     d = quitarEquipo(d, `${lav.id}:llave`);
