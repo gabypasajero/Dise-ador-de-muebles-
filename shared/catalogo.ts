@@ -181,7 +181,7 @@ export function coloresDeVariante(variante: string | null): { cubierta?: string;
   else if (v.includes('pino casina')) out.frente = 'pino-casina';
   else if (v.includes('pino nebraska')) out.frente = 'pino-nebraska';
   else if (v.includes('verde salvia')) out.frente = 'verde-salvia';
-  else if (/verde.glaciar/.test(v)) out.frente = 'verde-glaciar';
+  else if (/verde.(glaciar|jade)/.test(v)) out.frente = 'verde-glaciar';
   else if (/gris.sombra/.test(v)) out.frente = 'gris-sombra';
   else if (/\brojo\b/.test(v)) out.frente = 'rojo';
   if (!out.cubierta && /m[oó]dena/.test(v)) out.cubierta = 'modena';

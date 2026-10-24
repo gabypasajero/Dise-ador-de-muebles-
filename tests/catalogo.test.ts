@@ -144,7 +144,7 @@ describe('muebles de cocina nuevos de la tienda', () => {
     expect(d.materiales.cubierta).toBe('modena');
   });
 
-  it('XL con encimera y lavaplatos: 4 puertas y 3 cajones en verde glaciar', () => {
+  it('XL con encimera y lavaplatos: 4 puertas y 3 cajones en verde jade', () => {
     const d = de(160);
     expect([d.ancho, d.alto, d.profundidad]).toEqual([1800, 900, 550]);
     expect(d.cuerpos.map((c) => [c.puertas, c.cajones])).toEqual([[2, 0], [0, 3], [2, 0]]);
