@@ -46,8 +46,9 @@ function fbm(u: number, v: number, fu: number, fv: number, octavas: number, semi
 }
 
 function rgb(hex: string): [number, number, number] {
-  const c = new THREE.Color(hex);
-  // Trabajamos en sRGB para dibujar en el canvas.
+  // Se dibuja en el canvas en sRGB: hay que leer el color en sRGB (THREE.Color guarda los
+  // valores en lineal, y usarlos tal cual oscurecía y saturaba los colores sin foto).
+  const c = new THREE.Color(hex).getRGB({ r: 0, g: 0, b: 0 }, THREE.SRGBColorSpace);
   return [Math.round(c.r * 255), Math.round(c.g * 255), Math.round(c.b * 255)];
 }
 
