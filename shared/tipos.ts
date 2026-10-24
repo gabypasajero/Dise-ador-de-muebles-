@@ -218,6 +218,8 @@ export interface Diseno {
   /** modular: cada cuerpo es una cabina independiente (cocina). unica: un solo casco con divisiones. */
   estructura: 'modular' | 'unica';
   tirador: TipoTirador;
+  /** Bisagras y correderas de cierre suave (se cobra una vez por mueble). */
+  cierreSuave: boolean;
   materiales: Materiales;
   cocina: EquipamientoCocina;
   tocador: OpcionesTocador;

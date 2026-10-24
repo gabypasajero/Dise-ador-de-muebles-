@@ -48,7 +48,7 @@ describe('diseños guardados con la versión anterior', () => {
     expect(d.cuerpos.map((c) => c.id)).toEqual(v.cuerpos.map((c: any) => c.id));
     expect(encimera(d)).toMatchObject({ tramo: 'base', modulo: v.cuerpos[v.cocina.encimeraCuerpo].id, platos: '4', campana: false });
     expect(lavaplatos(d)).toMatchObject({ tramo: 'base', modulo: v.cuerpos[v.cocina.lavaplatosCuerpo].id, modelo: 'simple', llave: true, posicion: 'centro', margen: 50 });
-    expect(precioCocina(d).total).toBe(550000);
+    expect(precioCocina(d).total).toBe(551000);
   });
 
   it('la L vieja pasa a un lado con sus módulos y la campana de los aéreos pasa a la encimera', () => {

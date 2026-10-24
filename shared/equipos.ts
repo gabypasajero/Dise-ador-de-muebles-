@@ -294,7 +294,7 @@ export function listarEquipamiento(d: Diseno): ItemEquipo[] {
     if (!resolverTramo(d, t)) continue;
     cuerposDe(d, t).forEach((c, i) => {
       if (c.tipo !== 'horno' || !esAdulta(d.plantilla)) return;
-      out.push({ id: c.id, tipo: 'horno', nombre: 'Horno eléctrico 58 L', tramo: t, indice: i, modulo: c.id, donde: nombreModuloEn(d, t, i), detalle: 'empotrado en un módulo de 60 cm' });
+      out.push({ id: c.id, tipo: 'horno', nombre: 'Horno eléctrico 58 L Sindelen', tramo: t, indice: i, modulo: c.id, donde: nombreModuloEn(d, t, i), detalle: 'empotrado en un módulo de 60 cm' });
     });
   }
   for (const e of d.equipos ?? []) {
@@ -322,7 +322,7 @@ export function listarEquipamiento(d: Diseno): ItemEquipo[] {
     } else {
       const pos = e.posicion === 'centro' ? 'centrado en su módulo' : `pegado al borde ${e.posicion === 'izq' ? 'izquierdo' : 'derecho'} a ${e.margen / 10} cm`;
       out.push({ id: e.id, tipo: 'lavaplatos', nombre: `Lavaplatos ${nombreModeloLavaplatos(e.modelo)}`, tramo: e.tramo, indice: i, modulo: e.modulo, donde, detalle: `${pos}${e.soloCorte ? '; solo corte (el cliente trae el equipo)' : ''}` });
-      if (e.llave && !e.soloCorte) out.push({ id: `${e.id}:llave`, tipo: 'llave', nombre: 'Llave', tramo: e.tramo, indice: i, modulo: e.modulo, donde, detalle: 'con el lavaplatos', de: e.id });
+      if (e.llave && !e.soloCorte) out.push({ id: `${e.id}:llave`, tipo: 'llave', nombre: 'Llave monomando', tramo: e.tramo, indice: i, modulo: e.modulo, donde, detalle: 'con el lavaplatos', de: e.id });
     }
   }
   return out;

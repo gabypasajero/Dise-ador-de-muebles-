@@ -326,7 +326,7 @@ describe('documentos', () => {
     expect(texto).toContain('lado derecho: 140 × 60 cm');
     expect(texto).toMatch(/encimera 4 platos: 58 × 51 cm \(módulo 1 del lado derecho\), centro a 130 cm del muro principal/);
     expect(texto).toMatch(/lavaplatos simple: 40 × 36 cm \(módulo 3\), centro a 240 cm del muro izquierdo, a 8 cm del borde izquierdo/);
-    expect(texto).toContain('Llave negro mate');
+    expect(texto).toContain('Llave monomando negro mate');
     expect(texto).toMatch(/de 60 a 120 cm del muro izquierdo/);
     expect(texto).toMatch(/Frentes: \d+ módulos/);
     const conCampana = agregarEquipo(d, 'campana');

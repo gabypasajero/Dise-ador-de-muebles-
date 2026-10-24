@@ -74,7 +74,7 @@ import {
   type Ctx,
 } from './equipos';
 import { revisarOperacion } from './operaciones';
-import { precioAereo, precioCocina, TARIFAS, type LineaPrecio } from './tarifas';
+import { contarModulos, lineasOpciones, NOMBRE_HORNO, precioAereo, precioCocina, TARIFAS, type LineaPrecio } from './tarifas';
 import type {
   AjustesPrecio,
   Aereos,
@@ -1697,10 +1697,12 @@ export interface CambiosAcabados {
   espesor?: 15 | 18;
   estructura?: Diseno['estructura'];
   materiales?: Partial<Materiales>;
+  cierreSuave?: boolean;
 }
 
 function opFijarAcabados(out: Diseno, c: CambiosAcabados) {
   if (c.tirador) out.tirador = c.tirador;
+  if (typeof c.cierreSuave === 'boolean') out.cierreSuave = c.cierreSuave;
   if (c.zocalo != null) out.zocalo = limitar(Math.round(c.zocalo), [0, 200]);
   if (c.luzFrentes != null) out.luzFrentes = limitar(Math.round(c.luzFrentes), [1, 10]);
   if (c.espesor != null) out.espesor = c.espesor === 18 ? 18 : 15;
@@ -2070,6 +2072,7 @@ export function normalizar(entrada: Diseno | DisenoGuardado): Diseno {
     espesor: g.espesor === 18 ? 18 : 15,
     estructura: g.estructura === 'unica' || g.estructura === 'modular' ? g.estructura : defecto.estructura,
     tirador: g.tirador ?? defecto.tirador,
+    cierreSuave: g.cierreSuave === true,
     materiales: { ...defecto.materiales, ...(g.materiales ?? {}) },
     cocina: {
       grifo: k.grifo === 'cromado' ? 'cromado' : k.grifo === 'negro' ? 'negro' : defecto.cocina.grifo,
@@ -2362,8 +2365,11 @@ const NOMBRE_MODELO_LAVAPLATOS: Record<string, string> = { simple: 'simple', dob
  * conserva el precio de la tienda y se le resta el equipo que no lleva.
  */
 export const DESCUENTO_EQUIPO = {
+  // '4': pendiente de confirmar por la tienda.
   encimera: { '3': 30000, '4': 60000 } as Record<'3' | '4', number>,
-  lavaplatos: { simple: 30000, doble: 35000, rinonera: 30000 } as Record<'simple' | 'doble' | 'rinonera', number>,
+  lavaplatos: { simple: 20000, doble: 20000, rinonera: 20000 } as Record<'simple' | 'doble' | 'rinonera', number>,
+  /** Por cada horno que traía el producto y se retira. */
+  horno: 120000,
 };
 
 /**
@@ -2446,6 +2452,21 @@ function precioTiendaConDescuentos(d: Diseno, base: ProductoCatalogo | null, dis
   for (let k = 0; k < extraCampanas; k++) {
     lineas.push(linea('Campana agregada', 1, TARIFAS.campana, formatoPrecio(TARIFAS.campana)));
     total += TARIFAS.campana;
+  }
+  // Hornos: los que se retiran descuentan DESCUENTO_EQUIPO.horno; los agregados se suman a tarifa.
+  const hornos = contarModulos(d, 'horno') - contarModulos(disenoBase, 'horno');
+  for (let k = 0; k < -hornos; k++) {
+    lineas.push(linea('Sin horno eléctrico', 1, -DESCUENTO_EQUIPO.horno, `−${formatoPrecio(DESCUENTO_EQUIPO.horno)}`));
+    total -= DESCUENTO_EQUIPO.horno;
+  }
+  for (let k = 0; k < hornos; k++) {
+    lineas.push(linea(`${NOMBRE_HORNO} agregado`, 1, TARIFAS.horno, formatoPrecio(TARIFAS.horno)));
+    total += TARIFAS.horno;
+  }
+  // Especieros agregados y opciones nuevas (cierre suave, sin manilla): se suman al precio de la tienda.
+  for (const l of lineasOpciones(d, disenoBase)) {
+    lineas.push(l);
+    total += l.valor;
   }
   // Aéreo de la cocina: se cobra aparte con su tarifa. Si el producto ya lo traía, solo se suma la
   // diferencia cuando el nuevo vale más (no se descuenta el aéreo incluido salvo que se apague).

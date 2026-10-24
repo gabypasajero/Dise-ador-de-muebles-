@@ -7,6 +7,7 @@ import {
   agregarEquipo,
   agregarModulo,
   configurarEquipo,
+  ejecutar,
   fijarAereos,
   fijarAncho,
   fijarForma,
@@ -26,7 +27,7 @@ const prod = (id: number) => clasificarProducto(productos.find((x) => x.id === i
 const full = () => disenoInicial(prod(16));
 const valor = (d: Diseno, concepto: string) => precioCocina(d).lineas.filter((l) => l.concepto === concepto).reduce((s, l) => s + l.valor, 0);
 /** Equipamiento de la full equipo: encimera 4 + horno + lavaplatos simple + llave. */
-const EQUIPO_FULL = 85000 + 170000 + 40000 + 15000;
+const EQUIPO_FULL = 85000 + 170000 + 40000 + 16000;
 
 describe('valor por metro según el fondo', () => {
   it('redondea siempre al tramo mayor', () => {
@@ -40,12 +41,15 @@ describe('valor por metro según el fondo', () => {
       [60, 160000],
       [61, 170000],
       [65, 170000],
-      [66, 180000],
-      [70, 180000],
-      [71, 190000],
+      [66, 170000],
+      [70, 170000],
+      [71, 180000],
+      [75, 180000],
+      [76, 190000],
+      [80, 190000],
     ];
     for (const [fondoCm, esperado] of casos) expect(valorMetro(fondoCm * 10), `${fondoCm} cm`).toBe(esperado);
-    // Medidas con decimales: 40,5 cm ya cobra el tramo de 50 y 60,1 cm el de 65.
+    // Medidas con decimales: 40,5 cm ya cobra el tramo de 50 y 60,1 cm el de 70.
     expect(valorMetro(405)).toBe(140000);
     expect(valorMetro(601)).toBe(170000);
   });
@@ -63,21 +67,21 @@ describe('recargo del aéreo', () => {
 });
 
 describe('precio oficial de la cocina', () => {
-  it('la «Cocina full equipo» de la tienda da $550.000 con su desglose', () => {
+  it('la «Cocina full equipo» de la tienda da $551.000 con su desglose', () => {
     const d = full();
     const p = precioCocina(d);
-    expect(p.total).toBe(1.5 * 160000 + 85000 + 170000 + 40000 + 15000);
-    expect(p.total).toBe(550000);
+    expect(p.total).toBe(1.5 * 160000 + 85000 + 170000 + 40000 + 16000);
+    expect(p.total).toBe(551000);
     expect(p.lineas.map((l) => [l.concepto, l.valor])).toEqual([
       ['Mueble base', 240000],
       ['Encimera 4 platos', 85000],
-      ['Horno eléctrico 58 L', 170000],
+      ['Horno eléctrico 58 L Sindelen', 170000],
       ['Lavaplatos simple', 40000],
-      ['Llave', 15000],
+      ['Llave monomando', 16000],
     ]);
     expect(p.lineas[0]).toMatchObject({ cantidad: 1.5, unidad: 'm', unitario: 160000 });
     expect(p.lineas[0].detalle).toContain('fondo 60 cm');
-    expect(precioDiseno(d, null, null)).toMatchObject({ total: 550000, metodo: 'oficial' });
+    expect(precioDiseno(d, null, null)).toMatchObject({ total: 551000, metodo: 'oficial' });
   });
 
   it('cobra cada metro según el fondo de cada fondo de prueba', () => {
@@ -88,7 +92,9 @@ describe('precio oficial de la cocina', () => {
       [570, 160000],
       [600, 160000],
       [650, 170000],
-      [660, 180000],
+      [660, 170000],
+      [700, 170000],
+      [750, 180000],
     ]) {
       const d = fijarProfundidad(full(), fondo);
       expect(precioCocina(d).total, `fondo ${fondo}`).toBe(1.5 * porMetro + EQUIPO_FULL);
@@ -124,10 +130,10 @@ describe('precio oficial de la cocina', () => {
     expect(precioCocina(d).total - base).toBe(TARIFAS.horno);
     d = agregarEquipo(d, 'lavaplatos', { tramo: 'izq', modelo: 'doble' });
     expect(valor(d, 'Lavaplatos doble')).toBe(70000);
-    expect(valor(d, 'Llave')).toBe(2 * 15000);
+    expect(valor(d, 'Llave monomando')).toBe(2 * 16000);
     const lav = d.equipos.find((e) => e.tipo === 'lavaplatos' && e.modelo === 'doble')!;
     d = quitarEquipo(d, `${lav.id}:llave`);
-    expect(valor(d, 'Llave')).toBe(15000);
+    expect(valor(d, 'Llave monomando')).toBe(16000);
     d = agregarEquipo(d, 'campana');
     expect(valor(d, 'Campana')).toBe(70000);
     const enc = d.equipos.find((e) => e.tipo === 'encimera')!;
@@ -142,11 +148,43 @@ describe('precio oficial de la cocina', () => {
     expect(valor(viejo, 'Encimera 3 platos')).toBe(60000);
   });
 
-  it('el especiero va incluido en el precio por metro', () => {
+  it('el especiero se cobra aparte: $20.000 por cada uno', () => {
     const d = fijarAncho(full(), 2400);
-    const con = agregarModulo(d, presetsModulo('cocina').find((p) => p.id === 'especiero')!, 1);
+    const esp = presetsModulo('cocina').find((p) => p.id === 'especiero')!;
+    const con = agregarModulo(d, esp, 1);
     expect(con.cuerpos.some((c) => c.tipo === 'especiero')).toBe(true);
-    expect(precioCocina(con).total).toBe(precioCocina(d).total);
+    expect(TARIFAS.especiero).toBe(20000);
+    expect(precioCocina(con).total).toBe(precioCocina(d).total + 20000);
+    expect(precioCocina(con).lineas.find((l) => l.concepto === 'Especiero')).toMatchObject({ cantidad: 1, valor: 20000 });
+    const dos = agregarModulo(con, esp, 3);
+    expect(valor(dos, 'Especiero')).toBe(40000);
+  });
+
+  it('tabla de fondos: ejemplo de la dueña 1,60 m × fondo 55 = $240.000', () => {
+    const d = fijarProfundidad(fijarAncho(full(), 1600), 550);
+    expect(valor(d, 'Mueble base')).toBe(240000);
+    expect(valor(fijarProfundidad(d, 450), 'Mueble base')).toBe(1.6 * 140000);
+    expect(valor(fijarProfundidad(d, 650), 'Mueble base')).toBe(1.6 * 170000);
+    expect(valor(fijarProfundidad(d, 750), 'Mueble base')).toBe(1.6 * 180000);
+  });
+
+  it('la llave monomando vale $16.000', () => {
+    expect(TARIFAS.llave).toBe(16000);
+    expect(valor(full(), 'Llave monomando')).toBe(16000);
+  });
+
+  it('cierre suave y sin manilla se cobran una vez por mueble completo', () => {
+    let d = fijarForma(fijarAncho(full(), 3000), 'U');
+    const base = precioCocina(d).total;
+    d = ejecutar(d, { op: 'fijarAcabados', cierreSuave: true, tirador: 'sin' }).diseno;
+    expect(d.cierreSuave).toBe(true);
+    expect(valor(d, 'Cierre suave en puertas y cajones')).toBe(30000);
+    expect(valor(d, 'Sistema sin manilla')).toBe(20000);
+    expect(precioCocina(d).total).toBe(base + 30000 + 20000);
+    // No depende de la cantidad de módulos.
+    const mas = agregarModulo(d, presetsModulo('cocina').find((p) => p.id === 'puerta')!, 0);
+    expect(valor(mas, 'Cierre suave en puertas y cajones')).toBe(30000);
+    expect(valor(mas, 'Sistema sin manilla')).toBe(20000);
   });
 
   it('el aéreo vale $130.000 por metro lineal (cada lado de la L/U a su largo completo)', () => {
@@ -154,7 +192,7 @@ describe('precio oficial de la cocina', () => {
     const m = largoAereo(lineal) / 1000;
     expect(m).toBeGreaterThan(0);
     expect(valor(lineal, 'Mueble aéreo')).toBe(Math.round(m * 130000));
-    expect(precioCocina(lineal).total).toBe(550000 + Math.round(m * 130000));
+    expect(precioCocina(lineal).total).toBe(551000 + Math.round(m * 130000));
     const linea = precioCocina(lineal).lineas.find((l) => l.concepto === 'Mueble aéreo')!;
     expect(linea.detalle).toContain('× $130.000 por metro');
     // 1,8 m de aéreo: 1,8 × 130.000 = 234.000.
@@ -206,10 +244,10 @@ describe('precio oficial de la cocina', () => {
     const antes = TARIFAS.horno;
     try {
       TARIFAS.horno = 200000;
-      expect(precioCocina(full()).total).toBe(550000 + 30000);
+      expect(precioCocina(full()).total).toBe(551000 + 30000);
     } finally {
       TARIFAS.horno = antes;
     }
-    expect(precioCocina(full()).total).toBe(550000);
+    expect(precioCocina(full()).total).toBe(551000);
   });
 });

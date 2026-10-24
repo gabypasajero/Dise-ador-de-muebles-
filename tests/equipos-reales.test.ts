@@ -99,7 +99,7 @@ describe('lavaplatos riñonera', () => {
 
   it('tarifa y descuento en una sola constante', () => {
     expect(TARIFAS.lavaplatos.rinonera).toBe(40000);
-    expect(DESCUENTO_EQUIPO.lavaplatos.rinonera).toBe(30000);
+    expect(DESCUENTO_EQUIPO.lavaplatos.rinonera).toBe(20000);
     const d = agregarEquipo({ ...disenoLibre('cocina'), equipos: [] }, 'lavaplatos', { modelo: 'rinonera' });
     expect(precioCocina(d).lineas.find((l) => l.concepto === 'Lavaplatos riñonera')!.valor).toBe(40000);
   });

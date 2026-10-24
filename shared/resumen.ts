@@ -36,7 +36,7 @@ const TIRADOR: Record<Diseno['tirador'], string> = {
   barra: 'barra',
   boton: 'botón',
   unero: 'perfil uñero',
-  sin: 'sin tirador (apertura por presión)',
+  sin: 'Sin manillas (apertura por perfil o push)',
 };
 
 const FORMA: Record<ReturnType<typeof formaDe>, string> = {
@@ -258,6 +258,7 @@ export function detalleCotizacion(
     etiqueta: 'Tiradores',
     valor: d.tirador === 'sin' ? TIRADOR.sin : `${TIRADOR[d.tirador]} ${nombreMaterial(materiales?.tiradores, m.tirador).toLowerCase()}`,
   });
+  if (d.cierreSuave) lineas.push({ etiqueta: 'Herrajes', valor: 'Cierre suave en puertas y cajones' });
   if (cocina) {
     const k = d.cocina;
     const eq = textoEquipamiento(d);
@@ -325,7 +326,7 @@ function queEsModulo(d: Diseno, c: Cuerpo, f: (mm: number) => string): string {
   const n = cuantos;
   switch (c.tipo) {
     case 'horno':
-      return d.plantilla === 'cocina-infantil' ? 'Horno de juguete' : 'Horno eléctrico 58 L empotrado (hueco de 59,5 cm de alto, faja de melamina arriba)';
+      return d.plantilla === 'cocina-infantil' ? 'Horno de juguete' : 'Horno eléctrico 58 L Sindelen empotrado (hueco de 59,5 cm de alto, faja de melamina arriba)';
     case 'hueco':
       return 'Espacio libre (sin casco; la cubierta pasa por encima)';
     case 'escritorio':
@@ -419,7 +420,7 @@ function interiorModulo(
   const adulta = d.plantilla !== 'cocina-infantil';
   const puertas = propios.filter((fr) => fr.tipo === 'puerta').length;
   const cajones = propios.filter((fr) => fr.tipo === 'cajon').length;
-  if (c.tipo === 'horno') out.push(adulta ? `Horno eléctrico 58 L (60 cm)${horno ? `; hueco ${f(horno.x1 - horno.x0, false)} × ${f(horno.y1 - horno.y0)}` : ''}` : 'Horno de juguete');
+  if (c.tipo === 'horno') out.push(adulta ? `Horno eléctrico 58 L Sindelen (60 cm)${horno ? `; hueco ${f(horno.x1 - horno.x0, false)} × ${f(horno.y1 - horno.y0)}` : ''}` : 'Horno de juguete');
   if (c.tipo === 'especiero') out.push(`${cuantos(c.pisos ?? 2, 'piso', 'pisos')} interiores`);
   if (c.tipo === 'nicho') out.push('Nicho para microondas con repisa');
   if (c.tipo === 'escritorio') out.push(`Cubierta de escritorio a ${f(c.alto || 750)}`);
@@ -592,9 +593,9 @@ function seccionEquipamiento(d: Diseno, unidad: Unidad, ubic: EquipoUbicado[]): 
     const lugar = `${it.donde.charAt(0).toUpperCase()}${it.donde.slice(1)}\n${nombreTramo(d, it.tramo).toLowerCase()}`;
     const pos = u ? donde(u) : '';
     const corte = u ? `corte en la cubierta ${f(u.ancho, false)} × ${f(u.fondo)}` : '';
-    const texto: LineaDetalle = { etiqueta: it.tipo === 'llave' ? `Llave ${grifo}` : it.nombre, valor: `${it.donde} (${nombreTramo(d, it.tramo).toLowerCase()}): ${it.detalle}${pos ? `; ${pos}` : ''}` };
-    if (it.tipo === 'horno') return { celdas: ['Horno', 'Eléctrico 58 L, empotrado en módulo de 60 cm', lugar, pos], texto };
-    if (it.tipo === 'llave') return { celdas: ['Llave', `Grifería ${grifo}`, lugar, 'Junto al lavaplatos'], texto };
+    const texto: LineaDetalle = { etiqueta: it.tipo === 'llave' ? `Llave monomando ${grifo}` : it.nombre, valor: `${it.donde} (${nombreTramo(d, it.tramo).toLowerCase()}): ${it.detalle}${pos ? `; ${pos}` : ''}` };
+    if (it.tipo === 'horno') return { celdas: ['Horno', 'Eléctrico 58 L Sindelen, empotrado en módulo de 60 cm', lugar, pos], texto };
+    if (it.tipo === 'llave') return { celdas: ['Llave monomando', `Grifería ${grifo}`, lugar, 'Junto al lavaplatos'], texto };
     if ((it.tipo === 'encimera' || it.tipo === 'lavaplatos') && d.equipos.find((x) => x.id === it.id)?.soloCorte) {
       const e = d.equipos.find((x) => x.id === it.id)!;
       const nombre = e.tipo === 'encimera' ? 'Encimera' : 'Lavaplatos';
@@ -692,6 +693,7 @@ export function fichaFabricacion(
     { etiqueta: 'Estructura', valor: d.estructura === 'modular' ? 'modular: cada módulo con sus costados' : 'casco único con divisiones' },
     { etiqueta: 'Separación entre módulos', valor: f(d.separacionCuerpos) },
     { etiqueta: 'Tiradores', valor: d.tirador === 'sin' ? TIRADOR.sin : `${TIRADOR[d.tirador]} ${nombreMaterial(materiales?.tiradores, m.tirador).toLowerCase()}` },
+    { etiqueta: 'Herrajes', valor: d.cierreSuave ? 'Cierre suave en puertas y cajones' : 'bisagras y correderas estándar' },
   );
   if (d.plantilla !== 'tocador') {
     const tramos = tramosDe(d).filter((t) => cuerposDe(d, t).length);
@@ -780,6 +782,7 @@ export function fichaFabricacion(
       { etiqueta: 'Melamina cuerpo', valor: nombreMaterial(materiales?.melaminas, m.casco) },
       ...(cocina ? [{ etiqueta: 'Cubierta', valor: nombreMaterial(materiales?.cubiertas, m.cubierta) }] : []),
       { etiqueta: 'Tiradores', valor: d.tirador === 'sin' ? TIRADOR.sin : `${TIRADOR[d.tirador]} ${nombreMaterial(materiales?.tiradores, m.tirador).toLowerCase()}` },
+      ...(d.cierreSuave ? [{ etiqueta: 'Herrajes', valor: 'Cierre suave en puertas y cajones' }] : []),
       ...(d.imagenFrontal ? [{ etiqueta: 'Imagen', valor: 'imagen personalizada impresa en los frentes' }] : []),
     ],
   });

@@ -11,18 +11,25 @@ export const TARIFAS = {
       { hastaCm: 50, valor: 140000 },
       { hastaCm: 55, valor: 150000 },
       { hastaCm: 60, valor: 160000 },
+      { hastaCm: 70, valor: 170000 },
     ],
     /** Sobre el último tramo, cada `cadaCm` (o fracción) suma `valor`. */
     sobreUltimo: { cadaCm: 5, valor: 10000 },
   },
   /** Encimera a gas. Los diseños antiguos de 2 platos se cobran como 3. */
   encimera: { '3': 60000, '4': 85000 } as Record<'3' | '4', number>,
-  /** Horno eléctrico de 58 L, por cada uno. */
+  /** Horno eléctrico 58 L Sindelen, por cada uno. */
   horno: 170000,
   /** Lavaplatos según modelo (simple con secador, doble, riñonera). */
   lavaplatos: { simple: 40000, doble: 70000, rinonera: 40000 } as Record<'simple' | 'doble' | 'rinonera', number>,
-  /** Llave (grifería), una por lavaplatos que la lleve. */
-  llave: 15000,
+  /** Llave monomando, una por lavaplatos que la lleve. */
+  llave: 16000,
+  /** Especiero extraíble, por cada uno. */
+  especiero: 20000,
+  /** Cierre suave en bisagras y correderas: una vez por mueble completo. */
+  cierreSuave: 30000,
+  /** Sistema sin manilla (sin tiradores, apertura por perfil o push): una vez por mueble completo. */
+  sinManilla: 20000,
   /** Solo corte: hueco en la cubierta para una encimera o un lavaplatos que trae el cliente (por cada corte). */
   corte: 0,
   /** Campana, por cada una. */
@@ -147,13 +154,36 @@ function lineaLado(concepto: string, largoMm: number, fondoMm: number, esquina: 
   };
 }
 
+export const NOMBRE_HORNO = 'Horno eléctrico 58 L Sindelen';
+
+/** Cantidad de módulos de un tipo en todos los tramos (base, lados y aéreos). */
+export function contarModulos(d: Diseno, tipo: Diseno['cuerpos'][number]['tipo']): number {
+  const a = d.aereos;
+  return [d.cuerpos, d.lados?.izq?.cuerpos ?? [], d.lados?.der?.cuerpos ?? [], a?.cuerpos ?? [], a?.lados?.izq?.cuerpos ?? [], a?.lados?.der?.cuerpos ?? []]
+    .flat()
+    .filter((c) => c.tipo === tipo).length;
+}
+
+/**
+ * Especieros y opciones del mueble completo. Con `base` (mueble del catálogo con sus medidas)
+ * solo se cobra lo que se agregó sobre el producto: especieros de más y las opciones que no traía.
+ */
+export function lineasOpciones(d: Diseno, base?: Diseno): LineaPrecio[] {
+  const lineas: LineaPrecio[] = [];
+  const especieros = contarModulos(d, 'especiero') - (base ? contarModulos(base, 'especiero') : 0);
+  if (especieros > 0) lineas.push(lineaUnidades(base ? 'Especiero agregado' : 'Especiero', especieros, TARIFAS.especiero));
+  if (d.cierreSuave && !base?.cierreSuave) lineas.push(lineaUnidades('Cierre suave en puertas y cajones', 1, TARIFAS.cierreSuave, 'una vez por mueble completo'));
+  if (d.tirador === 'sin' && base?.tirador !== 'sin') lineas.push(lineaUnidades('Sistema sin manilla', 1, TARIFAS.sinManilla, 'sin tiradores, apertura por perfil o push; una vez por mueble'));
+  return lineas;
+}
+
 function lineaUnidades(concepto: string, cantidad: number, unitario: number, detalle = ''): LineaPrecio {
   return { concepto, detalle: detalle || `${cantidad} × ${fmtPesos(unitario)}`, cantidad, unidad: 'unidad', unitario, valor: cantidad * unitario };
 }
 
 /**
  * Precio oficial de la cocina: cada lado del mueble base (largo completo en metros ×
- * valor por metro de su fondo) + equipamiento + aéreo. El especiero va incluido.
+ * valor por metro de su fondo) + equipamiento + especieros + opciones (cierre suave, sin manilla) + aéreo.
  * Solo aplica a la plantilla 'cocina' (incluidas la L y la U).
  */
 export function precioCocina(d: Diseno): PrecioCocina {
@@ -172,7 +202,7 @@ export function precioCocina(d: Diseno): PrecioCocina {
     if (n) lineas.push(lineaUnidades(`Encimera ${platos} platos`, n, TARIFAS.encimera[platos]));
   }
   const hornos = [d.cuerpos, d.lados?.izq?.cuerpos ?? [], d.lados?.der?.cuerpos ?? []].flat().filter((c) => c.tipo === 'horno').length;
-  if (hornos) lineas.push(lineaUnidades('Horno eléctrico 58 L', hornos, TARIFAS.horno));
+  if (hornos) lineas.push(lineaUnidades(NOMBRE_HORNO, hornos, TARIFAS.horno));
   const lavaplatos = equipos.filter((e) => e.tipo === 'lavaplatos');
   for (const modelo of ['simple', 'doble', 'rinonera'] as const) {
     const n = lavaplatos.filter((e) => !e.soloCorte && e.modelo === modelo).length;
@@ -184,9 +214,10 @@ export function precioCocina(d: Diseno): PrecioCocina {
   const cortesLavaplatos = lavaplatos.filter((e) => e.soloCorte).length;
   if (cortesLavaplatos) lineas.push(lineaUnidades('Corte para lavaplatos (sin equipo)', cortesLavaplatos, TARIFAS.corte));
   const llaves = lavaplatos.filter((e) => e.llave && !e.soloCorte).length;
-  if (llaves) lineas.push(lineaUnidades('Llave', llaves, TARIFAS.llave));
+  if (llaves) lineas.push(lineaUnidades('Llave monomando', llaves, TARIFAS.llave));
   const campanas = encimeras.filter((e) => e.campana).length;
   if (campanas) lineas.push(lineaUnidades('Campana', campanas, TARIFAS.campana));
+  lineas.push(...lineasOpciones(d));
   const aereo = precioAereo(d);
   if (aereo) lineas.push(...aereo.lineas);
   return { total: lineas.reduce((s, l) => s + l.valor, 0), lineas };

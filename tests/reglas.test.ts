@@ -309,14 +309,14 @@ describe('precio y resumen', () => {
   const p = clasificarProducto(productos.find((x) => x.id === 16)!);
   const base = disenoInicial(p);
 
-  it('la cocina usa el precio oficial de la tienda: la full equipo da $550.000', () => {
-    expect(precioReferencial(base, p, base)).toBe(550000);
-    expect(precioReferencial(base, null, null)).toBe(550000);
+  it('la cocina usa el precio oficial de la tienda: la full equipo da $551.000', () => {
+    expect(precioReferencial(base, p, base)).toBe(551000);
+    expect(precioReferencial(base, null, null)).toBe(551000);
   });
 
   it('un mueble más ancho cuesta más', () => {
     const grande = fijarAncho(base, 2000);
-    expect(precioReferencial(grande, p, base)!).toBeGreaterThan(550000);
+    expect(precioReferencial(grande, p, base)!).toBeGreaterThan(551000);
   });
 
   it('los demás muebles conservan el precio referencial', () => {

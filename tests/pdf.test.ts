@@ -193,12 +193,12 @@ describe('hoja para el maestro', () => {
     expect(celdas).toMatch(/Puerta 1: \d+(,\d)? × \d+(,\d)? cm · abre a la (izquierda|derecha) \(bisagras (izq|der)\.\)/);
     expect(celdas).toMatch(/Frente del especiero \(extraíble\)/);
     expect(celdas).toMatch(/Encimera a gas 4 platos \(quemadores\)/);
-    expect(celdas).toMatch(/Horno eléctrico 58 L \(60 cm\); hueco/);
+    expect(celdas).toMatch(/Horno eléctrico 58 L Sindelen \(60 cm\); hueco/);
     // Las medidas salen del layout del motor: la puerta del módulo 1 del lado izquierdo.
     const lado = ficha.secciones.find((s) => s.titulo === 'Lado izquierdo')!;
     expect(lado.tabla!.filas[0].celdas[4]).toMatch(/Lavaplatos doble \(2 cubetas\), centrado, con llave/);
     const eq = ficha.secciones.find((s) => s.titulo === 'Equipamiento')!;
-    expect(eq.tabla!.filas.map((f) => f.celdas[0])).toEqual(expect.arrayContaining(['Horno', 'Encimera', 'Lavaplatos', 'Llave']));
+    expect(eq.tabla!.filas.map((f) => f.celdas[0])).toEqual(expect.arrayContaining(['Horno', 'Encimera', 'Lavaplatos', 'Llave monomando']));
     expect(eq.tabla!.filas.find((f) => f.celdas[0] === 'Encimera')!.celdas[1]).toMatch(/^A gas, 4 platos \(quemadores\)/);
     const cortar = ficha.secciones.find((s) => s.titulo === 'Frentes para cortar')!;
     const total = cortar.tabla!.filas.reduce((a, f) => a + Number(f.celdas[2]), 0);

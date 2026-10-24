@@ -222,6 +222,7 @@ function base(plantilla: Plantilla, medidas: { ancho: number; alto: number; prof
     espesor: 15,
     estructura: plantilla === 'cocina' ? 'modular' : 'unica',
     tirador: adulta ? 'barra' : 'boton',
+    cierreSuave: false,
     materiales: {
       frente: adulta ? 'gris-blanqueado' : 'blanco',
       casco: 'blanco',

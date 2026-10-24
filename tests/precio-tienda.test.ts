@@ -2,7 +2,7 @@
 // menos las encimeras y lavaplatos que se quitan o van como solo corte.
 import { describe, expect, it } from 'vitest';
 import { clasificarProducto, disenoInicial } from '../shared/catalogo';
-import { activarAereos, agregarEquipo, agregarModulo, DESCUENTO_EQUIPO, ejecutar, fijarAereos, fijarAncho, precioDiseno, presetsModulo } from '../shared/reglas';
+import { activarAereos, actualizarCuerpo, agregarEquipo, agregarModulo, DESCUENTO_EQUIPO, ejecutar, fijarAereos, fijarAncho, precioDiseno, presetsModulo } from '../shared/reglas';
 import { largoAereo, precioAereo, TARIFAS } from '../shared/tarifas';
 import { moduloCampana } from '../shared/equipos';
 import { describirTramo } from '../shared/resumen';
@@ -53,7 +53,38 @@ describe('precio de la tienda con descuentos por equipos', () => {
   });
 
   it('los valores de descuento son los de la tienda', () => {
-    expect(DESCUENTO_EQUIPO).toEqual({ encimera: { '3': 30000, '4': 60000 }, lavaplatos: { simple: 30000, doble: 35000, rinonera: 30000 } });
+    expect(DESCUENTO_EQUIPO).toEqual({ encimera: { '3': 30000, '4': 60000 }, lavaplatos: { simple: 20000, doble: 20000, rinonera: 20000 }, horno: 120000 });
+  });
+
+  it('cierre suave, sin manilla y especiero agregado se suman al precio de la tienda', () => {
+    expect(tienda).toBe((xl as { precio_oferta?: number | null; precio: number }).precio_oferta ?? xl.precio);
+    let d = ejecutar(base, { op: 'fijarAcabados', cierreSuave: true, tirador: 'sin' }).diseno;
+    expect(precio(d).total).toBe(tienda + 30000 + 20000);
+    expect(precio(d).lineas.map((l) => l.concepto)).toEqual(['Precio de la tienda', 'Cierre suave en puertas y cajones', 'Sistema sin manilla']);
+    const antes = base.cuerpos.filter((c) => c.tipo === 'especiero').length;
+    d = ejecutar(d, { op: 'agregarModulo', tramo: 'base', preset: 'especiero' }).diseno;
+    expect(d.cuerpos.filter((c) => c.tipo === 'especiero').length).toBe(antes + 1);
+    expect(precio(d).lineas[0].concepto).toBe('Precio de la tienda');
+    expect(precio(d).total).toBe(tienda + 30000 + 20000 + 20000);
+    expect(precio(d).lineas.some((l) => l.concepto === 'Especiero agregado')).toBe(true);
+  });
+});
+
+describe('horno en una cocina del catálogo que lo trae', () => {
+  const p = clasificarProducto(lista.find((x) => (x as { id: number }).id === 16)!) as ProductoCatalogo;
+  const b = disenoInicial(p);
+  const t = p.precio_oferta ?? p.precio;
+  it('retirarlo descuenta $120.000; agregar otro suma su tarifa', () => {
+    const i = b.cuerpos.findIndex((c) => c.tipo === 'horno');
+    expect(i).toBeGreaterThanOrEqual(0);
+    expect(precioDiseno(b, p, b)!.total).toBe(t);
+    const sin = actualizarCuerpo(b, i, { tipo: 'frentes' });
+    expect(sin.cuerpos.some((c) => c.tipo === 'horno')).toBe(false);
+    expect(precioDiseno(sin, p, b)!.total).toBe(t - 120000);
+    expect(precioDiseno(sin, p, b)!.lineas.map((l) => l.concepto)).toContain('Sin horno eléctrico');
+    const otro = agregarEquipo(b, 'horno');
+    expect(precioDiseno(agregarEquipo(b, 'horno'), p, b)!.total).toBe(t + 170000);
+    void otro;
   });
 });
 

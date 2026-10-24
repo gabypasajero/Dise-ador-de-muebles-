@@ -264,9 +264,10 @@ export function PestanaPuertas({ d, unidad }: PropsPestana) {
             { valor: 'barra', texto: 'Barra' },
             { valor: 'boton', texto: 'Botón' },
             { valor: 'unero', texto: 'Perfil uñero' },
-            { valor: 'sin', texto: 'Sin tirador' },
+            { valor: 'sin', texto: 'Sin manilla' },
           ]}
         />
+        <Interruptor activo={!!d.cierreSuave} onCambio={(v) => operar({ op: 'fijarAcabados', cierreSuave: v })} texto="Cierre suave (bisagras y correderas)" />
         <p className="ayuda">Las medidas de cada puerta aparecen sobre el modelo 3D. Haz clic en una puerta para abrirla.</p>
       </div>
       <div className="lista-cuerpos">
@@ -1073,7 +1074,7 @@ function EstructuraTocador({ d, unidad, cambiar }: PropsPestana) {
             { valor: 'boton', texto: 'Botón' },
             { valor: 'barra', texto: 'Barra' },
             { valor: 'unero', texto: 'Uñero' },
-            { valor: 'sin', texto: 'Sin' },
+            { valor: 'sin', texto: 'Sin manilla' },
           ]}
         />
       </div>
