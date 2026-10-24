@@ -142,11 +142,16 @@ export function precioAereo(d: Diseno): { valor: number; lineas: LineaPrecio[] }
   return { valor: lineas.reduce((s, l) => s + l.valor, 0), lineas };
 }
 
-function lineaLado(concepto: string, largoMm: number, fondoMm: number, esquina: boolean): LineaPrecio {
-  const v = valorMetro(fondoMm);
+/** Con una encimera de 4 hornillas la cocina se cobra al menos con el fondo de 60 cm (la dueña lo pidió así). */
+export const FONDO_MINIMO_ENCIMERA_4 = 600;
+
+function lineaLado(concepto: string, largoMm: number, fondoMm: number, esquina: boolean, fondoMinimo = 0): LineaPrecio {
+  const fondoCobro = Math.max(fondoMm, fondoMinimo);
+  const v = valorMetro(fondoCobro);
+  const nota = fondoCobro > fondoMm ? `, se cobra como fondo ${fmtCm(fondoCobro)} por la encimera de 4 hornillas` : '';
   return {
     concepto,
-    detalle: `${fmtM(largoMm)}${esquina ? ' (medido completo, con la esquina)' : ''} × fondo ${fmtCm(fondoMm)} (${fmtPesos(v)} por metro)`,
+    detalle: `${fmtM(largoMm)}${esquina ? ' (medido completo, con la esquina)' : ''} × fondo ${fmtCm(fondoMm)}${nota} (${fmtPesos(v)} por metro)`,
     cantidad: largoMm / 1000,
     unidad: 'm',
     unitario: v,
@@ -190,10 +195,11 @@ export function precioCocina(d: Diseno): PrecioCocina {
   const lineas: LineaPrecio[] = [];
   const conLados = !!(d.lados?.izq || d.lados?.der);
   const [x0, x1] = extremosPrincipal(d);
-  lineas.push(lineaLado(conLados ? 'Mueble base · tramo principal' : 'Mueble base', Math.round(x1 - x0), d.profundidad, conLados));
+  const minimo = (d.equipos ?? []).some((e) => e.tipo === 'encimera' && e.platos === '4') ? FONDO_MINIMO_ENCIMERA_4 : 0;
+  lineas.push(lineaLado(conLados ? 'Mueble base · tramo principal' : 'Mueble base', Math.round(x1 - x0), d.profundidad, conLados, minimo));
   for (const lado of LADOS) {
     const r = d.lados?.[lado];
-    if (r) lineas.push(lineaLado(`Mueble base · lado ${lado === 'izq' ? 'izquierdo' : 'derecho'}`, r.largo, r.profundidad, true));
+    if (r) lineas.push(lineaLado(`Mueble base · lado ${lado === 'izq' ? 'izquierdo' : 'derecho'}`, r.largo, r.profundidad, true, minimo));
   }
   const equipos = d.equipos ?? [];
   const encimeras = equipos.filter((e) => e.tipo === 'encimera');

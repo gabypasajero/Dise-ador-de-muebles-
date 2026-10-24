@@ -2406,6 +2406,10 @@ function precioTiendaConDescuentos(d: Diseno, base: ProductoCatalogo | null, dis
   if (!base || !disenoBase || disenoBase.plantilla !== d.plantilla) return null;
   const precioBase = base.precio_oferta ?? base.precio;
   if (!precioBase || !mismasMedidas(d, disenoBase)) return null;
+  // En las cocinas, pasar una encimera de 3 a 4 hornillas (o agregar una de 4) vuelve el mueble
+  // especial: se calcula por metro con el fondo de 60 cm. Cambiar el modelo de lavaplatos no.
+  const de4 = (x: Diseno) => (x.equipos ?? []).filter((e) => e.tipo === 'encimera' && (e as Encimera).platos === '4').length;
+  if (d.plantilla === 'cocina' && de4(d) > de4(disenoBase)) return null;
   const linea = (concepto: string, cantidad: number, unitario: number, detalle: string): LineaPrecio => ({ concepto, detalle, cantidad, unidad: 'unidad', unitario, valor: cantidad * unitario });
   const lineas: LineaPrecio[] = [linea('Precio de la tienda', 1, precioBase, base.nombre)];
   let total = precioBase;

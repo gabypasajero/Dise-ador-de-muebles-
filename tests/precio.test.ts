@@ -28,6 +28,13 @@ const full = () => disenoInicial(prod(16));
 const valor = (d: Diseno, concepto: string) => precioCocina(d).lineas.filter((l) => l.concepto === concepto).reduce((s, l) => s + l.valor, 0);
 /** Equipamiento de la full equipo: encimera 4 + horno + lavaplatos simple + llave. */
 const EQUIPO_FULL = 85000 + 170000 + 40000 + 16000;
+/** La misma cocina con encimera de 3 hornillas: el metro se cobra con su fondo real. */
+const full3 = (): Diseno => {
+  const d = full();
+  for (const e of d.equipos) if (e.tipo === 'encimera') e.platos = '3';
+  return d;
+};
+const EQUIPO_FULL3 = 60000 + 170000 + 40000 + 16000;
 
 describe('valor por metro según el fondo', () => {
   it('redondea siempre al tramo mayor', () => {
@@ -96,19 +103,19 @@ describe('precio oficial de la cocina', () => {
       [700, 170000],
       [750, 180000],
     ]) {
-      const d = fijarProfundidad(full(), fondo);
-      expect(precioCocina(d).total, `fondo ${fondo}`).toBe(1.5 * porMetro + EQUIPO_FULL);
+      const d = fijarProfundidad(full3(), fondo);
+      expect(precioCocina(d).total, `fondo ${fondo}`).toBe(1.5 * porMetro + EQUIPO_FULL3);
     }
   });
 
   it('en la L cada lado se cobra completo, sin descontar la esquina (210 + 120 cm)', () => {
-    const d = fijarForma(full(), 'der');
+    const d = fijarForma(full3(), 'der');
     // Tramo principal de 150 cm de módulos + 60 de esquina = 210; el lado mide 120 desde el muro.
     expect(d.ancho + d.lados.der!.profundidad).toBe(2100);
     expect(d.lados.der!.largo).toBe(1200);
     expect(valor(d, 'Mueble base · tramo principal')).toBe(2.1 * 160000);
     expect(valor(d, 'Mueble base · lado derecho')).toBe(1.2 * 160000);
-    expect(precioCocina(d).total).toBe(2.1 * 160000 + 1.2 * 160000 + EQUIPO_FULL);
+    expect(precioCocina(d).total).toBe(2.1 * 160000 + 1.2 * 160000 + EQUIPO_FULL3);
     // Si el lado tiene otro fondo, se cobra con el suyo.
     const angosto = fijarLado(d, 'der', { profundidad: 500 });
     expect(valor(angosto, 'Mueble base · lado derecho')).toBe(1.2 * 140000);
@@ -161,11 +168,19 @@ describe('precio oficial de la cocina', () => {
   });
 
   it('tabla de fondos: ejemplo de la dueña 1,60 m × fondo 55 = $240.000', () => {
-    const d = fijarProfundidad(fijarAncho(full(), 1600), 550);
+    const d = fijarProfundidad(fijarAncho(full3(), 1600), 550);
     expect(valor(d, 'Mueble base')).toBe(240000);
     expect(valor(fijarProfundidad(d, 450), 'Mueble base')).toBe(1.6 * 140000);
     expect(valor(fijarProfundidad(d, 650), 'Mueble base')).toBe(1.6 * 170000);
     expect(valor(fijarProfundidad(d, 750), 'Mueble base')).toBe(1.6 * 180000);
+  });
+
+  it('con encimera de 4 hornillas el metro se cobra al menos con el fondo de 60 cm', () => {
+    const d = fijarProfundidad(fijarAncho(full(), 1600), 550);
+    expect(valor(d, 'Mueble base')).toBe(1.6 * 160000);
+    expect(precioCocina(d).lineas[0].detalle).toMatch(/se cobra como fondo 60 cm por la encimera de 4 hornillas/);
+    // Con fondo mayor a 60 cm se cobra su propio fondo.
+    expect(valor(fijarProfundidad(d, 700), 'Mueble base')).toBe(1.6 * 170000);
   });
 
   it('la llave monomando vale $16.000', () => {

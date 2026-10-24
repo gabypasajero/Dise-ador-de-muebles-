@@ -44,9 +44,12 @@ describe('precio de la tienda con descuentos por equipos', () => {
     const lav = base.equipos.find((e) => e.tipo === 'lavaplatos')!;
     const enc = base.equipos.find((e) => e.tipo === 'encimera')!;
     let d = ejecutar(base, { op: 'configurarEquipo', id: lav.id, cambios: { modelo: 'rinonera' } }).diseno;
-    d = ejecutar(d, { op: 'configurarEquipo', id: enc.id, cambios: { platos: '4' } }).diseno;
     expect(precio(d).total).toBe(tienda);
     expect(precio(d).lineas).toHaveLength(1);
+    // Pasar la encimera de 3 a 4 hornillas vuelve el mueble especial: se calcula por metro con fondo 60.
+    const especial = ejecutar(d, { op: 'configurarEquipo', id: enc.id, cambios: { platos: '4' } }).diseno;
+    expect(precio(especial).lineas[0].concepto).toBe('Mueble base');
+    expect(precio(especial).lineas[0].unitario).toBe(160000);
     // Sacar la riñonera descuenta el lavaplatos que traía el producto (simple).
     d = ejecutar(d, { op: 'quitarEquipo', id: lav.id }).diseno;
     expect(precio(d).total).toBe(tienda - DESCUENTO_EQUIPO.lavaplatos.simple);
