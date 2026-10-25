@@ -9,7 +9,7 @@ const grupos = { melaminas: catalogo.melaminas, cubiertas: catalogo.cubiertas, t
 
 const MELAMINAS_COCINA = ['gris-blanqueado', 'pino-casina', 'pino-nebraska', 'verde-salvia', 'rojo'];
 const CUBIERTAS_OFICIALES = ['clasic', 'florentino', 'granito', 'granito-beige', 'calacatta', 'granito-negro', 'modena'];
-/** Colores de los muebles XL de la tienda (sin muestra fotográfica todavía: color liso). */
+/** Colores de los muebles XL de la tienda (sin foto de muestra; Grafito Hilado lleva una textura procedural fina). */
 const MELAMINAS_COCINA_LISAS = ['verde-glaciar', 'gris-sombra'];
 const TIPOS = ['liso', 'madera', 'marmol', 'granito', 'concreto'];
 
@@ -125,5 +125,22 @@ describe('materiales.json', () => {
     for (const id of ['blanco', 'roble-natural', 'nogal', 'grafito', 'negro']) expect(porId(catalogo.melaminas, id).origen).toBe('generico');
     for (const id of ['granito-gris', 'carrara', 'blanco-liso', 'negro-mate']) expect(porId(catalogo.cubiertas, id).origen).toBe('generico');
     expect(porId(catalogo.tiradores, 'acero').metal).toBe(1);
+  });
+});
+
+describe('cubiertas con foto de la tienda', () => {
+  it('usan los nombres de la tienda y Módena tiene su propia textura', () => {
+    expect(porId(catalogo.cubiertas, 'clasic').nombre).toBe('Blanco Classic');
+    expect(porId(catalogo.cubiertas, 'granito-beige').nombre).toBe('Kombi');
+    expect(porId(catalogo.cubiertas, 'modena').textura).toBe('/texturas/modena.jpg');
+  });
+});
+
+describe('Grafito Hilado', () => {
+  it('es la melamina gris-sombra, grafito oscuro con textura fina', () => {
+    const m = porId(catalogo.melaminas, 'gris-sombra');
+    expect(m.nombre).toBe('Grafito Hilado');
+    expect(m.textura).toBe('/texturas/grafito-hilado.jpg');
+    expect(parseInt(m.color.slice(1, 3), 16)).toBeLessThan(0x60);
   });
 });

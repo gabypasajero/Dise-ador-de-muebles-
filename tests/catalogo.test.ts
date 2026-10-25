@@ -57,6 +57,11 @@ describe('clasificación del catálogo de la tienda', () => {
   it('lee la combinación de colores de cocina desde el nombre', () => {
     expect(coloresDeVariante('Florentino Gris Blanqueado')).toEqual({ cubierta: 'florentino', frente: 'gris-blanqueado' });
     expect(coloresDeVariante('Granito Pino Nebraska')).toEqual({ cubierta: 'granito', frente: 'pino-nebraska' });
+    expect(coloresDeVariante('Blanco Classic Pino Casina')).toEqual({ cubierta: 'clasic', frente: 'pino-casina' });
+    expect(coloresDeVariante('Clasic Grafito Hilado').frente).toBe('gris-sombra');
+    expect(coloresDeVariante('Florentino Grafito').frente).toBe('gris-sombra');
+    expect(coloresDeVariante('Clasic Gris Sombra').frente).toBe('gris-sombra');
+    expect(coloresDeVariante('Kombi Gris Blanqueado')).toEqual({ cubierta: 'granito-beige', frente: 'gris-blanqueado' });
   });
 
   it('el diseño inicial de cada producto es consistente', () => {
