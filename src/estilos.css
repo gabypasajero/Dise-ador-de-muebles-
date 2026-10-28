@@ -4039,3 +4039,23 @@ h3 {
     flex-wrap: wrap;
   }
 }
+
+/* Menú flotante con los colores de la marca. */
+.menu-flotante {
+  background: linear-gradient(160deg, var(--acento), var(--acento-oscuro));
+  box-shadow: 0 10px 28px rgba(138, 37, 73, 0.35);
+}
+
+.menu-flotante button:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.menu-flotante button.activa {
+  background: #fff;
+  color: var(--acento);
+}
+
+.menu-flotante-ajustes,
+.menu-flotante:not(.vertical) .menu-flotante-ajustes {
+  border-color: rgba(255, 255, 255, 0.3);
+}
