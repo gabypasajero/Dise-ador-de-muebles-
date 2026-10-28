@@ -21,13 +21,20 @@ export const TARIFAS = {
   /** Horno eléctrico 58 L Sindelen, por cada uno. */
   horno: 170000,
   /** Lavaplatos según modelo (simple con secador, doble, riñonera). */
-  lavaplatos: { simple: 40000, doble: 55000, rinonera: 40000 } as Record<'simple' | 'doble' | 'rinonera', number>,
+  lavaplatos: { simple: 40000, doble: 70000, rinonera: 40000 } as Record<'simple' | 'doble' | 'rinonera', number>,
   /** Llave monomando, una por lavaplatos que la lleve. */
   llave: 16000,
   /** Especiero extraíble, por cada uno. */
   especiero: 20000,
-  /** Cierre suave en bisagras y correderas: una vez por mueble completo. */
-  cierreSuave: 30000,
+  /**
+   * Cierre suave en bisagras y correderas, una vez por mueble, según el largo del mueble base
+   * (ancho más sus lados): de 40.000 a 80.000. Los cortes por largo están por confirmar con la tienda.
+   */
+  cierreSuave: [
+    { hastaCm: 200, valor: 40000 },
+    { hastaCm: 300, valor: 60000 },
+    { hastaCm: Infinity, valor: 80000 },
+  ],
   /** Sistema sin manilla (sin tiradores, apertura por perfil o push): una vez por mueble completo. */
   sinManilla: 20000,
   /** Solo corte: hueco en la cubierta para una encimera o un lavaplatos que trae el cliente (por cada corte). */
@@ -177,9 +184,18 @@ export function lineasOpciones(d: Diseno, base?: Diseno): LineaPrecio[] {
   const lineas: LineaPrecio[] = [];
   const especieros = contarModulos(d, 'especiero') - (base ? contarModulos(base, 'especiero') : 0);
   if (especieros > 0) lineas.push(lineaUnidades(base ? 'Especiero agregado' : 'Especiero', especieros, TARIFAS.especiero));
-  if (d.cierreSuave && !base?.cierreSuave) lineas.push(lineaUnidades('Cierre suave en puertas y cajones', 1, TARIFAS.cierreSuave, 'una vez por mueble completo'));
+  if (d.cierreSuave && !base?.cierreSuave) {
+    const largo = largoCierreSuave(d);
+    const valor = TARIFAS.cierreSuave.find((t) => largo <= t.hastaCm * 10)!.valor;
+    lineas.push(lineaUnidades('Cierre suave en puertas y cajones', 1, valor, `una vez por mueble · largo ${Math.round(largo / 10)} cm`));
+  }
   if (d.tirador === 'sin' && base?.tirador !== 'sin') lineas.push(lineaUnidades('Sistema sin manilla', 1, TARIFAS.sinManilla, 'sin tiradores, apertura por perfil o push; una vez por mueble'));
   return lineas;
+}
+
+/** Largo del mueble base para el cierre suave: el ancho más los lados de la L o la U. */
+export function largoCierreSuave(d: Diseno): number {
+  return d.ancho + (d.lados?.izq?.largo ?? 0) + (d.lados?.der?.largo ?? 0);
 }
 
 function lineaUnidades(concepto: string, cantidad: number, unitario: number, detalle = ''): LineaPrecio {

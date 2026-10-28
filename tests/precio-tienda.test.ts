@@ -56,19 +56,19 @@ describe('precio de la tienda con descuentos por equipos', () => {
   });
 
   it('los valores de descuento son los de la tienda', () => {
-    expect(DESCUENTO_EQUIPO).toEqual({ encimera: { '3': 30000, '4': 60000 }, lavaplatos: { simple: 20000, doble: 20000, rinonera: 20000 }, horno: 120000 });
+    expect(DESCUENTO_EQUIPO).toEqual({ encimera: { '3': 35000, '4': 55000 }, lavaplatos: { simple: 19000, doble: 0, rinonera: 19000 }, horno: 120000 });
   });
 
   it('cierre suave, sin manilla y especiero agregado se suman al precio de la tienda', () => {
     expect(tienda).toBe((xl as { precio_oferta?: number | null; precio: number }).precio_oferta ?? xl.precio);
     let d = ejecutar(base, { op: 'fijarAcabados', cierreSuave: true, tirador: 'sin' }).diseno;
-    expect(precio(d).total).toBe(tienda + 30000 + 20000);
+    expect(precio(d).total).toBe(tienda + 40000 + 20000);
     expect(precio(d).lineas.map((l) => l.concepto)).toEqual(['Precio de la tienda', 'Cierre suave en puertas y cajones', 'Sistema sin manilla']);
     const antes = base.cuerpos.filter((c) => c.tipo === 'especiero').length;
     d = ejecutar(d, { op: 'agregarModulo', tramo: 'base', preset: 'especiero' }).diseno;
     expect(d.cuerpos.filter((c) => c.tipo === 'especiero').length).toBe(antes + 1);
     expect(precio(d).lineas[0].concepto).toBe('Precio de la tienda');
-    expect(precio(d).total).toBe(tienda + 30000 + 20000 + 20000);
+    expect(precio(d).total).toBe(tienda + 40000 + 20000 + 20000);
     expect(precio(d).lineas.some((l) => l.concepto === 'Especiero agregado')).toBe(true);
   });
 });

@@ -2366,9 +2366,9 @@ const NOMBRE_MODELO_LAVAPLATOS: Record<string, string> = { simple: 'simple', dob
  * conserva el precio de la tienda y se le resta el equipo que no lleva.
  */
 export const DESCUENTO_EQUIPO = {
-  // '4': pendiente de confirmar por la tienda.
-  encimera: { '3': 30000, '4': 60000 } as Record<'3' | '4', number>,
-  lavaplatos: { simple: 20000, doble: 20000, rinonera: 20000 } as Record<'simple' | 'doble' | 'rinonera', number>,
+  encimera: { '3': 35000, '4': 55000 } as Record<'3' | '4', number>,
+  // El doble no tiene descuento: la tienda no lo informa.
+  lavaplatos: { simple: 19000, doble: 0, rinonera: 19000 } as Record<'simple' | 'doble' | 'rinonera', number>,
   /** Por cada horno que traía el producto y se retira. */
   horno: 120000,
 };

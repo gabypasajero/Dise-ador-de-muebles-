@@ -136,7 +136,7 @@ describe('precio oficial de la cocina', () => {
     expect(d.lados.der!.cuerpos.some((c) => c.tipo === 'horno')).toBe(true);
     expect(precioCocina(d).total - base).toBe(TARIFAS.horno);
     d = agregarEquipo(d, 'lavaplatos', { tramo: 'izq', modelo: 'doble' });
-    expect(valor(d, 'Lavaplatos doble')).toBe(55000);
+    expect(valor(d, 'Lavaplatos doble')).toBe(70000);
     expect(valor(d, 'Llave monomando')).toBe(2 * 16000);
     const lav = d.equipos.find((e) => e.tipo === 'lavaplatos' && e.modelo === 'doble')!;
     d = quitarEquipo(d, `${lav.id}:llave`);
@@ -193,13 +193,23 @@ describe('precio oficial de la cocina', () => {
     const base = precioCocina(d).total;
     d = ejecutar(d, { op: 'fijarAcabados', cierreSuave: true, tirador: 'sin' }).diseno;
     expect(d.cierreSuave).toBe(true);
-    expect(valor(d, 'Cierre suave en puertas y cajones')).toBe(30000);
+    // En U de 3 m con sus lados pasa los 3 m de largo: tramo mayor.
+    expect(valor(d, 'Cierre suave en puertas y cajones')).toBe(80000);
     expect(valor(d, 'Sistema sin manilla')).toBe(20000);
-    expect(precioCocina(d).total).toBe(base + 30000 + 20000);
+    expect(precioCocina(d).total).toBe(base + 80000 + 20000);
     // No depende de la cantidad de módulos.
     const mas = agregarModulo(d, presetsModulo('cocina').find((p) => p.id === 'puerta')!, 0);
-    expect(valor(mas, 'Cierre suave en puertas y cajones')).toBe(30000);
+    expect(valor(mas, 'Cierre suave en puertas y cajones')).toBe(80000);
     expect(valor(mas, 'Sistema sin manilla')).toBe(20000);
+  });
+
+  it('el cierre suave va de $40.000 a $80.000 según el largo del mueble', () => {
+    const cierre = (ancho: number) => valor(ejecutar(fijarAncho(full(), ancho), { op: 'fijarAcabados', cierreSuave: true }).diseno, 'Cierre suave en puertas y cajones');
+    expect(cierre(1500)).toBe(40000);
+    expect(cierre(2000)).toBe(40000);
+    expect(cierre(2400)).toBe(60000);
+    expect(cierre(3000)).toBe(60000);
+    expect(cierre(3200)).toBe(80000);
   });
 
   it('el aéreo vale $130.000 por metro lineal (cada lado de la L/U a su largo completo)', () => {
