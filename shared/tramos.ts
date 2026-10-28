@@ -16,6 +16,8 @@ export const ANCHO_ESPECIERO = 200;
 export const ANCHO_MAX_CAJONERA = 900;
 /** Ancho del módulo aéreo que aloja una campana. */
 export const ANCHO_CAMPANA = 600;
+/** Ancho del aéreo sobre el refrigerador (refrigerador de 70 cm más holgura). */
+export const ANCHO_SOBRE_REFRIGERADOR = 750;
 /** Ancho base de un módulo por cada puerta al agregarlo (cocina y compacto). */
 export const ANCHO_POR_PUERTA = 350;
 
@@ -133,6 +135,8 @@ export function rolModulo(d: Diseno, t: TramoId, c: Cuerpo): Rol {
   // Solo el módulo que aloja la campana se ubica solo (centrado sobre su encimera). La encimera y el
   // lavaplatos no fijan el ancho de su módulo, y el espacio libre se ajusta (de 20 a 50 cm).
   if (esTramoAereo(t) && alojaCampana(c)) return 'equipado';
+  // El mueble sobre el refrigerador conserva el ancho del refrigerador.
+  if (esTramoAereo(t) && c.tipo === 'refrigerador') return 'equipado';
   return 'ajustable';
 }
 

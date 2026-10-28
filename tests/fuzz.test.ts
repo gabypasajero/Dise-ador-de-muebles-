@@ -176,7 +176,10 @@ describe('secuencias aleatorias de operaciones', () => {
           }
           expect(validarDiseno(r.diseno), `${donde}\n${JSON.stringify(historial.slice(-6))}`).toEqual([]);
           const modulos = op.op === 'agregarCuerpo' || op.op === 'quitarModulo' || (op.op === 'agregarModulo' && op.preset !== 'campana');
-          if (modulos && !op.ajustarLargo) revisarReparto(d, r.diseno, op.tramo, donde);
+          // El mueble sobre el refrigerador alarga (o acorta) el aéreo a propósito: los demás no cambian.
+          const refri = (x: Diseno) => x.aereos.cuerpos.filter((c) => c.tipo === 'refrigerador').length;
+          const conRefri = refri(d) !== refri(r.diseno);
+          if (modulos && !op.ajustarLargo && !conRefri) revisarReparto(d, r.diseno, op.tramo, donde);
           d = r.diseno;
           if (paso % 10 === 0) {
             // Guardar y abrir no cambia nada.

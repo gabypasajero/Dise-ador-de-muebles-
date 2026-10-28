@@ -37,6 +37,7 @@ import {
   ANCHO_MAX_HUECO,
   ANCHO_MIN_HUECO,
   ANCHO_POR_PUERTA,
+  ANCHO_SOBRE_REFRIGERADOR,
   alojaCampana,
   anchoFijo,
   cuerposDe,
@@ -100,7 +101,9 @@ import type {
   Unidad,
 } from './tipos';
 
+export { ALTO_REFRIGERADOR, altoSobreRefrigerador } from './layout';
 export {
+  ANCHO_SOBRE_REFRIGERADOR,
   ANCHO_CAMPANA,
   ANCHO_ESPECIERO,
   ANCHO_HORNO,
@@ -476,13 +479,14 @@ const NOMBRE_TIPO: Record<Cuerpo['tipo'], string> = {
   nicho: 'Nicho microondas',
   especiero: 'Especiero',
   'espacio-campana': 'Espacio campana',
+  refrigerador: 'Sobre refrigerador',
 };
 
 /** Tipos de módulo que acepta un tramo. */
 export function tiposPermitidos(d: Diseno, tramo: Tramo): Cuerpo['tipo'][] {
   const t = resolverTramo(d, tramo) ?? 'base';
   const p = d.plantilla;
-  if (esTramoAereo(t)) return p === 'compacto' ? ['frentes', 'nicho', 'campana', 'espacio-campana'] : ['frentes', 'campana', 'espacio-campana', 'nicho', 'hueco'];
+  if (esTramoAereo(t)) return p === 'compacto' ? ['frentes', 'nicho', 'campana', 'espacio-campana'] : ['frentes', 'campana', 'espacio-campana', 'nicho', 'refrigerador', 'hueco'];
   if (t !== 'base') return ['frentes', 'horno', 'hueco', 'especiero'];
   if (p === 'cocina') return ['frentes', 'horno', 'hueco', 'especiero'];
   if (p === 'compacto') return ['frentes', 'horno', 'especiero'];
@@ -509,6 +513,7 @@ const NOMBRE_CORTO: Record<Exclude<Cuerpo['tipo'], 'frentes' | 'especiero'>, str
   campana: 'Campana',
   nicho: 'Nicho microondas',
   'espacio-campana': 'Espacio campana',
+  refrigerador: 'Sobre refrigerador',
 };
 
 /** Módulo listo para agregar desde el panel «Módulos y espacios». */
@@ -542,6 +547,14 @@ export function presetsModulo(p: Plantilla, tramo: Tramo = 'base'): PresetModulo
       { id: 'abatible', texto: 'Abatible', ayuda: 'Puerta que se abre hacia arriba', tipo: 'frentes', ancho: 600, cambios: { puertas: 1, abatible: true, repisas: 0 } },
       { id: 'nicho', texto: 'Nicho microondas', ayuda: 'Abatible arriba y nicho abierto con repisa', tipo: 'nicho', ancho: 600, cambios: { puertas: 1, abatible: true, repisas: 0 } },
       { id: 'espacio-campana', texto: 'Espacio campana', ayuda: 'Hueco abierto de 60 cm para instalar la campana', tipo: 'espacio-campana', ancho: 600, cambios: { puertas: 0, repisas: 0 } },
+      {
+        id: 'sobre-refrigerador',
+        texto: 'Sobre refrigerador',
+        ayuda: 'Cajón arriba del refrigerador; abajo queda su espacio hasta el piso',
+        tipo: 'refrigerador',
+        ancho: ANCHO_SOBRE_REFRIGERADOR,
+        cambios: { puertas: 0, cajones: 1, repisas: 0 },
+      },
     ];
     if (p === 'compacto') return aereos;
     return [...aereos, { id: 'hueco', texto: 'Espacio libre', ayuda: 'Sin mueble, de 20 a 50 cm', tipo: 'hueco', ancho: 500, cambios: {} }];
@@ -612,6 +625,12 @@ function sanear(c: Cuerpo, t: TramoId) {
     c.cajones = 0;
     c.repisas = 0;
     c.abatible = false;
+  } else if (c.tipo === 'refrigerador') {
+    // Un solo frente: cajón (por defecto) o puerta abatible.
+    c.abatible = !!c.abatible;
+    c.puertas = c.abatible ? 1 : 0;
+    c.cajones = c.abatible ? 0 : 1;
+    c.repisas = 0;
   } else if (c.tipo === 'especiero') {
     c.puertas = 0;
     c.cajones = 0;
@@ -623,7 +642,7 @@ function sanear(c: Cuerpo, t: TramoId) {
   }
   if (c.tipo !== 'especiero') delete c.pisos;
   if (!esModuloCampana(c)) delete c.campanaDe;
-  if (esTramoAereo(t)) c.cajones = 0;
+  if (esTramoAereo(t) && c.tipo !== 'refrigerador') c.cajones = 0;
 }
 
 /** En la cocina infantil el primer módulo es la despensa alta: nada se pone delante de ella. */
@@ -834,7 +853,28 @@ function recortarAereos(d: Diseno, t: TramoAereo, objetivo: number, ctx: Ctx) {
     ctx.avisos.push(`Se quitó un ${t === 'aereos' && d.plantilla === 'compacto' ? 'módulo del mueble superior' : 'aéreo'}: no cabía en el largo.`);
     ajustarTramo(d, t, objetivo);
   }
-  if (largoTramo(d, t) !== objetivo && cs.length === 1) cs[0].ancho = objetivo;
+  // Si después de quitar no se llega justo al largo, lo completa el último módulo ajustable.
+  const falta = objetivo - largoTramo(d, t);
+  if (falta !== 0 && cs.length) {
+    const ajustables = cs.filter((c) => rolModulo(d, t, c) === 'ajustable');
+    const c = ajustables.length ? ajustables[ajustables.length - 1] : cs[cs.length - 1];
+    c.ancho = Math.max(1, c.ancho + falta);
+  }
+}
+
+/** En L o U no queda un lado libre para el refrigerador: su mueble aéreo se quita (el aéreo se acorta). */
+function quitarRefrigeradorSinLugar(d: Diseno, ctx: CtxOp) {
+  const a = d.aereos;
+  if (!a.cuerpos.some((c) => c.tipo === 'refrigerador')) return;
+  const conLados = !!(d.lados?.izq || d.lados?.der || a.lados?.izq || a.lados?.der) || d.plantilla !== 'cocina';
+  if (!conLados) return;
+  const resto = a.cuerpos.filter((c) => c.tipo !== 'refrigerador');
+  if (!resto.length) {
+    // Era el único aéreo: queda como un abatible del mismo ancho.
+    Object.assign(a.cuerpos[0], { tipo: 'frentes', puertas: 1, cajones: 0, abatible: true, alto: 0 });
+    a.cuerpos = [a.cuerpos[0]];
+  } else a.cuerpos = resto;
+  ctx.avisos.push('Se quitó el mueble sobre el refrigerador: en L o U no queda espacio para el refrigerador.');
 }
 
 /**
@@ -846,6 +886,7 @@ function finalizar(d: Diseno, ctx: CtxOp, reparar = false) {
   if (d.plantilla !== 'cocina') d.lados = { izq: null, der: null };
   repararTramosBase(d, ctx);
   repararEquipos(d, ctx, ctx.cerca);
+  quitarRefrigeradorSinLugar(d, ctx);
   sincronizarAereos(d, ctx);
   for (let vuelta = 0; vuelta < 4; vuelta++) {
     const conflictos = alinearCampanas(d, ctx);
@@ -982,7 +1023,7 @@ function opAgregar(out: Diseno, ctx: CtxOp, tramo: Tramo, tipo: Cuerpo['tipo'], 
     bisagra: 'der',
     colgador: out.plantilla === 'closet' && tipo === 'frentes',
   };
-  const nuevo = nuevoCuerpo({ ...base, tipo, ancho: 0, ...(tipo === 'frentes' || tipo === 'campana' || tipo === 'nicho' ? {} : { puertas: 0, cajones: 0 }) });
+  const nuevo = nuevoCuerpo({ ...base, tipo, ancho: 0, ...(tipo === 'frentes' || tipo === 'campana' || tipo === 'nicho' || tipo === 'refrigerador' ? {} : { puertas: 0, cajones: 0 }) });
   delete nuevo.campanaDe;
   sanear(nuevo, t);
   const lim = limitesModulo(out, t, nuevo);
@@ -993,7 +1034,16 @@ function opAgregar(out: Diseno, ctx: CtxOp, tramo: Tramo, tipo: Cuerpo['tipo'], 
   const i = Math.max(posicionMinima(out, t), Math.min(n, Math.round(posicion ?? n)));
   const texto = o.texto ?? nombreModulo(nuevo);
   const fijoTramo = t === 'aereos' && out.plantilla === 'compacto';
-  if (o.ajustarLargo && !fijoTramo) {
+  if (tipo === 'refrigerador' && t !== 'aereos') rechazar('El mueble sobre el refrigerador va en el aéreo principal.');
+  if (tipo === 'refrigerador' && t === 'aereos') {
+    if (out.aereos.lados?.izq || out.aereos.lados?.der || out.lados?.izq || out.lados?.der)
+      rechazar('El mueble sobre el refrigerador va en una cocina lineal, al lado libre del mueble: en L o U no queda espacio para el refrigerador.');
+    // Va arriba del refrigerador, al lado del mueble base: el aéreo crece y los demás no cambian.
+    nuevo.ancho = deseado;
+    cs.splice(i, 0, nuevo);
+    cambiarLargo(out, t, nuevo.ancho);
+    if (!out.aereos.lados?.izq && !out.aereos.lados?.der) out.aereos.alineacion = i === 0 && n > 0 ? 'der' : 'izq';
+  } else if (o.ajustarLargo && !fijoTramo) {
     const libre = maximoTramo(out, t) - largoTramo(out, t) - sep;
     if (libre < minimo) rechazar(`No cabe «${texto}»${fijo ? ` de ${cm(fijo)}` : ''}: ${t === 'base' ? `el ancho máximo es ${cm(maximoTramo(out, t))}` : `se alcanzó el largo máximo ${delTramo(out, t)}`}.`);
     nuevo.ancho = Math.min(deseado, libre);
@@ -1063,7 +1113,8 @@ function opQuitar(out: Diseno, ctx: CtxOp, tramo: Tramo, ref: RefModulo, ajustar
   for (const e of out.equipos) if (e.tramo === t && e.modulo === c.id) ctx.cerca.set(e.id, { tramo: t as TramoBase, indice: Math.min(i, cs.length - 2) });
   cs.splice(i, 1);
   const fijoTramo = t === 'aereos' && out.plantilla === 'compacto';
-  if (ajustarLargo && !fijoTramo) {
+  // Sin el refrigerador el aéreo se acorta: los demás módulos no cambian.
+  if ((ajustarLargo || (t === 'aereos' && c.tipo === 'refrigerador')) && !fijoTramo) {
     if (t === 'base') {
       const minimo = Math.max(LIMITES[out.plantilla].ancho[0], minimoSuperior(out));
       if (out.ancho - libera < minimo) rechazar(`Sin el ${nombre} el mueble quedaría bajo su ancho mínimo (${cm(minimo)}).`);
@@ -2003,7 +2054,7 @@ export function fijarCocinaLegado(d: Diseno, cambios: Partial<EquipamientoCocina
 
 // ---------- Diseños guardados ----------
 
-const TIPOS: Cuerpo['tipo'][] = ['frentes', 'horno', 'hueco', 'escritorio', 'campana', 'nicho', 'especiero', 'espacio-campana'];
+const TIPOS: Cuerpo['tipo'][] = ['frentes', 'horno', 'hueco', 'escritorio', 'campana', 'nicho', 'especiero', 'espacio-campana', 'refrigerador'];
 
 const numero = (v: unknown, defecto: number) => (typeof v === 'number' && Number.isFinite(v) ? v : defecto);
 

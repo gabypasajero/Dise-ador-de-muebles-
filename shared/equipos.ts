@@ -441,6 +441,9 @@ function acomodarConPines(d: Diseno, t: TramoAereo, cs: Cuerpo[], L: number, obj
           g.map((c) => ({ min: c.tipo === 'hueco' ? ANCHO_MIN_HUECO : lim(c).min, max: Infinity })),
         );
         if (anchos) g.forEach((c, j) => (c.ancho = anchos[j]));
+        // Sin reparto posible dentro de los límites, el último del hueco absorbe la diferencia:
+        // el largo del aéreo no cambia (en U debe seguir de muro a muro).
+        else g[g.length - 1].ancho += largo - actual;
       }
       out.push(...g);
     } else if (largo > 0 && k < pines.length) pines[k].w += largo;

@@ -11,6 +11,9 @@ export interface Rect {
   y1: number;
 }
 
+/** Alto que se deja libre para el refrigerador bajo su mueble aéreo (refrigerador de 182 cm más holgura). */
+export const ALTO_REFRIGERADOR = 1870;
+
 export interface FrenteBase {
   cuerpo: number;
   indice: number;
@@ -517,7 +520,17 @@ export interface LayoutAereos {
   zFrente: number;
   espesor: number;
   cuerpos: LayoutAereoCuerpo[];
-  frentes: FrentePuerta[];
+  /** Puertas de los aéreos y el cajón del mueble sobre el refrigerador. */
+  frentes: (FrentePuerta | FrenteCajon)[];
+}
+
+/**
+ * Alto del mueble sobre el refrigerador: el que eligió el vendedor o, en automático, lo que queda
+ * entre el refrigerador (ALTO_REFRIGERADOR) y el techo del aéreo. Nunca más alto que el aéreo.
+ */
+export function altoSobreRefrigerador(c: Pick<Cuerpo, 'alto'>, yTecho: number, altoAereo: number): number {
+  const auto = yTecho - ALTO_REFRIGERADOR;
+  return Math.round(Math.max(150, Math.min(altoAereo, c.alto > 0 ? c.alto : auto)));
 }
 
 /** Alto de la parte con puertas de un módulo de campana o de la puerta abatible de un nicho. */
@@ -558,7 +571,7 @@ function layoutAereosTramo(d: Diseno, cuerpos: Cuerpo[], x0: number, profundidad
   const y0 = y1 - a.alto;
   const zFrente = profundidad - t;
   const lcs: LayoutAereoCuerpo[] = [];
-  const frentes: FrentePuerta[] = [];
+  const frentes: (FrentePuerta | FrenteCajon)[] = [];
   let cursor = x0;
   cuerpos.forEach((c, i) => {
     const cx0 = cursor;
@@ -584,6 +597,13 @@ function layoutAereosTramo(d: Diseno, cuerpos: Cuerpo[], x0: number, profundidad
       const hA = altoSuperior('nicho', a.alto);
       puerta(0, 1, y1 - hA + luz / 2, y1 - luz / 2, true);
       lc.nicho = { x0: cx0 + t, x1: cx1 - t, y0: y0 + t, y1: y1 - hA - t };
+      return;
+    }
+    if (c.tipo === 'refrigerador') {
+      // Mueble bajo arriba del refrigerador: un cajón o una puerta abatible; abajo, el refrigerador.
+      lc.y0 = y1 - altoSobreRefrigerador(c, y1, a.alto);
+      if (c.abatible) puerta(0, 1, lc.y0 + luz / 2, y1 - luz / 2, true);
+      else frentes.push({ tipo: 'cajon', cuerpo: i, indice: 0, rect: { x0: fx0, x1: fx1, y0: lc.y0 + luz / 2, y1: y1 - luz / 2 } });
       return;
     }
     if (c.tipo === 'campana') {

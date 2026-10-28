@@ -281,7 +281,12 @@ function EscenaCocina({ d }: { d: Diseno }) {
   // tienen muro y frente a las puntas taparía el mueble desde la cámara; se omite (y la planta también).
   let refri: { x: number; z: number; rotY: number } | null = null;
   let planta: [number, number, number] | null = null;
-  if (!conIzq || !conDer) {
+  // Con un aéreo sobre el refrigerador, el refrigerador va justo bajo ese mueble.
+  const sobreRefri = la && mural ? la.cuerpos.find((lc) => lc.cuerpo.tipo === 'refrigerador') : undefined;
+  // (ese refrigerador lo dibuja el propio mueble, en cualquier escenario).
+  if (sobreRefri) {
+    if (!conIzq) planta = [ex0 - 1.25, 0, 0.28];
+  } else if (!conIzq || !conDer) {
     // Separado 22 cm: deja ver la cota de alto, que va a ese lado del mueble.
     const x = conDer ? xa0 - 0.22 - 0.35 : xa1 + 0.22 + 0.35;
     refri = { x, z: 0, rotY: 0 };

@@ -51,7 +51,7 @@ export function validarDiseno(d: Diseno): string[] {
       if (c.tipo === 'especiero' && !(c.pisos === 2 || c.pisos === 3)) out.push(`${donde}: especiero con ${c.pisos} pisos`);
       const minimo = c.tipo === 'hueco' ? ANCHO_MIN_HUECO : ANCHO_MIN_CUERPO;
       if (c.ancho < minimo) out.push(`${donde}: ${c.ancho} bajo el mínimo ${minimo}`);
-      if (aereo && c.cajones > 0) out.push(`${donde}: cajones en un aéreo`);
+      if (aereo && c.cajones > 0 && c.tipo !== 'refrigerador') out.push(`${donde}: cajones en un aéreo`);
       if (!aereo && (c.tipo === 'campana' || c.tipo === 'nicho' || c.tipo === 'espacio-campana')) out.push(`${donde}: ${c.tipo} en el mueble base`);
       if (aereo && (c.tipo === 'horno' || c.tipo === 'especiero')) out.push(`${donde}: ${c.tipo} en los aéreos`);
       if (c.puertas < 0 || c.puertas > 4 || c.cajones < 0 || c.cajones > 12) out.push(`${donde}: puertas o cajones fuera de rango`);

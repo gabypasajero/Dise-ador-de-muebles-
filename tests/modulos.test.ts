@@ -444,7 +444,7 @@ describe('apertura de las puertas', () => {
     const izq = calcularLayout(disenoLado(d, 'izq')!).frentes.filter((f) => f.tipo === 'puerta' && f.cuerpo === 0);
     expect(izq.map((f) => f.tipo === 'puerta' && f.bisagra)).toEqual(['der', 'izq', 'der']);
     const aereo = calcularLayoutAereos(d)!.frentes.filter((f) => f.cuerpo === 0);
-    expect(aereo.map((f) => f.bisagra)).toEqual(['der']);
+    expect(aereo.map((f) => f.tipo === 'puerta' && f.bisagra)).toEqual(['der']);
     expect(normalizar(JSON.parse(JSON.stringify(d)))).toEqual(d);
   });
 });

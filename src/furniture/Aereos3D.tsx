@@ -5,7 +5,7 @@ import type { EquipoUbicado, LayoutAereoCuerpo, LayoutAereos } from '../../share
 import type { Diseno, Unidad } from '../../shared/tipos';
 import { Panel, useMats } from './base3d';
 import { CampanaAlojada, Cubierta } from './Cocina3D';
-import { Puerta, type ContextoFrente } from './Frentes';
+import { Cajon, Puerta, type ContextoFrente } from './Frentes';
 
 export function Aereos3D({
   d,
@@ -44,9 +44,22 @@ export function Aereos3D({
       {la.cuerpos.map((lc) => (
         <Modulo key={lc.cuerpo.id} d={d} la={la} lc={lc} campana={campanas.find((u) => u.indice === lc.indice) ?? null} />
       ))}
-      {la.frentes.map((f) => (
-        <Puerta key={`a-${f.cuerpo}-${f.indice}-${la.cuerpos[f.cuerpo]?.cuerpo.id}`} frente={f} ctx={ctx} material={matFrente} />
-      ))}
+      {la.frentes.map((f) => {
+        const clave = `a-${f.tipo}-${f.cuerpo}-${f.indice}-${la.cuerpos[f.cuerpo]?.cuerpo.id}`;
+        if (f.tipo === 'puerta') return <Puerta key={clave} frente={f} ctx={ctx} material={matFrente} />;
+        // Cajón del mueble sobre el refrigerador.
+        const lc = la.cuerpos[f.cuerpo];
+        return (
+          <Cajon
+            key={clave}
+            frente={f}
+            ctx={ctx}
+            material={matFrente}
+            interior={{ x0: lc.x0 + d.espesor, x1: lc.x1 - d.espesor }}
+            fondoCaja={Math.max(120, la.profundidad - 40)}
+          />
+        );
+      })}
     </group>
   );
 }
@@ -139,6 +152,21 @@ function Modulo({ d, la, lc, campana }: { d: Diseno; la: LayoutAereos; lc: Layou
     return <group>{piezas}</group>;
   }
 
+  if (c.tipo === 'refrigerador' && !apoyado) {
+    // Refrigerador bajo su mueble: 70 cm de ancho y 66 de fondo, desde el piso (se dibuja en todo escenario).
+    const w = Math.min(700, lc.x1 - lc.x0 - 20);
+    const cx = (lc.x0 + lc.x1) / 2;
+    const alto = Math.min(1820, lc.y0 - 40);
+    piezas.push(
+      <group key="refrigerador">
+        <Panel x0={cx - w / 2} x1={cx + w / 2} y0={60} y1={alto} z0={0} z1={660} mat={m.aceroCepillado} />
+        <Panel x0={cx - w / 2} x1={cx + w / 2} y0={alto * 0.68} y1={alto * 0.68 + 6} z0={660} z1={668} mat={m.negroMate} sombra={false} />
+        <Panel x0={cx - w / 2 + 35} x1={cx - w / 2 + 60} y0={alto * 0.72} y1={alto * 0.72 + 340} z0={660} z1={690} mat={m.negroMate} />
+        <Panel x0={cx - w / 2 + 35} x1={cx - w / 2 + 60} y0={alto * 0.3} y1={alto * 0.3 + 340} z0={660} z1={690} mat={m.negroMate} />
+        <Panel x0={cx - w / 2 + 20} x1={cx + w / 2 - 20} y0={0} y1={60} z0={30} z1={620} mat={m.negroMate} />
+      </group>,
+    );
+  }
   // Módulo con puertas (o la parte con puertas de la campana).
   piezas.push(<Panel key="base" x0={ix0} x1={ix1} y0={lc.y0} y1={lc.y0 + t} z0={0} z1={Dz} mat={m.casco} />);
   if (apoyado) piezas.push(<Panel key="fondo-a" x0={ix0} x1={ix1} y0={lc.y0 + t} y1={lc.y1 - t} z0={6} z1={8} mat={m.fondo} sombra={false} />);

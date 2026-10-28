@@ -167,7 +167,7 @@ describe('muebles aéreos', () => {
     const iNicho = d.aereos.cuerpos.findIndex((c) => c.tipo === 'nicho');
     const puertasNicho = la.frentes.filter((f) => f.cuerpo === iNicho);
     expect(puertasNicho).toHaveLength(1);
-    expect(puertasNicho[0].bisagra).toBe('arriba');
+    expect(puertasNicho[0].tipo === 'puerta' && puertasNicho[0].bisagra).toBe('arriba');
     expect(la.cuerpos[iNicho].nicho).not.toBeNull();
     const iCampana = d.aereos.cuerpos.findIndex((c) => c.tipo === 'campana');
     expect(la.cuerpos[iCampana].y0).toBeGreaterThan(la.y0);

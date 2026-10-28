@@ -111,6 +111,7 @@ export function describirTramo(d: Diseno, t: TramoId, unidad: Unidad): string[] 
     if (c.tipo === 'horno') return `${nombre}: ${d.plantilla === 'cocina-infantil' ? 'horno de juguete' : 'horno empotrado'}${con}`;
     if (c.tipo === 'hueco') return `${nombre}: espacio libre`;
     if (c.tipo === 'espacio-campana') return `${nombre}: espacio para campana ${formatear(c.ancho, unidad)} (sin puertas)${con}`;
+    if (c.tipo === 'refrigerador') return `${nombre}: mueble sobre el refrigerador con ${c.abatible ? 'puerta abatible' : 'un cajón'}; abajo, el espacio del refrigerador`;
     if (c.tipo === 'escritorio') return `${nombre}: escritorio de ${formatear(c.alto || 750, unidad)} de alto`;
     if (c.tipo === 'especiero') return `${nombre}: especiero extraíble de alto completo con ${c.pisos ?? 2} pisos${con}`;
     const partes: string[] = [];
@@ -339,6 +340,8 @@ function queEsModulo(d: Diseno, c: Cuerpo, f: (mm: number) => string): string {
       return 'Nicho para microondas con repisa y puerta abatible arriba';
     case 'espacio-campana':
       return `Espacio para campana ${f(c.ancho)} (sin puertas)`;
+    case 'refrigerador':
+      return `Mueble sobre el refrigerador con ${c.abatible ? 'puerta abatible' : 'un cajón'}`;
   }
   if (c.abatible) return 'Puerta abatible';
   if (c.puertas && c.cajones) return `${n(c.puertas, 'puerta', 'puertas')} y ${n(c.cajones, 'cajón', 'cajones')} ${c.cajonesArriba ? 'arriba' : 'abajo'}`;

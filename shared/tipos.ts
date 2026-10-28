@@ -59,8 +59,10 @@ export interface Cuerpo {
    * espacio-campana (aéreos de cocina): hueco abierto de 60 cm fijos, sin puertas ni repisas,
    *   para instalar la campana; si la encimera de abajo lleva campana, este espacio la aloja.
    * especiero: cajón extraíble de 20 cm fijos y alto completo, con 2 o 3 pisos interiores.
+   * refrigerador (aéreos de cocina): mueble bajo arriba del refrigerador, con un cajón o una puerta
+   *   abatible; abajo queda el espacio del refrigerador hasta el piso. `alto` es el del mueble (0 = automático).
    */
-  tipo: 'frentes' | 'horno' | 'hueco' | 'escritorio' | 'campana' | 'nicho' | 'especiero' | 'espacio-campana';
+  tipo: 'frentes' | 'horno' | 'hueco' | 'escritorio' | 'campana' | 'nicho' | 'especiero' | 'espacio-campana' | 'refrigerador';
   ancho: number;
   puertas: number;
   /** Apertura de la puerta única (1 puerta) o de la puerta impar (la 1, a la izquierda) de un módulo de 3. */

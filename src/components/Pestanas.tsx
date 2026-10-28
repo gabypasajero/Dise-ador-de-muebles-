@@ -7,6 +7,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { destinosEquipo } from '../../shared/asistente';
 import { distanciasEquipos, margenMaximo, textoDistancia } from '../../shared/equipos';
 import {
+  altoSobreRefrigerador,
   aperturaAjustable,
   calcularLayout,
   calcularLayoutAereos,
@@ -113,6 +114,7 @@ const NOMBRE_TIPO: Record<Cuerpo['tipo'], string> = {
   nicho: 'Nicho microondas',
   especiero: 'Especiero',
   'espacio-campana': 'Espacio campana',
+  refrigerador: 'Sobre refrigerador',
 };
 
 // ---------- Tramos ----------
@@ -473,6 +475,7 @@ function ayudaModulo(d: Diseno, c: Cuerpo, tramo: TramoId): string {
   if (c.tipo === 'espacio-campana')
     return c.campanaDe ? 'Hueco abierto de 60 cm con la campana instalada: va centrado sobre su encimera.' : 'Hueco abierto de 60 cm para instalar la campana (sin puertas ni repisas).';
   if (c.tipo === 'nicho') return 'Puerta abatible arriba y nicho abierto con repisa para el microondas.';
+  if (c.tipo === 'refrigerador') return 'Mueble arriba del refrigerador, con un cajón o una puerta abatible. Abajo queda el espacio del refrigerador hasta el piso.';
   if (contenidoEnEditor(d)) return '';
   const pestanas = pestanasDe(d.plantilla).filter(
     (p) => p.id === 'puertas' || (p.id === 'cajones' && !esAereo(tramo)) || (p.id === 'equipamiento' && p.texto === 'Interior' && tramo === 'base'),
@@ -836,7 +839,9 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
           <Selector
             etiqueta="Tipo"
             valor={c.tipo}
-            opciones={tipos.filter((t) => t !== 'campana' || c.tipo === 'campana').map((t) => ({ valor: t, texto: nombreTipo(t, d.plantilla) }))}
+            opciones={tipos
+              .filter((t) => (t !== 'campana' || c.tipo === 'campana') && (t !== 'refrigerador' || c.tipo === 'refrigerador'))
+              .map((t) => ({ valor: t, texto: nombreTipo(t, d.plantilla) }))}
             onCambio={(v) =>
               act({
                 tipo: v,
@@ -873,6 +878,28 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
         {conCajones && <Contador etiqueta="Cajones" valor={c.cajones} max={12} onCambio={(v) => act({ cajones: v })} />}
         {aperturaAjustable(c) && <Apertura c={c} onCambio={(v) => act({ bisagra: v })} />}
         {esAereo(tramo) && c.tipo === 'frentes' && <Interruptor activo={!!c.abatible} onCambio={(v) => act({ abatible: v, puertas: 1 })} texto="Abatible" />}
+        {c.tipo === 'refrigerador' && (
+          <>
+            <Segmentado
+              etiqueta="Frente"
+              valor={c.abatible ? 'abatible' : 'cajon'}
+              onCambio={(v) => act({ abatible: v === 'abatible' })}
+              opciones={[
+                { valor: 'cajon', texto: 'Cajón' },
+                { valor: 'abatible', texto: 'Puerta abatible' },
+              ]}
+            />
+            <CampoMedida
+              etiqueta="Alto del mueble"
+              compacto
+              valor={altoSobreRefrigerador(c, d.aereos.elevacion + d.aereos.alto, d.aereos.alto)}
+              unidad={unidad}
+              min={150}
+              max={d.aereos.alto}
+              onCambio={(mm) => act({ alto: mm }, `alto-refri-${c.id}`)}
+            />
+          </>
+        )}
         {c.tipo === 'especiero' && (
           <Segmentado
             etiqueta="Pisos"
