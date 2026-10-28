@@ -4,6 +4,7 @@ import { BarraVisor } from './components/BarraVisor';
 import { Cabecera } from './components/Cabecera';
 import { ModalCotizaciones, ModalDocumento, ModalRegistrarCotizacion, ModalVenta } from './components/Cotizaciones';
 import { MenuFlotante } from './components/MenuFlotante';
+import { RecomendacionesFlotante } from './components/RecomendacionesFlotante';
 import { ModalCatalogo } from './components/Modales';
 import { NuevaClave } from './components/NuevaClave';
 import { PanelInferior } from './components/PanelInferior';
@@ -93,6 +94,7 @@ export default function App() {
       </main>
       <PanelInferior />
       {cargado && !modal && <MenuFlotante />}
+      {cargado && !modal && <RecomendacionesFlotante />}
       {modal === 'catalogo' && <ModalCatalogo />}
       {modal === 'registrarCotizacion' && <ModalRegistrarCotizacion />}
       {modal === 'cotizaciones' && <ModalCotizaciones />}

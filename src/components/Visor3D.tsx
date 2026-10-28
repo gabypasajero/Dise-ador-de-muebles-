@@ -280,7 +280,7 @@ const MAX_DATA_URL = 1_800_000;
  * frontal de todo el conjunto (tramo principal, lados de la L o la U, aéreos y campana mural),
  * centrado y con un margen parejo. La distancia se calcula exacta para que todo entre.
  */
-function encuadreCaptura(d: Diseno, aspecto: number, altoReal: number | null, extra: THREE.Vector3[] = []) {
+function encuadreCaptura(d: Diseno, aspecto: number, altoReal: number | null, extra: THREE.Vector3[] = [], mirada: THREE.Vector3 | null = null) {
   const izq = d.lados?.izq ?? null;
   const der = d.lados?.der ?? null;
   const conLados = !!(izq || der);
@@ -308,10 +308,13 @@ function encuadreCaptura(d: Diseno, aspecto: number, altoReal: number | null, ex
     pieza(caja.x0 / 1000, caja.x1 / 1000, H, caja.fondo / 1000);
   }
   puntos.push(...extra);
-  // Siempre de frente y apenas desde arriba, como una foto de catálogo (la dueña lo pidió así).
-  const el = 0.1;
-  const az = 0;
-  // Hacia la cámara, y los ejes derecha y arriba de la imagen.
+  // Desde donde el vendedor dejó la cámara (la dueña lo pidió así), apenas desde arriba como mínimo para que
+  // se vean las cubiertas; sin dato, de frente como una foto de catálogo. Hacia la cámara, y los ejes de la imagen.
+  // Para que se vean siempre los frentes (puertas y cajones), el giro se limita a 55° del frente y la altura
+  // entre casi de frente y bien desde arriba.
+  const m = mirada ? mirada.clone().normalize() : new THREE.Vector3(0, Math.sin(0.1), Math.cos(0.1));
+  const az = Math.max(-0.96, Math.min(0.96, Math.atan2(m.x, m.z)));
+  const el = Math.max(0.1, Math.min(0.9, Math.asin(Math.max(-1, Math.min(1, m.y)))));
   const dir = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el));
   const derecha = dir.clone().negate().cross(new THREE.Vector3(0, 1, 0)).normalize();
   const arriba = derecha.clone().cross(dir.clone().negate()).normalize();
@@ -377,7 +380,7 @@ function altoMueble(scene: THREE.Object3D): number | null {
  * se saca de esta misma imagen.
  */
 function Capturador() {
-  const { gl, scene, camera } = useThree();
+  const { gl, scene, camera, controls } = useThree();
   useEffect(() => {
     useApp.getState().set({
       capturar: () => {
@@ -393,7 +396,10 @@ function Capturador() {
         const ancho = Math.min(CAPTURA.ancho, ...limites);
         const alto = Math.round((ancho * CAPTURA.alto) / CAPTURA.ancho);
         const camara = new THREE.PerspectiveCamera(CAPTURA.fov, ancho / alto, 0.03, 80);
-        const e = encuadreCaptura(principal, ancho / alto, altoMueble(scene), puntosAdicionales(proyecto));
+        // La misma dirección en que se ve el mueble en el visor; el encuadre se ajusta para que entre todo.
+        const objetivo = (controls as unknown as { target?: THREE.Vector3 } | null)?.target ?? new THREE.Vector3();
+        const mirada = camera.position.clone().sub(objetivo);
+        const e = encuadreCaptura(principal, ancho / alto, altoMueble(scene), puntosAdicionales(proyecto), mirada.lengthSq() > 1e-6 ? mirada : null);
         camara.position.copy(e.pos);
         camara.lookAt(e.objetivo);
         camara.updateProjectionMatrix();
@@ -427,7 +433,7 @@ function Capturador() {
       },
     });
     return () => useApp.getState().set({ capturar: null });
-  }, [gl, scene, camera]);
+  }, [gl, scene, camera, controls]);
   return null;
 }
 

@@ -4247,3 +4247,114 @@ h3 {
 .colores-todos {
   align-self: flex-start;
 }
+
+/* ---------- Recomendaciones flotantes ---------- */
+
+.recomendaciones-chip {
+  position: fixed;
+  z-index: 29;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--borde);
+  background: var(--panel);
+  color: var(--texto, #2a2328);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  border-radius: 999px;
+  padding: 7px 12px;
+  box-shadow: var(--sombra);
+  cursor: pointer;
+}
+
+.recomendaciones-chip.con-avisos {
+  border-color: #e0a33a;
+}
+
+.recomendaciones-cuenta {
+  background: var(--acento);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 11px;
+  padding: 1px 7px;
+}
+
+.recomendaciones-flotante {
+  position: fixed;
+  z-index: 29;
+  width: min(380px, calc(100vw - 24px));
+  max-height: min(60dvh, 520px);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(40, 20, 30, 0.18);
+}
+
+.recomendaciones-cabeza {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px 8px 14px;
+  border-bottom: 1px solid var(--borde);
+  cursor: grab;
+  touch-action: none;
+  color: var(--acento);
+}
+
+.recomendaciones-cuerpo {
+  overflow-y: auto;
+  padding: 8px 14px 12px;
+}
+
+.recomendaciones-cuerpo h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 8px 0 4px;
+  color: var(--texto-2);
+}
+
+.recomendaciones-cuerpo ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.recomendaciones-cuerpo li {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 13px;
+  line-height: 1.35;
+  padding: 6px 8px 6px 22px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  position: relative;
+}
+
+.recomendaciones-cuerpo li::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 11px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8a8f96;
+}
+
+.recomendaciones-cuerpo li.ok::before {
+  background: #2e9e5b;
+}
+
+.recomendaciones-cuerpo li.aviso::before {
+  background: #e0a33a;
+}
