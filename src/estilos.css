@@ -3693,3 +3693,15 @@ h3 {
   font-size: 0.85rem;
   line-height: 1.5;
 }
+
+.enlace-clave {
+  align-self: center;
+  background: none;
+  border: 0;
+  padding: 4px;
+  color: var(--acento, #2563eb);
+  font: inherit;
+  font-size: 0.9rem;
+  text-decoration: underline;
+  cursor: pointer;
+}

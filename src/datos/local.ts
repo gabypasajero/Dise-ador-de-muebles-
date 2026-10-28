@@ -130,6 +130,18 @@ export const backendLocal: Backend = {
     oyentes.forEach((cb) => cb(false));
   },
 
+  async recuperarClave() {
+    throw new Error('En el modo demostración no se envían correos: crea una cuenta nueva.');
+  },
+
+  async cambiarClave(password) {
+    if (password.length < 8) throw new Error('La contraseña es muy débil: usa al menos 8 caracteres');
+    const id = leer<string | null>(CLAVES.sesion, null);
+    const usuarios = leer<UsuarioLocal[]>(CLAVES.usuarios, []);
+    const nuevoHash = await hash(password);
+    escribir(CLAVES.usuarios, usuarios.map((u) => (u.id === id ? { ...u, hash: nuevoHash } : u)));
+  },
+
   async productos(): Promise<ProductoTienda[]> {
     const r = await fetch('/datos/productos-respaldo.json');
     if (!r.ok) throw new Error('No se pudo cargar el catálogo');

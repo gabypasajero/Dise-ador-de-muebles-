@@ -1,13 +1,18 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Acceso } from './components/Acceso';
 import { BarraVisor } from './components/BarraVisor';
 import { Cabecera } from './components/Cabecera';
 import { ModalCotizaciones, ModalDocumento, ModalRegistrarCotizacion, ModalVenta } from './components/Cotizaciones';
 import { ModalCatalogo } from './components/Modales';
+import { NuevaClave } from './components/NuevaClave';
 import { PanelColores } from './components/PanelColores';
 import { PanelInferior } from './components/PanelInferior';
 import { Visor3D } from './components/Visor3D';
 import { useApp } from './store/useApp';
+
+// El enlace de recuperación del correo vuelve con ?nueva-clave=1 (o con #type=recovery si Supabase
+// usa la URL del sitio). Se lee al cargar, antes de que Supabase limpie la dirección.
+const VIENE_DE_RECUPERAR = new URLSearchParams(window.location.search).has('nueva-clave') || /type=recovery/.test(window.location.hash);
 
 function Avisos() {
   const avisos = useApp((s) => s.avisos);
@@ -25,6 +30,7 @@ function Avisos() {
 export default function App() {
   const modal = useApp((s) => s.modal);
   const sesion = useApp((s) => s.sesion);
+  const [nuevaClave, setNuevaClave] = useState(VIENE_DE_RECUPERAR);
   const errorCarga = useApp((s) => s.errorCarga);
   const cargado = useApp((s) => s.catalogo !== null && s.materiales !== null);
   const coloresPlegados = useApp((s) => s.coloresPlegados);
@@ -53,6 +59,18 @@ export default function App() {
 
   // La herramienta es solo para vendedores: sin sesión se muestra el ingreso.
   if (sesion === 'verificando') return <div className="cargando-visor pantalla">Verificando sesión…</div>;
+  if (nuevaClave)
+    return (
+      <>
+        <NuevaClave
+          alTerminar={() => {
+            window.history.replaceState(null, '', window.location.pathname);
+            setNuevaClave(false);
+          }}
+        />
+        <Avisos />
+      </>
+    );
   if (sesion === 'invitado')
     return (
       <>

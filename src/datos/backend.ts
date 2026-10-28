@@ -31,6 +31,10 @@ export interface Backend {
   registrar(d: DatosRegistro): Promise<{ confirmarCorreo: boolean }>;
   ingresar(email: string, password: string): Promise<void>;
   salir(): Promise<void>;
+  /** Envía al correo un enlace para crear una contraseña nueva. */
+  recuperarClave(email: string): Promise<void>;
+  /** Cambia la contraseña de la sesión actual (al volver desde el enlace de recuperación). */
+  cambiarClave(password: string): Promise<void>;
   productos(): Promise<ProductoTienda[]>;
   cotizaciones(): Promise<Cotizacion[]>;
   cotizacion(id: number): Promise<Cotizacion>;

@@ -149,6 +149,26 @@ export const backendSupabase: Backend = {
     await supabase.auth.signOut();
   },
 
+  async recuperarClave(email) {
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+      redirectTo: `${window.location.origin}/?nueva-clave=1`,
+    });
+    if (error) {
+      if (/rate limit|too many|security purposes/i.test(error.message)) throw new Error('Demasiados intentos. Espera unos minutos e inténtalo de nuevo.');
+      throw new Error(error.message);
+    }
+  },
+
+  async cambiarClave(password) {
+    if (password.length < 8) throw new Error('La contraseña es muy débil: usa al menos 8 caracteres');
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) {
+      if (/different from the old/i.test(error.message)) throw new Error('La contraseña nueva debe ser distinta de la anterior');
+      if (/session/i.test(error.message)) throw new Error('El enlace venció. Pide uno nuevo desde «¿Olvidaste tu contraseña?».');
+      throw new Error(error.message);
+    }
+  },
+
   async productos(): Promise<ProductoTienda[]> {
     const { data, error } = await supabase
       .from('productos')
