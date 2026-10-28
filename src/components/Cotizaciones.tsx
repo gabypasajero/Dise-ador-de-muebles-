@@ -21,7 +21,7 @@ import { LISTA_MARCAS, MARCAS, marcaDe, recordarMarca, textoCotizacionMarca, ult
 import { datosCliente, descargarPdf, type DatosDocumento } from '../cotizacion/pdf';
 import { backend, calcularTotales } from '../datos';
 import { useApp } from '../store/useApp';
-import { IcoWsp } from './Iconos';
+import { IcoBasura, IcoWsp } from './Iconos';
 import { Modal } from './Modales';
 
 const NOMBRE_ESTADO: Record<EstadoCotizacion, string> = {
@@ -901,6 +901,18 @@ export function ModalCotizaciones() {
     }
   };
 
+  const eliminar = async (c: Cotizacion) => {
+    if (!window.confirm(`¿Eliminar la cotización ${c.numero} de ${c.cliente.nombre}? No se puede deshacer.`)) return;
+    try {
+      await backend.eliminarCotizacion(c.id);
+      setLista((l) => l?.filter((x) => x.id !== c.id) ?? l);
+      if (s.cotizacionActual?.id === c.id) s.set({ cotizacionActual: null });
+      s.avisar(`Cotización ${c.numero} eliminada`);
+    } catch (e) {
+      s.avisar((e as Error).message, 'error');
+    }
+  };
+
   const q = buscar.trim().toLowerCase();
   const visibles = (lista ?? []).filter(
     (c) =>
@@ -993,6 +1005,17 @@ export function ModalCotizaciones() {
                 {c.estado === 'cotizada' && c.vendedor.id === s.usuario?.id && (
                   <button type="button" className="boton primario chico" onClick={() => s.set({ cotizacionVista: c, modal: 'venta' })}>
                     Vender
+                  </button>
+                )}
+                {(esAdmin || (c.vendedor.id === s.usuario?.id && c.estado !== 'vendida')) && (
+                  <button
+                    type="button"
+                    className="boton-icono basurero"
+                    aria-label={`Eliminar ${c.numero}`}
+                    title={`Eliminar ${c.numero}`}
+                    onClick={() => eliminar(c)}
+                  >
+                    <IcoBasura width={17} height={17} />
                   </button>
                 )}
               </span>

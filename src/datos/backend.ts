@@ -42,6 +42,8 @@ export interface Backend {
   actualizarCotizacion(id: number, d: DatosCotizacion): Promise<Cotizacion>;
   registrarVenta(id: number, v: Venta): Promise<Cotizacion>;
   cambiarEstado(id: number, estado: Exclude<EstadoCotizacion, 'vendida'>): Promise<Cotizacion>;
+  /** Borra la cotización para siempre (las vendidas solo la administración). */
+  eliminarCotizacion(id: number): Promise<void>;
 }
 
 /** Fila de la tabla cotizaciones (Supabase) con el vendedor embebido. */

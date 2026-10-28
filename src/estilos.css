@@ -2064,7 +2064,7 @@ h3 {
 
 .tabla-cotizaciones .fila {
   display: grid;
-  grid-template-columns: 92px minmax(140px, 1.2fr) minmax(160px, 1.5fr) 96px 110px 92px minmax(230px, auto);
+  grid-template-columns: 86px minmax(0, 1.1fr) minmax(0, 1.4fr) 92px 96px 88px 262px;
   gap: 10px;
   align-items: center;
   padding: 10px 14px;
@@ -2165,7 +2165,7 @@ h3 {
 }
 
 .tabla-cotizaciones.con-vendedor .fila {
-  grid-template-columns: 92px minmax(130px, 1.1fr) minmax(110px, 0.9fr) minmax(150px, 1.3fr) 96px 110px 92px minmax(200px, auto);
+  grid-template-columns: 86px minmax(0, 1.1fr) minmax(0, 0.8fr) minmax(0, 1.3fr) 92px 96px 88px 262px;
 }
 
 /* Impresión / PDF de la cotización: solo se imprime el documento. */
@@ -4058,4 +4058,42 @@ h3 {
 .menu-flotante-ajustes,
 .menu-flotante:not(.vertical) .menu-flotante-ajustes {
   border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Acciones de cada cotización: siempre completas, con el basurero al final. */
+.tabla-cotizaciones .acciones-fila {
+  flex-wrap: nowrap;
+}
+
+.tabla-cotizaciones .acciones-fila .boton {
+  white-space: nowrap;
+}
+
+.tabla-cotizaciones .modelo,
+.tabla-cotizaciones .fila > span strong {
+  overflow-wrap: anywhere;
+}
+
+.basurero {
+  color: #b42318;
+  border: 1px solid #f1c4c0;
+  background: #fff5f4;
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: none;
+}
+
+.basurero:hover {
+  background: #fde4e1;
+}
+
+@media (max-width: 900px) {
+  .tabla-cotizaciones .modelo img {
+    display: none;
+  }
 }

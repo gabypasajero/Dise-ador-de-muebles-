@@ -214,4 +214,10 @@ export const backendLocal: Backend = {
     guardar(todas);
     return resumida(fila);
   },
+
+  async eliminarCotizacion(id) {
+    const { todas, fila } = propia(id);
+    if (fila.estado === 'vendida') throw new Error('No se pudo eliminar: las cotizaciones vendidas solo las elimina la administración.');
+    guardar(todas.filter((f) => f.id !== id));
+  },
 };

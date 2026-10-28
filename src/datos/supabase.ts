@@ -226,4 +226,11 @@ export const backendSupabase: Backend = {
   cambiarEstado(id, estado) {
     return una(() => supabase.from('cotizaciones').update({ estado }).eq('id', id).select(camposLista()).single());
   },
+
+  async eliminarCotizacion(id) {
+    const { data, error } = await supabase.from('cotizaciones').delete().eq('id', id).select('id');
+    if (error) throw traducir(error);
+    // Sin permiso, Supabase no borra nada y tampoco avisa: no devuelve filas.
+    if (!data || data.length === 0) throw new Error('No se pudo eliminar: las cotizaciones vendidas solo las elimina la administración.');
+  },
 };
