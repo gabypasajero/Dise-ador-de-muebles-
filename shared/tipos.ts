@@ -238,6 +238,28 @@ export interface Diseno {
   equipos: Equipo[];
   /** Correcciones del vendedor al desglose del precio (valores editados y ajustes libres). */
   ajustesPrecio?: AjustesPrecio;
+  /**
+   * Otros muebles del mismo proyecto (solo en el mueble principal): islas y muebles en línea.
+   * Cada uno es un diseño completo con su posición en la planta.
+   */
+  adicionales?: MuebleAdicional[];
+}
+
+/** Mueble que se suma al proyecto: una isla o un mueble en línea (otro tramo, otro muro). */
+export interface MuebleAdicional {
+  id: string;
+  /** isla: mueble suelto con respaldo terminado. linea: otro mueble contra un muro. */
+  tipo: 'isla' | 'linea';
+  nombre: string;
+  /**
+   * Posición en la planta (mm), en las coordenadas del mueble principal (x a lo largo de su muro,
+   * z hacia la sala): el centro del mueble adicional visto desde arriba. Gira sobre ese centro.
+   */
+  x: number;
+  z: number;
+  /** Giro en grados, mirado desde arriba (0 = de frente, como el principal; 180 = mira al muro). */
+  giro: number;
+  diseno: Diseno;
 }
 
 export interface AjustePrecioExtra {

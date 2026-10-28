@@ -602,6 +602,16 @@ export function contenidoHoja(
   } catch {
     muros = [];
   }
+  // Islas y muebles en línea del proyecto: sus secciones y sus esquemas van a continuación, con su nombre.
+  for (const a of d.adicionales ?? []) {
+    try {
+      const fa = fichaFabricacion(a.diseno, null, unidad, materiales, { numero: opciones.numero ?? undefined, cliente: opciones.cliente });
+      ficha.secciones.push(...fa.secciones.map((sec) => ({ ...sec, titulo: `${a.nombre} · ${sec.titulo}` })));
+      muros.push(...murosDe(a.diseno).map((m) => ({ ...m, titulo: `${a.nombre} · ${m.titulo}` })));
+    } catch (e) {
+      ficha.secciones.push({ titulo: a.nombre, lineas: [{ etiqueta: 'Aviso', valor: `No se pudo armar la ficha: ${(e as Error).message}` }] });
+    }
+  }
   const escala = muros.length ? Math.min(...muros.map((m) => Math.min(ANCHO_ESQUEMA / Math.max(1, m.h1 - m.h0), ALTO_ESQUEMA / Math.max(1, m.alto)))) : 1;
   return { ficha, muros, escala };
 }

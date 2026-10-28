@@ -90,6 +90,7 @@ import type {
   LadoId,
   Lavaplatos,
   Materiales,
+  MuebleAdicional,
   Plantilla,
   ProductoCatalogo,
   Retorno,
@@ -2203,6 +2204,34 @@ export function normalizar(entrada: Diseno | DisenoGuardado): Diseno {
   const aj = normalizarAjustes((g as { ajustesPrecio?: unknown }).ajustesPrecio);
   if (aj) out.ajustesPrecio = aj;
   else delete out.ajustesPrecio;
+  const adicionales = normalizarAdicionales((g as { adicionales?: unknown }).adicionales);
+  if (adicionales.length) out.adicionales = adicionales;
+  else delete out.adicionales;
+  return out;
+}
+
+/** Islas y muebles en línea guardados con el proyecto: cada uno es una cocina completa (sin adicionales propios). */
+function normalizarAdicionales(x: unknown): MuebleAdicional[] {
+  if (!Array.isArray(x)) return [];
+  const ids = new Set<string>();
+  const out: MuebleAdicional[] = [];
+  for (const a of x as Partial<MuebleAdicional>[]) {
+    if (!a || typeof a !== 'object' || !a.diseno || typeof a.diseno !== 'object') continue;
+    let id = typeof a.id === 'string' && a.id ? a.id : nuevoId('m');
+    if (ids.has(id)) id = nuevoId('m');
+    ids.add(id);
+    const tipo = a.tipo === 'isla' ? 'isla' : 'linea';
+    const { adicionales: _sub, ...diseno } = a.diseno as Diseno;
+    out.push({
+      id,
+      tipo,
+      nombre: typeof a.nombre === 'string' && a.nombre.trim() ? a.nombre.trim().slice(0, 60) : tipo === 'isla' ? 'Isla' : 'Mueble en línea',
+      x: Math.round(numero(a.x, 0)),
+      z: Math.round(numero(a.z, 0)),
+      giro: ((Math.round(numero(a.giro, 0)) % 360) + 360) % 360,
+      diseno: normalizar({ ...diseno, plantilla: 'cocina' }),
+    });
+  }
   return out;
 }
 

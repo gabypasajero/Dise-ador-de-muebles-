@@ -2,7 +2,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { NOMBRE_PLANTILLA } from '../../shared/catalogo';
 import { aplicarAjustes, formatoPrecio, precioDiseno } from '../../shared/reglas';
-import { detalleCotizacion, formatoFecha, hoy } from '../../shared/resumen';
+import { detalleProyecto, precioProyecto } from '../../shared/proyecto';
+import { formatoFecha, hoy } from '../../shared/resumen';
 import type { SeccionFicha, TablaFicha } from '../../shared/resumen';
 import type { Cliente, Cotizacion, DatosCotizacion, EstadoCotizacion } from '../../shared/tipos';
 import { compartirPdf, enlaceCorreo, enlaceWhatsapp, puedeCompartirArchivos, type ServicioCorreo } from '../cotizacion/enviar';
@@ -20,7 +21,7 @@ import { reducirImagen } from '../cotizacion/imagen';
 import { LISTA_MARCAS, MARCAS, marcaDe, recordarMarca, textoCotizacionMarca, ultimaMarca, type Marca } from '../cotizacion/marcas';
 import { datosCliente, descargarPdf, type DatosDocumento } from '../cotizacion/pdf';
 import { backend, calcularTotales } from '../datos';
-import { useApp } from '../store/useApp';
+import { proyectoDe, useApp } from '../store/useApp';
 import { IcoBasura, IcoWsp } from './Iconos';
 import { Modal } from './Modales';
 
@@ -521,7 +522,10 @@ export function ModalRegistrarCotizacion() {
   const s = useApp();
   const actual =
     s.cotizacionActual && s.cotizacionActual.estado === 'cotizada' && s.cotizacionActual.vendedor.id === s.usuario?.id ? s.cotizacionActual : null;
-  const precio = aplicarAjustes(precioDiseno(s.diseno, s.producto, s.disenoBase), s.diseno.ajustesPrecio);
+  // Se registra todo el proyecto: el mueble principal con sus islas y muebles en línea.
+  const proyecto = useMemo(() => proyectoDe(s), [s.diseno, s.principal, s.muebleActivo]); // eslint-disable-line react-hooks/exhaustive-deps
+  const varios = (proyecto.adicionales?.length ?? 0) > 0;
+  const precio = varios ? precioProyecto(proyecto, s.producto, s.disenoBase) : aplicarAjustes(precioDiseno(proyecto, s.producto, s.disenoBase), proyecto.ajustesPrecio);
   const referencial = precio?.total ?? null;
   const [cliente, setCliente] = useState<Cliente>(actual?.cliente ?? { nombre: '', telefono: '', email: '', direccion: '' });
   const [observaciones, setObservaciones] = useState(actual?.observaciones ?? '');
@@ -532,8 +536,9 @@ export function ModalRegistrarCotizacion() {
   const [imagen] = useState<string | null>(() => s.capturar?.() ?? null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const detalle = useMemo(() => detalleCotizacion(s.diseno, s.producto, s.unidad, s.materiales), [s.diseno, s.producto, s.unidad, s.materiales]);
-  const modelo = s.producto?.modelo ?? (s.diseno.nombreModelo || NOMBRE_PLANTILLA[s.diseno.plantilla]);
+  const detalle = useMemo(() => detalleProyecto(proyecto, s.producto, s.unidad, s.materiales), [proyecto, s.producto, s.unidad, s.materiales]);
+  const modeloPrincipal = s.producto?.modelo ?? (proyecto.nombreModelo || NOMBRE_PLANTILLA[proyecto.plantilla]);
+  const modelo = varios ? `${modeloPrincipal} + ${proyecto.adicionales!.map((a) => a.nombre).join(' + ')}` : modeloPrincipal;
   const set = (k: keyof Cliente, v: string) => setCliente((c) => ({ ...c, [k]: v }));
   const elegirMarca = (m: Marca) => {
     setMarca(m);
@@ -548,7 +553,7 @@ export function ModalRegistrarCotizacion() {
     vendedorTelefono: s.usuario?.telefono,
     modelo,
     imagen,
-    diseno: s.diseno,
+    diseno: proyecto,
     producto: s.producto,
     materiales: s.materiales,
     unidad: s.unidad,
@@ -569,7 +574,7 @@ export function ModalRegistrarCotizacion() {
         observaciones: observaciones.trim() || null,
         productoId: s.producto?.id ?? null,
         modelo,
-        config: s.diseno,
+        config: proyecto,
         detalle,
         miniatura: imagen ? await reducirImagen(imagen, 480) : null,
         imagen,
@@ -626,10 +631,16 @@ export function ModalRegistrarCotizacion() {
           <h3 className="subtitulo">Cotización</h3>
           <div className="fila-campos">
             <CampoPesos
-              etiqueta="Valor mueble"
+              etiqueta={varios ? 'Valor del proyecto' : 'Valor mueble'}
               valor={valor}
               onCambio={setValor}
-              ayuda={precio ? `${precio.metodo === 'oficial' ? 'Precio oficial' : 'Referencial'} del diseñador: ${formatoPrecio(precio.total)}` : undefined}
+              ayuda={
+                precio
+                  ? 'partes' in precio
+                    ? `Total del proyecto (${precio.partes.map((x) => `${x.nombre} ${x.precio ? formatoPrecio(x.precio.total) : 'sin referencia'}`).join(' + ')}): ${formatoPrecio(precio.total)}`
+                    : `${precio.metodo === 'oficial' ? 'Precio oficial' : 'Referencial'} del diseñador: ${formatoPrecio(precio.total)}`
+                  : undefined
+              }
             />
             <label>
               Fecha cotización

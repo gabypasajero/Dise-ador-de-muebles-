@@ -3,7 +3,10 @@ import { largoPrincipalConEsquinas } from '../../shared/layout';
 import { LIMITES, advertencias, aUnidad, aplicarAjustes, formatear, formatoPrecio, limpiarAjustes, precioDiseno, type PrecioAjustado } from '../../shared/reglas';
 import { nuevoId } from '../../shared/catalogo';
 import type { AjustesPrecio, Diseno, Unidad } from '../../shared/tipos';
-import { useApp } from '../store/useApp';
+import { precioProyecto } from '../../shared/proyecto';
+import { precioCocina, precioIsla } from '../../shared/tarifas';
+import { adicionalActivo, proyectoDe, useApp } from '../store/useApp';
+import { PestanaMuebles } from './Muebles';
 import { CampoMedida, Interruptor, Segmentado } from './Controles';
 import { backend } from '../datos';
 import { IcoAviso, IcoGuardar } from './Iconos';
@@ -234,9 +237,20 @@ export function PanelInferior() {
   };
   const lim = LIMITES[d.plantilla];
   const pestanas = pestanasDe(d.plantilla);
-  const actual = pestana === 'colores' ? 'colores' : (pestanas.find((p) => p.id === pestana)?.id ?? null);
+  const actual = pestana === 'colores' || pestana === 'muebles' ? pestana : (pestanas.find((p) => p.id === pestana)?.id ?? null);
   const avisos = advertencias(d, unidad);
-  const calculado = precioDiseno(d, producto, disenoBase);
+  const muebleActivo = useApp((s) => s.muebleActivo);
+  const principalGuardado = useApp((s) => s.principal);
+  const estadoProyecto = { diseno: d, muebleActivo, principal: principalGuardado };
+  const adicional = adicionalActivo(estadoProyecto);
+  // Una isla o un mueble en línea se cobran con su tarifa (no con el producto de la tienda del principal).
+  const calculado = adicional
+    ? { metodo: 'oficial' as const, ...(adicional.tipo === 'isla' ? precioIsla(d) : precioCocina(d)) }
+    : precioDiseno(d, producto, disenoBase);
+  const proyecto = proyectoDe(estadoProyecto);
+  const varios = (proyecto.adicionales?.length ?? 0) > 0;
+  const nombrePrincipal = producto?.modelo ?? 'Mueble principal';
+  const totalProyecto = varios ? precioProyecto(proyecto, producto, disenoBase, nombrePrincipal) : null;
   const precio = aplicarAjustes(calculado, d.ajustesPrecio);
   const oficial = precio?.metodo === 'oficial';
   const esCocinaConEquipos = d.plantilla === 'cocina' || d.plantilla === 'compacto' || d.plantilla === 'cocina-infantil';
@@ -256,7 +270,7 @@ export function PanelInferior() {
     }
   };
 
-  const titulo = actual === 'colores' ? 'Colores' : pestanas.find((p) => p.id === actual)?.texto;
+  const titulo = actual === 'colores' ? 'Colores' : actual === 'muebles' ? 'Muebles del proyecto' : pestanas.find((p) => p.id === actual)?.texto;
 
   return (
     <section
@@ -324,16 +338,22 @@ export function PanelInferior() {
             {actual === 'modulos' && <PestanaModulos {...props} />}
             {actual === 'equipamiento' && <PestanaEquipamiento {...props} />}
             {actual === 'colores' && <PanelColores />}
+            {actual === 'muebles' && <PestanaMuebles />}
           </div>
         </div>
       )}
 
       <div className="barra-simple">
         <div className="bloque-medidas">
+          {varios && (
+            <button type="button" className="chip-mueble" title="Elegir qué mueble editas" onClick={() => set({ pestana: 'muebles' })}>
+              {adicional ? adicional.nombre : nombrePrincipal}
+            </button>
+          )}
           <FilaMedida nombre="Ancho" icono="↔" valor={d.ancho + esquinas} limites={[lim.ancho[0] + esquinas, lim.ancho[1] + esquinas]} unidad={unidad} onCambio={(mm) => operar({ op: 'fijarAncho', ancho: mm - esquinas }, 'ancho')} />
           <FilaMedida nombre="Alto" icono="↕" valor={d.alto} limites={lim.alto} unidad={unidad} onCambio={(mm) => operar({ op: 'fijarAlto', alto: mm }, 'alto')} />
           <FilaMedida nombre="Fondo" icono="⤢" valor={d.profundidad} limites={lim.profundidad} unidad={unidad} onCambio={(mm) => operar({ op: 'fijarProfundidad', profundidad: mm }, 'profundidad')} />
-          {d.plantilla === 'cocina' && (
+          {d.plantilla === 'cocina' && adicional?.tipo !== 'isla' && (
             <Interruptor
               activo={d.aereos.activo}
               onCambio={(v) => {
@@ -351,6 +371,8 @@ export function PanelInferior() {
               <>
                 {cotizacion.numero} · {cotizacion.cliente.nombre} · <span className={`estado-cotizacion ${cotizacion.estado}`}>{cotizacion.estado}</span>
               </>
+            ) : varios ? (
+              'Total del proyecto'
             ) : oficial ? (
               'Precio oficial'
             ) : precio ? (
@@ -360,7 +382,13 @@ export function PanelInferior() {
             )}
           </span>
           <strong className="precio" title={lados.length > 0 ? `Con ${lados.join(' y ')}` : undefined}>
-            {cotizacion ? formatoPrecio(cotizacion.venta?.valor ?? cotizacion.valor) : precio ? formatoPrecio(precio.total) : 'Sin referencia'}
+            {cotizacion
+              ? formatoPrecio(cotizacion.venta?.valor ?? cotizacion.valor)
+              : totalProyecto
+                ? formatoPrecio(totalProyecto.total)
+                : precio
+                  ? formatoPrecio(precio.total)
+                  : 'Sin referencia'}
           </strong>
           {precio && precio.lineas.length > 0 && (
             <div className="desglose-precio">
@@ -369,6 +397,20 @@ export function PanelInferior() {
               </button>
               {verDesglose && (
                 <div className="desglose-lista" role="region" aria-label="Desglose del precio">
+                  {totalProyecto && (
+                    <div className="desglose-proyecto">
+                      <strong>Proyecto: {formatoPrecio(totalProyecto.total)}</strong>
+                      <ul>
+                        {totalProyecto.partes.map((x) => (
+                          <li key={x.id ?? 'principal'} className={x.id === muebleActivo ? 'activa' : ''}>
+                            <span>{x.nombre}</span>
+                            <span>{x.precio ? formatoPrecio(x.precio.total) : 'Sin referencia'}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="tenue chico">Abajo, el desglose editable de {adicional ? adicional.nombre : nombrePrincipal}. Para otro mueble, elígelo en «Muebles».</p>
+                    </div>
+                  )}
                   <TablaDesglose precio={precio} lineasBase={calculado!.lineas} cambiar={cambiar} />
                 </div>
               )}

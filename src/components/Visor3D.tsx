@@ -6,10 +6,37 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import type { OrbitControls as OrbitImpl } from 'three-stdlib';
 import { Mueble3D } from '../furniture/Mueble3D';
 import { Escenario3D } from '../scenes/Escenarios';
-import { escenarioActual, useApp, type Vista } from '../store/useApp';
+import { escenarioActual, proyectoDe, useApp, type Vista } from '../store/useApp';
 import { cuerposDe, nombreModulo } from '../../shared/reglas';
 import { dimensionesTotales, extremosPrincipal, formaDe, LADOS, ladoAereoActivo, ubicarEquipos } from '../../shared/layout';
+import { centroPlanta, mueblesProyecto } from '../../shared/proyecto';
 import type { Diseno } from '../../shared/tipos';
+
+/** El proyecto completo y su mueble principal (sin los adicionales), tal como están ahora. */
+function proyectoAhora(): { proyecto: Diseno; principal: Diseno } {
+  const proyecto = proyectoDe(useApp.getState());
+  const { adicionales: _a, ...principal } = proyecto;
+  return { proyecto, principal };
+}
+
+/** Esquinas (m) de las islas y los muebles en línea en la planta del proyecto: también deben entrar en el cuadro. */
+function puntosAdicionales(p: Diseno): THREE.Vector3[] {
+  const out: THREE.Vector3[] = [];
+  for (const a of p.adicionales ?? []) {
+    const c = dimensionesTotales(a.diseno);
+    const m = centroPlanta(a.diseno);
+    const g = (a.giro * Math.PI) / 180;
+    for (const x of [c.x0 - m.x, c.x1 - m.x])
+      for (const z of [-m.z, c.fondo - m.z])
+        for (const y of [0, c.alto]) {
+          // Mismo giro que el grupo del visor (rotation.y), sobre el centro: x' = x·cos + z·sen, z' = −x·sen + z·cos.
+          const X = x * Math.cos(g) + z * Math.sin(g) + a.x;
+          const Z = -x * Math.sin(g) + z * Math.cos(g) + a.z;
+          out.push(new THREE.Vector3(X / 1000, y / 1000, Z / 1000));
+        }
+  }
+  return out;
+}
 
 function Entorno() {
   const { gl, scene } = useThree();
@@ -34,7 +61,7 @@ const ANGULOS: Record<Vista, { az: number; el: number }> = {
   superior: { az: -0.18, el: 1.0 },
 };
 
-function objetivoCamara(d: Diseno, vista: Vista, size: { width: number; height: number }) {
+function objetivoCamara(d: Diseno, vista: Vista, size: { width: number; height: number }, extra: THREE.Vector3[] = []) {
   const aspecto = size.width / Math.max(1, size.height);
   const s = useApp.getState();
   const izq = d.lados?.izq ?? null;
@@ -117,6 +144,20 @@ function objetivoCamara(d: Diseno, vista: Vista, size: { width: number; height: 
   } else {
     pieza(caja.x0 / 1000, caja.x1 / 1000, H, D);
   }
+  if (extra.length) {
+    // Con islas o muebles en línea: se mira al centro de todo el conjunto, desde una distancia en la
+    // que entra entero (su esfera envolvente cabe en el ángulo más estrecho de la cámara).
+    const todos = [...puntos.map((q) => q.p), ...extra];
+    const caja3 = new THREE.Box3().setFromPoints(todos);
+    const centro = caja3.getCenter(new THREE.Vector3());
+    const radio = caja3.getSize(new THREE.Vector3()).length() / 2;
+    const fovH = 2 * Math.atan(Math.tan(fov / 2) * aspecto);
+    const distancia = (radio / Math.sin(Math.min(fov, fovH) / 2)) * 0.82;
+    const el = ANGULOS[vista].el + (vista === 'perspectiva' ? 0.15 : 0);
+    const az = ANGULOS[vista].az * (escenarioActual(s.escenario, s.producto, d) === 'cocina' ? 1 : -0.85);
+    const pos = new THREE.Vector3(centro.x + Math.sin(az) * Math.cos(el) * distancia, centro.y + Math.sin(el) * distancia, centro.z + Math.cos(az) * Math.cos(el) * distancia);
+    return { objetivo: centro, pos };
+  }
   const camara = new THREE.PerspectiveCamera(38, aspecto, 0.03, 60);
   const v = new THREE.Vector3();
   // Aleja la cámara desde el inicio hasta que entren todos los puntos; devuelve el centro de lo que se ve.
@@ -158,22 +199,25 @@ function Camara() {
   const vista = useApp((s) => s.vista);
   const escenario = useApp((s) => s.escenario);
   // Al cambiar la forma (lineal, L a un lado u otro, U) la cámara pasa al lado abierto.
-  const forma = useApp((s) => formaDe(s.diseno.lados ?? { izq: null, der: null }));
+  const forma = useApp((s) => formaDe((s.muebleActivo && s.principal ? s.principal : s.diseno).lados ?? { izq: null, der: null }));
+  // Al agregar o quitar una isla o un mueble en línea se vuelve a encuadrar todo.
+  const adicionales = useApp((s) => (s.muebleActivo && s.principal ? s.principal : s.diseno).adicionales?.length ?? 0);
   const animando = useRef(0);
   const destino = useRef<{ objetivo: THREE.Vector3; pos: THREE.Vector3 } | null>(null);
   // Una L grande en el teléfono puede necesitar más de 9 m: el control no debe acercar la cámara y cortarla.
   const [maxDistancia, setMaxDistancia] = useState(9);
-  const encuadrar = (d: Diseno, v: Vista) => {
-    const dst = objetivoCamara(d, v, size);
+  const encuadrar = (v: Vista) => {
+    const { proyecto, principal } = proyectoAhora();
+    const dst = objetivoCamara(principal, v, size, puntosAdicionales(proyecto));
     destino.current = dst;
     animando.current = 1;
     setMaxDistancia(Math.max(9, dst.pos.distanceTo(dst.objetivo) * 1.2));
   };
 
   useEffect(() => {
-    encuadrar(useApp.getState().diseno, vista);
+    encuadrar(vista);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [encuadre, vista, escenario, forma]);
+  }, [encuadre, vista, escenario, forma, adicionales]);
 
   // Reencuadra si el mueble cambia mucho de tamaño.
   // Tamaño de todo el conjunto (incluye los lados y los aéreos).
@@ -194,7 +238,7 @@ function Camara() {
     if (cambioVisor || Math.abs(ancho - p.ancho) / p.ancho > 0.18 || Math.abs(alto - p.alto) / p.alto > 0.18 || Math.abs(fondo - p.fondo) / p.fondo > 0.3) {
       previo.current = { ancho, alto, fondo };
       aspectoPrevio.current = aspecto;
-      encuadrar(useApp.getState().diseno, useApp.getState().vista);
+      encuadrar(useApp.getState().vista);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ancho, alto, fondo, size]);
@@ -236,7 +280,7 @@ const MAX_DATA_URL = 1_800_000;
  * frontal de todo el conjunto (tramo principal, lados de la L o la U, aéreos y campana mural),
  * centrado y con un margen parejo. La distancia se calcula exacta para que todo entre.
  */
-function encuadreCaptura(d: Diseno, aspecto: number, altoReal: number | null) {
+function encuadreCaptura(d: Diseno, aspecto: number, altoReal: number | null, extra: THREE.Vector3[] = []) {
   const izq = d.lados?.izq ?? null;
   const der = d.lados?.der ?? null;
   const conLados = !!(izq || der);
@@ -263,6 +307,7 @@ function encuadreCaptura(d: Diseno, aspecto: number, altoReal: number | null) {
   } else {
     pieza(caja.x0 / 1000, caja.x1 / 1000, H, caja.fondo / 1000);
   }
+  puntos.push(...extra);
   // Siempre de frente y apenas desde arriba, como una foto de catálogo (la dueña lo pidió así).
   const el = 0.1;
   const az = 0;
@@ -336,7 +381,7 @@ function Capturador() {
   useEffect(() => {
     useApp.getState().set({
       capturar: () => {
-        const s = useApp.getState();
+        const { proyecto, principal } = proyectoAhora();
         const ocultas: THREE.Object3D[] = [];
         scene.traverse((o) => {
           if ((o.name === 'cotas' || o.name === 'ayudas' || o.name === 'escenario') && o.visible) ocultas.push(o);
@@ -348,7 +393,7 @@ function Capturador() {
         const ancho = Math.min(CAPTURA.ancho, ...limites);
         const alto = Math.round((ancho * CAPTURA.alto) / CAPTURA.ancho);
         const camara = new THREE.PerspectiveCamera(CAPTURA.fov, ancho / alto, 0.03, 80);
-        const e = encuadreCaptura(s.diseno, ancho / alto, altoMueble(scene));
+        const e = encuadreCaptura(principal, ancho / alto, altoMueble(scene), puntosAdicionales(proyecto));
         camara.position.copy(e.pos);
         camara.lookAt(e.objetivo);
         camara.updateProjectionMatrix();
@@ -402,6 +447,9 @@ function Depuracion() {
 
 export function Visor3D() {
   const diseno = useApp((s) => s.diseno);
+  const muebleActivo = useApp((s) => s.muebleActivo);
+  const principalGuardado = useApp((s) => s.principal);
+  const muebles = useMemo(() => mueblesProyecto(proyectoDe({ diseno, muebleActivo, principal: principalGuardado })), [diseno, muebleActivo, principalGuardado]);
   const materiales = useApp((s) => s.materiales);
   const producto = useApp((s) => s.producto);
   const escenario = useApp((s) => s.escenario);
@@ -422,7 +470,8 @@ export function Visor3D() {
       onElegir: (i: number) => useApp.getState().set({ moduloActivo: i }),
     };
   }, [pestana, moduloActivo, tramoActivo, diseno]);
-  const tipoEscena = escenarioActual(escenario, producto, diseno);
+  const principal = muebles[0].diseno;
+  const tipoEscena = escenarioActual(escenario, producto, principal);
   const etiquetasFrentes = pestana === 'puertas' || pestana === 'cajones';
 
   return (
@@ -444,9 +493,38 @@ export function Visor3D() {
       <Suspense fallback={null}>
         {/* Con nombre para ocultarlo en la imagen de la cotización (fondo liso, solo el mueble). */}
         <group name="escenario">
-          <Escenario3D tipo={tipoEscena} diseno={diseno} />
+          <Escenario3D tipo={tipoEscena} diseno={principal} />
         </group>
-        <Mueble3D diseno={diseno} materiales={materiales} vista={{ abierto, cotas, distancias, etiquetasFrentes, unidad, modulos }} />
+        {muebles.map((m) => {
+          const activo = m.id === muebleActivo;
+          // Los adicionales giran sobre su centro (el principal queda en el origen, como siempre).
+          const c = m.id ? centroPlanta(m.diseno) : { x: 0, z: 0 };
+          // Solo el mueble que se edita muestra cotas y etiquetas; tocar otro lo deja para editar.
+          return (
+            <group
+              key={m.id ?? 'principal'}
+              position={[m.x / 1000, 0, m.z / 1000]}
+              rotation={[0, (m.giro * Math.PI) / 180, 0]}
+              onClick={
+                activo || muebles.length === 1
+                  ? undefined
+                  : (e) => {
+                      e.stopPropagation();
+                      useApp.getState().editarMueble(m.id);
+                    }
+              }
+            >
+              <group position={[-c.x / 1000, 0, -c.z / 1000]}>
+                <Mueble3D
+                  diseno={activo ? diseno : m.diseno}
+                  materiales={materiales}
+                  respaldo={m.tipo === 'isla'}
+                  vista={activo ? { abierto, cotas, distancias, etiquetasFrentes, unidad, modulos } : { abierto, cotas: false, distancias: false, etiquetasFrentes: false, unidad, modulos: null }}
+                />
+              </group>
+            </group>
+          );
+        })}
       </Suspense>
       <Camara />
       <Capturador />

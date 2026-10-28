@@ -8,7 +8,7 @@ import { IcoArriba, IcoCamara, IcoCentrar, IcoCubo, IcoFoto, IcoFrente, IcoPuert
 
 export function BarraVisor() {
   const s = useApp();
-  const tipo = escenarioActual(s.escenario, s.producto, s.diseno);
+  const tipo = escenarioActual(s.escenario, s.producto, s.muebleActivo && s.principal ? s.principal : s.diseno);
   const vistas: { v: Vista; texto: string; icono: JSX.Element }[] = [
     { v: 'perspectiva', texto: '3D', icono: <IcoCubo width={16} height={16} /> },
     { v: 'frontal', texto: 'Frente', icono: <IcoFrente width={16} height={16} /> },

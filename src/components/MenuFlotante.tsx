@@ -33,7 +33,12 @@ export function MenuFlotante() {
   const caja = useRef<HTMLDivElement>(null);
   const [e, setE] = useState<Estado>(() => leer() ?? { x: -1, y: 150, vertical: true, achicado: false });
   const arrastre = useRef<{ dx: number; dy: number; movio: boolean } | null>(null);
-  const opciones = [...pestanasDe(plantilla).map((p) => ({ id: p.id, texto: p.id === 'equipamiento' && p.texto === 'Equipamiento' ? 'Equipos' : p.texto })), { id: 'colores' as const, texto: 'Colores' }];
+  const opciones = [
+    // Islas y muebles en línea: solo en las cocinas.
+    ...(plantilla === 'cocina' ? [{ id: 'muebles' as const, texto: 'Muebles' }] : []),
+    ...pestanasDe(plantilla).map((p) => ({ id: p.id, texto: p.id === 'equipamiento' && p.texto === 'Equipamiento' ? 'Equipos' : p.texto })),
+    { id: 'colores' as const, texto: 'Colores' },
+  ];
 
   // Mantiene el menú dentro de la pantalla (también al girar la tablet).
   const acotar = (x: number, y: number) => {

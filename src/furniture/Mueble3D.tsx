@@ -51,7 +51,18 @@ function EnTramo({ tr, children }: { tr: Transformacion | null; children: ReactN
 }
 
 /** Mueble completo en metros (internamente modelado en mm). */
-export function Mueble3D({ diseno, materiales, vista }: { diseno: Diseno; materiales: CatalogoMateriales | null; vista: OpcionesVista }) {
+export function Mueble3D({
+  diseno,
+  materiales,
+  vista,
+  respaldo = false,
+}: {
+  diseno: Diseno;
+  materiales: CatalogoMateriales | null;
+  vista: OpcionesVista;
+  /** Isla: el respaldo queda a la vista, terminado en la melamina de los frentes. */
+  respaldo?: boolean;
+}) {
   const props = { abierto: vista.abierto, etiquetas: vista.etiquetasFrentes, unidad: vista.unidad };
   const base = useMemo(() => disenoBase(diseno), [diseno]);
   // Dónde va cada equipo (encimeras, lavaplatos, hornos y campanas) en todos los tramos.
@@ -119,12 +130,21 @@ export function Mueble3D({ diseno, materiales, vista }: { diseno: Diseno; materi
               ))}
           </>
         )}
+        {respaldo && <Respaldo d={diseno} />}
         {vista.cotas && <Cotas diseno={diseno} unidad={vista.unidad} />}
         {vista.distancias && diseno.plantilla !== 'tocador' && <DistanciasEquipos diseno={diseno} unidad={vista.unidad} />}
         {vista.modulos && diseno.plantilla !== 'tocador' && <EtiquetasModulos diseno={diseno} unidad={vista.unidad} {...vista.modulos} />}
       </group>
     </MaterialesProvider>
   );
+}
+
+/** Respaldo terminado de una isla: tapa toda la cara de atrás bajo la cubierta. */
+function Respaldo({ d }: { d: Diseno }) {
+  const m = useMats();
+  const [x0, x1] = extremosPrincipal(d);
+  const yTope = d.alto - (esCocina(d) ? d.cocina.espesorCubierta : 0);
+  return <Panel x0={x0} x1={x1} y0={0} y1={yTope} z0={-d.espesor} z1={0} mat={m.frente} />;
 }
 
 /** Esquina de la L o la U: módulo ciego bajo la cubierta del tramo principal, tapado por el primer módulo del lado. */

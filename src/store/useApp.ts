@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { clasificarProducto, disenoInicial, disenoLibre } from '../../shared/catalogo';
 import { cuerposDe, ejecutar, normalizar, tramosDe, type Operacion, type Resultado, type TramoId } from '../../shared/reglas';
-import type { CatalogoMateriales, Cotizacion, Diseno, Escenario, Plantilla, ProductoCatalogo, Unidad, Usuario } from '../../shared/tipos';
+import { disenoIsla, disenoLinea, nuevoAdicional } from '../../shared/proyecto';
+import type { CatalogoMateriales, Cotizacion, Diseno, Escenario, MuebleAdicional, Plantilla, ProductoCatalogo, Unidad, Usuario } from '../../shared/tipos';
 import { obtenerCatalogo, obtenerMateriales, type RespuestaCatalogo } from '../datos/catalogo';
 import { backend } from '../datos';
 
@@ -31,7 +32,12 @@ interface Estado {
 
   producto: ProductoCatalogo | null;
   disenoBase: Diseno | null;
+  /** Mueble que se edita: el principal (con sus adicionales) o una isla / un mueble en línea. */
   diseno: Diseno;
+  /** Id del mueble adicional que se edita; null = el principal. */
+  muebleActivo: string | null;
+  /** Mientras se edita un adicional: el principal con todos los adicionales (el que se edita, como estaba al entrar). */
+  principal: Diseno | null;
   pasado: Diseno[];
   futuro: Diseno[];
   ultimoGrupo: { clave: string; t: number } | null;
@@ -42,7 +48,7 @@ interface Estado {
   cotas: boolean;
   fotoRef: boolean;
   /** Sección abierta en la franja inferior (desde el menú flotante); null = cerrada. */
-  pestana: Pestana | 'colores' | null;
+  pestana: Pestana | 'colores' | 'muebles' | null;
   /** Módulo seleccionado en la pestaña «Módulos y espacios» (índice dentro del tramo activo). */
   moduloActivo: number;
   /** Tramo que se edita: principal, lados de la L/U, aéreos y sus lados. */
@@ -86,6 +92,15 @@ interface Estado {
   rehacer: () => void;
   restablecer: () => void;
   cargarCotizacion: (c: Cotizacion) => void;
+  /** Pasa a editar otro mueble del proyecto (null = el principal). */
+  editarMueble: (id: string | null) => void;
+  /** Agrega una isla o un mueble en línea al proyecto y lo deja para editar. */
+  agregarMueble: (tipo: MuebleAdicional['tipo']) => void;
+  quitarMueble: (id: string) => void;
+  /** Cambia la ubicación (x, z en mm), el giro o el nombre de un mueble adicional. */
+  ubicarMueble: (id: string, cambios: Partial<Pick<MuebleAdicional, 'x' | 'z' | 'giro' | 'nombre'>>) => void;
+  /** Usa los colores del mueble que se edita en todos los muebles del proyecto. */
+  coloresATodos: () => void;
   verCotizacion: (c: Cotizacion) => void;
   set: (parcial: Partial<Estado>) => void;
   avisar: (texto: string, tipo?: Aviso['tipo']) => void;
@@ -151,10 +166,27 @@ function escribirBorrador(productoId: number | null, diseno: Diseno, unidad: Uni
   }
 }
 
-/** Deshacer y rehacer también actualizan el borrador: al recargar vuelve el diseño que se ve. */
-function guardarActual(s: { producto: ProductoCatalogo | null; diseno: Diseno; unidad: Unidad; cotizacionActual: CotizacionEnEdicion | null }) {
-  escribirBorrador(s.producto?.id ?? null, s.diseno, s.unidad, s.cotizacionActual);
+type EstadoProyecto = { diseno: Diseno; muebleActivo: string | null; principal: Diseno | null };
+
+/** El proyecto completo: el principal con todos sus adicionales (incluido el que se edita, al día). */
+export function proyectoDe(s: EstadoProyecto): Diseno {
+  if (!s.muebleActivo || !s.principal) return s.diseno;
+  return { ...s.principal, adicionales: (s.principal.adicionales ?? []).map((a) => (a.id === s.muebleActivo ? { ...a, diseno: s.diseno } : a)) };
 }
+
+/** El mueble adicional que se edita (null si es el principal). */
+export function adicionalActivo(s: EstadoProyecto): MuebleAdicional | null {
+  if (!s.muebleActivo || !s.principal) return null;
+  return s.principal.adicionales?.find((a) => a.id === s.muebleActivo) ?? null;
+}
+
+/** El borrador guarda siempre el proyecto completo: al recargar vuelve lo que se ve. */
+function guardarActual(s: EstadoProyecto & { producto: ProductoCatalogo | null; unidad: Unidad; cotizacionActual: CotizacionEnEdicion | null }) {
+  escribirBorrador(s.producto?.id ?? null, proyectoDe(s), s.unidad, s.cotizacionActual);
+}
+
+/** Al cambiar de producto o de cotización se vuelve a editar el principal. */
+const SIN_ADICIONAL = { muebleActivo: null, principal: null } as const;
 
 let idAviso = 0;
 let idRechazo = 0;
@@ -167,6 +199,8 @@ export const useApp = create<Estado>((set, get) => ({
   producto: null,
   disenoBase: null,
   diseno: disenoLibre('cocina'),
+  muebleActivo: null,
+  principal: null,
   pasado: [],
   futuro: [],
   ultimoGrupo: null,
@@ -210,6 +244,7 @@ export const useApp = create<Estado>((set, get) => ({
           producto: producto ?? null,
           disenoBase: producto ? disenoInicial(producto) : null,
           diseno: normalizar(borrador.diseno),
+          ...SIN_ADICIONAL,
           unidad: borrador.unidad ?? 'cm',
           cotizacionActual: borrador.cotizacion ?? null,
           encuadre: get().encuadre + 1,
@@ -232,6 +267,7 @@ export const useApp = create<Estado>((set, get) => ({
       producto,
       disenoBase: d,
       diseno: d,
+      ...SIN_ADICIONAL,
       pasado: [],
       futuro: [],
       cotizacionActual: null,
@@ -252,6 +288,7 @@ export const useApp = create<Estado>((set, get) => ({
       producto: null,
       disenoBase: null,
       diseno: d,
+      ...SIN_ADICIONAL,
       pasado: [],
       futuro: [],
       cotizacionActual: null,
@@ -267,7 +304,7 @@ export const useApp = create<Estado>((set, get) => ({
   },
 
   cambiar(f, grupo) {
-    const { diseno, pasado, ultimoGrupo, producto, unidad, cotizacionActual } = get();
+    const { diseno, pasado, ultimoGrupo } = get();
     const nuevo = f(diseno);
     if (nuevo === diseno) return;
     const ahora = Date.now();
@@ -281,7 +318,7 @@ export const useApp = create<Estado>((set, get) => ({
       // Si el cambio quita el tramo que se editaba (forma lineal, sin aéreos), se vuelve al principal.
       ...seleccionValida(nuevo, get().tramoActivo, get().moduloActivo),
     });
-    escribirBorrador(producto?.id ?? null, nuevo, unidad, cotizacionActual);
+    guardarActual(get());
   },
 
   operar(op, grupo) {
@@ -313,8 +350,13 @@ export const useApp = create<Estado>((set, get) => ({
 
   restablecer() {
     const { disenoBase, diseno } = get();
-    const base = disenoBase ?? disenoLibre(diseno.plantilla);
-    get().cambiar(() => base);
+    const adicional = adicionalActivo(get());
+    // Un adicional vuelve a su medida estándar; el principal, al producto (y conserva sus adicionales).
+    if (adicional) get().cambiar(() => (adicional.tipo === 'isla' ? disenoIsla : disenoLinea)(get().principal!));
+    else {
+      const base = disenoBase ?? disenoLibre(diseno.plantilla);
+      get().cambiar(() => (diseno.adicionales?.length ? { ...base, adicionales: diseno.adicionales } : base));
+    }
     set({ encuadre: get().encuadre + 1, moduloActivo: 0, tramoActivo: 'base' });
   },
 
@@ -328,6 +370,7 @@ export const useApp = create<Estado>((set, get) => ({
       producto,
       disenoBase: producto ? disenoInicial(producto) : null,
       diseno: d,
+      ...SIN_ADICIONAL,
       pasado: [],
       futuro: [],
       cotizacionActual: resumen,
@@ -341,16 +384,72 @@ export const useApp = create<Estado>((set, get) => ({
     escribirBorrador(c.productoId, d, get().unidad, resumen);
   },
 
+  editarMueble(id) {
+    const s = get();
+    if (id === s.muebleActivo) return;
+    const proyecto = proyectoDe(s);
+    const destino = id ? proyecto.adicionales?.find((a) => a.id === id) : null;
+    if (id && !destino) return;
+    set({
+      diseno: destino ? destino.diseno : proyecto,
+      muebleActivo: destino ? destino.id : null,
+      principal: destino ? proyecto : null,
+      // Cada mueble tiene su historial: al cambiar de mueble se empieza de nuevo.
+      pasado: [],
+      futuro: [],
+      ultimoGrupo: null,
+      moduloActivo: 0,
+      tramoActivo: 'base',
+      rechazo: null,
+      abierto: false,
+    });
+    guardarActual(get());
+  },
+
+  agregarMueble(tipo) {
+    const proyecto = proyectoDe(get());
+    const a = nuevoAdicional(proyecto, tipo);
+    set({ diseno: { ...proyecto, adicionales: [...(proyecto.adicionales ?? []), a] }, ...SIN_ADICIONAL });
+    get().editarMueble(a.id);
+    set({ encuadre: get().encuadre + 1 });
+    get().avisar(`«${a.nombre}» se agregó al proyecto. Elige en «Muebles» cuál editas y dónde va.`);
+  },
+
+  quitarMueble(id) {
+    const proyecto = proyectoDe(get());
+    const a = proyecto.adicionales?.find((x) => x.id === id);
+    if (!a) return;
+    const resto = (proyecto.adicionales ?? []).filter((x) => x.id !== id);
+    const { adicionales: _a, ...sin } = proyecto;
+    set({ diseno: resto.length ? { ...sin, adicionales: resto } : sin, ...SIN_ADICIONAL, pasado: [], futuro: [], moduloActivo: 0, tramoActivo: 'base', rechazo: null, encuadre: get().encuadre + 1 });
+    guardarActual(get());
+    get().avisar(`Se quitó «${a.nombre}» del proyecto.`, 'info');
+  },
+
+  ubicarMueble(id, cambios) {
+    const mover = (p: Diseno): Diseno => ({ ...p, adicionales: (p.adicionales ?? []).map((a) => (a.id === id ? { ...a, ...cambios } : a)) });
+    if (get().muebleActivo) set({ principal: mover(get().principal!) });
+    else set({ diseno: mover(get().diseno) });
+    guardarActual(get());
+  },
+
+  coloresATodos() {
+    const { diseno, muebleActivo, principal } = get();
+    const materiales = diseno.materiales;
+    const pintar = (a: MuebleAdicional): MuebleAdicional => (a.id === muebleActivo ? a : { ...a, diseno: { ...a.diseno, materiales: { ...materiales } } });
+    if (muebleActivo && principal) set({ principal: { ...principal, materiales: { ...materiales }, adicionales: (principal.adicionales ?? []).map(pintar) } });
+    else get().cambiar((d) => ({ ...d, adicionales: (d.adicionales ?? []).map(pintar) }));
+    guardarActual(get());
+    get().avisar('Todos los muebles del proyecto quedaron con estos colores.');
+  },
+
   verCotizacion(c) {
     set({ cotizacionVista: c, modal: 'documento' });
   },
 
   set(parcial) {
     set(parcial);
-    if ('unidad' in parcial || 'cotizacionActual' in parcial) {
-      const { producto, diseno, unidad, cotizacionActual } = get();
-      escribirBorrador(producto?.id ?? null, diseno, unidad, cotizacionActual);
-    }
+    if ('unidad' in parcial || 'cotizacionActual' in parcial) guardarActual(get());
   },
 
   fijarVista(cambios) {

@@ -41,6 +41,8 @@ export const TARIFAS = {
   corte: 0,
   /** Campana, por cada una. */
   campana: 70000,
+  /** Isla: valor por metro lineal (más sus equipos y opciones). */
+  isla: 170000,
   /** Mueble aéreo: valor por metro lineal (lineal, L o U; cada lado a su largo completo) más los recargos de alto y fondo. */
   aereo: {
     /** Valor por metro lineal del aéreo estándar (alto y fondo base incluidos). */
@@ -242,5 +244,24 @@ export function precioCocina(d: Diseno): PrecioCocina {
   lineas.push(...lineasOpciones(d));
   const aereo = precioAereo(d);
   if (aereo) lineas.push(...aereo.lineas);
+  return { total: lineas.reduce((s, l) => s + l.valor, 0), lineas };
+}
+
+/**
+ * Precio de una isla: su largo en metros × la tarifa de isla (en vez del metro lineal por fondo del
+ * mueble base), más sus equipos, especieros y opciones como cualquier cocina.
+ */
+export function precioIsla(d: Diseno): PrecioCocina {
+  const p = precioCocina(d);
+  const resto = p.lineas.filter((l) => !l.concepto.startsWith('Mueble base'));
+  const isla: LineaPrecio = {
+    concepto: 'Isla',
+    detalle: `${fmtM(d.ancho)} × ${fmtPesos(TARIFAS.isla)} por metro`,
+    cantidad: d.ancho / 1000,
+    unidad: 'm',
+    unitario: TARIFAS.isla,
+    valor: Math.round((d.ancho * TARIFAS.isla) / 1000),
+  };
+  const lineas = [isla, ...resto];
   return { total: lineas.reduce((s, l) => s + l.valor, 0), lineas };
 }

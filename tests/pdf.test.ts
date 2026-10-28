@@ -236,3 +236,32 @@ describe('hoja para el maestro', () => {
   });
 });
 
+
+describe('hoja para el maestro de un proyecto con isla', () => {
+  it('lleva las secciones y el esquema de la isla con su nombre, y el PDF se arma', async () => {
+    const { nuevoAdicional, detalleProyecto } = await import('../shared/proyecto');
+    const base = cocinaEnL();
+    const isla = nuevoAdicional(base, 'isla');
+    const p = { ...base, adicionales: [isla] };
+    const c = contenidoHoja(p, producto, 'cm', materiales);
+    expect(c.ficha.secciones.some((s) => s.titulo.startsWith('Isla · '))).toBe(true);
+    expect(c.muros.some((m) => m.titulo.startsWith('Isla · '))).toBe(true);
+    const detalle = detalleProyecto(p, producto, 'cm', materiales);
+    expect(detalle.find((l) => l.etiqueta === 'Isla')?.valor).toContain('150 × 90 × 90 cm');
+    const doc = crearHojaMaestro({
+      marca: 'dto',
+      numero: 'COT-0099',
+      cliente: { nombre: 'Cliente', telefono: null, email: null, direccion: null },
+      fecha: '2026-10-28',
+      vendedor: 'Camila',
+      modelo: 'Cocina + Isla',
+      imagen: JPEG,
+      diseno: p,
+      producto,
+      materiales,
+      unidad: 'cm',
+      observaciones: null,
+    });
+    expect(doc.getNumberOfPages()).toBeGreaterThan(1);
+  });
+});
