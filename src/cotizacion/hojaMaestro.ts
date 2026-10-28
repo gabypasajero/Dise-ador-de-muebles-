@@ -21,7 +21,7 @@ import {
   type Layout,
   type LayoutAereos,
 } from '../../shared/layout';
-import { formatear, normalizar } from '../../shared/reglas';
+import { formatear, NOMBRE_LAVAPLATOS, normalizar } from '../../shared/reglas';
 import { fichaFabricacion, formatoFecha, type FichaFabricacion, type SeccionFicha, type TablaFicha } from '../../shared/resumen';
 import type { CatalogoMateriales, Cliente, Diseno, LadoId, LineaDetalle, ProductoCatalogo, TramoId, Unidad } from '../../shared/tipos';
 import { A4, COLORES_MARCA, colorTexto, dibujarCabecera, dibujarImagen, dibujarLogo, fuente, GRIS, latin1, LINEA, MARGEN, nombreArchivo, TEXTO, type Rgb } from './pdf';
@@ -72,7 +72,7 @@ const NOMBRE_EQUIPO: Record<string, (d: Diseno, id: string) => string> = {
   },
   lavaplatos: (d, id) => {
     const e = d.equipos.find((x) => x.id === id);
-    return e && e.tipo === 'lavaplatos' ? (e.soloCorte ? 'Corte lavaplatos' : `Lavaplatos ${e.modelo === 'rinonera' ? 'riñonera' : e.modelo}`) : 'Lavaplatos';
+    return e && e.tipo === 'lavaplatos' ? (e.soloCorte ? 'Corte lavaplatos' : `Lavaplatos ${NOMBRE_LAVAPLATOS[e.modelo]}`) : 'Lavaplatos';
   },
 };
 

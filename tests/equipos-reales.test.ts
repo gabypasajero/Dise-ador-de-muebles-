@@ -72,7 +72,7 @@ describe('medidas reales del equipamiento', () => {
 
 describe('lavaplatos riñonera', () => {
   it('se ofrece en la cocina adulta y el asistente lo acepta', () => {
-    expect(opcionesEquipo('cocina').lavaplatos).toEqual(['simple', 'doble', 'rinonera']);
+    expect(opcionesEquipo('cocina').lavaplatos).toEqual(['simple', 'doble', 'rinonera', 'pozo', 'pozo-doble']);
     expect(opcionesEquipo('cocina-infantil').lavaplatos).toEqual(['simple']);
     expect(revisarOperacion({ op: 'configurarEquipo', id: 'x', cambios: { modelo: 'rinonera' } })).toBeNull();
   });

@@ -1,6 +1,7 @@
 // Equipamiento de cocina: dónde puede ir cada equipo, cómo se reubica cuando su
 // módulo cambia o desaparece, el listado para la interfaz y la alineación
 // central de las campanas sobre sus encimeras.
+import { NOMBRE_LAVAPLATOS } from './tarifas';
 import { cuerpo as nuevoCuerpo } from './catalogo';
 import {
   anchoTotalEquipo,
@@ -53,7 +54,7 @@ export function opcionesEquipo(p: Plantilla): {
   llave: boolean;
 } {
   if (p === 'cocina-infantil') return { platos: ['2', '3', '4'], lavaplatos: ['simple'], campana: false, horno: false, llave: false };
-  if (esAdulta(p)) return { platos: ['3', '4'], lavaplatos: ['simple', 'doble', 'rinonera'], campana: true, horno: true, llave: true };
+  if (esAdulta(p)) return { platos: ['3', '4'], lavaplatos: ['simple', 'doble', 'rinonera', 'pozo', 'pozo-doble'], campana: true, horno: true, llave: true };
   return { platos: [], lavaplatos: [], campana: false, horno: false, llave: false };
 }
 
@@ -208,7 +209,7 @@ export function choqueEnModulo(d: Diseno, e: Equipo): string | null {
 
 /** «simple», «doble», «riñonera». */
 export function nombreModeloLavaplatos(m: Lavaplatos['modelo']): string {
-  return m === 'rinonera' ? 'riñonera' : m;
+  return NOMBRE_LAVAPLATOS[m];
 }
 
 function nombreEquipo(e: Equipo): string {
@@ -237,7 +238,7 @@ export function repararEquipos(d: Diseno, ctx: Ctx, cerca: Map<string, { tramo: 
       e.campana = adulta && e.campana === true;
     } else {
       if (!adulta) e.modelo = 'simple';
-      if (e.modelo !== 'doble' && e.modelo !== 'rinonera') e.modelo = 'simple';
+      if (!(e.modelo in MEDIDAS_EQUIPO.lavaplatos)) e.modelo = 'simple';
       // La llave es de la cocina adulta (la grifería de la infantil es de juguete y no se cobra).
       e.llave = adulta && e.llave !== false;
       if (e.posicion !== 'izq' && e.posicion !== 'der') e.posicion = 'centro';

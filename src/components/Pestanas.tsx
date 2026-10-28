@@ -117,6 +117,15 @@ const NOMBRE_TIPO: Record<Cuerpo['tipo'], string> = {
   refrigerador: 'Sobre refrigerador',
 };
 
+/** Modelos de lavaplatos en el selector de Equipos. */
+const TEXTO_LAVAPLATOS: Record<Lavaplatos['modelo'], string> = {
+  simple: 'Simple (con secador, 80 cm)',
+  doble: 'Doble (77 cm)',
+  rinonera: 'Riñonera (61 cm)',
+  pozo: 'De pozo (acero oscuro, 55 cm)',
+  'pozo-doble': 'De pozo doble (acero oscuro, 82 cm)',
+};
+
 // ---------- Tramos ----------
 
 /** Orden en que se ven los tramos: de izquierda a derecha, primero el mueble base y luego los aéreos. */
@@ -1200,11 +1209,11 @@ function OpcionesLavaplatos({ d, l, unidad, config, ops }: { d: Diseno; l: Lavap
   return (
     <>
       {ops.lavaplatos.length > 1 && (
-        <Segmentado
+        <Selector
           etiqueta="Modelo"
           valor={l.modelo}
           onCambio={(v) => config({ modelo: v })}
-          opciones={ops.lavaplatos.map((m) => ({ valor: m, texto: m === 'simple' ? 'Simple' : m === 'doble' ? 'Doble' : 'Riñonera' }))}
+          opciones={ops.lavaplatos.map((m) => ({ valor: m, texto: TEXTO_LAVAPLATOS[m] }))}
         />
       )}
       <Interruptor activo={l.soloCorte} onCambio={(v) => config({ soloCorte: v })} texto="Solo corte (el cliente trae el equipo)" />

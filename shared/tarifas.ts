@@ -21,7 +21,7 @@ export const TARIFAS = {
   /** Horno eléctrico 58 L Sindelen, por cada uno. */
   horno: 170000,
   /** Lavaplatos según modelo (simple con secador, doble, riñonera). */
-  lavaplatos: { simple: 40000, doble: 70000, rinonera: 40000 } as Record<'simple' | 'doble' | 'rinonera', number>,
+  lavaplatos: { simple: 40000, doble: 70000, rinonera: 40000, pozo: 40000, 'pozo-doble': 70000 } as Record<'simple' | 'doble' | 'rinonera' | 'pozo' | 'pozo-doble', number>,
   /** Llave monomando, una por lavaplatos que la lleve. */
   llave: 16000,
   /** Especiero extraíble, por cada uno. */
@@ -56,6 +56,15 @@ export const TARIFAS = {
     /** Si quedan 5 cm sueltos. */
     resto5Cm: 10000,
   },
+};
+
+/** Nombre de cada modelo de lavaplatos tal como se lee: «simple», «riñonera», «de pozo»… */
+export const NOMBRE_LAVAPLATOS: Record<'simple' | 'doble' | 'rinonera' | 'pozo' | 'pozo-doble', string> = {
+  simple: 'simple',
+  doble: 'doble',
+  rinonera: 'riñonera',
+  pozo: 'de pozo',
+  'pozo-doble': 'de pozo doble',
 };
 
 export interface LineaPrecio {
@@ -228,9 +237,9 @@ export function precioCocina(d: Diseno): PrecioCocina {
   const hornos = [d.cuerpos, d.lados?.izq?.cuerpos ?? [], d.lados?.der?.cuerpos ?? []].flat().filter((c) => c.tipo === 'horno').length;
   if (hornos) lineas.push(lineaUnidades(NOMBRE_HORNO, hornos, TARIFAS.horno));
   const lavaplatos = equipos.filter((e) => e.tipo === 'lavaplatos');
-  for (const modelo of ['simple', 'doble', 'rinonera'] as const) {
+  for (const modelo of ['simple', 'doble', 'rinonera', 'pozo', 'pozo-doble'] as const) {
     const n = lavaplatos.filter((e) => !e.soloCorte && e.modelo === modelo).length;
-    if (n) lineas.push(lineaUnidades(`Lavaplatos ${modelo === 'rinonera' ? 'riñonera' : modelo}`, n, TARIFAS.lavaplatos[modelo]));
+    if (n) lineas.push(lineaUnidades(`Lavaplatos ${NOMBRE_LAVAPLATOS[modelo]}`, n, TARIFAS.lavaplatos[modelo]));
   }
   // Solo corte: el cliente trae el equipo; se cobra solo el hueco en la cubierta (TARIFAS.corte).
   const cortesEncimera = encimeras.filter((e) => e.soloCorte).length;

@@ -169,8 +169,11 @@ export interface Lavaplatos {
   tipo: 'lavaplatos';
   tramo: TramoBase;
   modulo: string;
-  /** Simple (cubeta + secador, 80 cm), doble (2 cubetas) o riñonera (1 cubeta redondeada, 61 cm). */
-  modelo: 'simple' | 'doble' | 'rinonera';
+  /**
+   * Simple (cubeta + secador, 80 cm), doble (2 cubetas), riñonera (1 cubeta redondeada, 61 cm),
+   * de pozo (1 cubeta cuadrada honda, acero oscuro) o de pozo doble (2 cubetas cuadradas, acero oscuro).
+   */
+  modelo: 'simple' | 'doble' | 'rinonera' | 'pozo' | 'pozo-doble';
   /** Llave (grifería) incluida. */
   llave: boolean;
   /** Centrado en su módulo o pegado a su borde izquierdo o derecho. */

@@ -75,7 +75,7 @@ import {
   type Ctx,
 } from './equipos';
 import { revisarOperacion } from './operaciones';
-import { contarModulos, lineasOpciones, NOMBRE_HORNO, precioAereo, precioCocina, TARIFAS, type LineaPrecio } from './tarifas';
+import { contarModulos, lineasOpciones, NOMBRE_HORNO, NOMBRE_LAVAPLATOS, precioAereo, precioCocina, TARIFAS, type LineaPrecio } from './tarifas';
 import type {
   AjustesPrecio,
   Aereos,
@@ -126,7 +126,7 @@ export {
   type Rol,
 } from './tramos';
 export { listarEquipamiento, moduloCampana, nombreModuloEn, nombreTramo, opcionesEquipo, type ItemEquipo } from './equipos';
-export { precioCocina, TARIFAS, type LineaPrecio, type PrecioCocina } from './tarifas';
+export { NOMBRE_LAVAPLATOS, precioCocina, TARIFAS, type LineaPrecio, type PrecioCocina } from './tarifas';
 export { describirOperaciones, OPERACIONES, revisarOperacion, type CampoOperacion, type DescripcionOperacion } from './operaciones';
 export type { Forma, LadoId, Tramo, TramoAereo, TramoBase, TramoId } from './tipos';
 
@@ -2007,7 +2007,7 @@ export function formaAereos(d: Diseno): Forma {
 export function equipoLegado(d: Diseno): {
   encimera: 'ninguna' | '2' | '3' | '4';
   encimeraCuerpo: number;
-  lavaplatos: 'ninguno' | 'simple' | 'doble' | 'rinonera';
+  lavaplatos: 'ninguno' | Lavaplatos['modelo'];
   lavaplatosCuerpo: number;
 } {
   const equipos = d.equipos ?? [];
@@ -2300,7 +2300,7 @@ function advertenciasTodas(d: Diseno, unidad: Unidad): Advertencia[] {
       const nombre = nombreModuloEn(d, e.tramo, i);
       if (e.tipo === 'lavaplatos') {
         const necesita = MODULO_MIN_LAVAPLATOS[e.modelo];
-        if (c.ancho < necesita) out.push({ nivel: 'aviso', texto: `El lavaplatos ${e.modelo === 'rinonera' ? 'riñonera' : e.modelo} necesita un módulo de al menos ${f(necesita)} (el ${nombre} mide ${f(c.ancho)}).` });
+        if (c.ancho < necesita) out.push({ nivel: 'aviso', texto: `El lavaplatos ${NOMBRE_LAVAPLATOS[e.modelo]} necesita un módulo de al menos ${f(necesita)} (el ${nombre} mide ${f(c.ancho)}).` });
         else if (e.posicion !== 'centro' && c.ancho < anchoTotalEquipo(d, e) + e.margen + 15) {
           out.push({ nivel: 'aviso', texto: `El lavaplatos pegado al borde no cabe en el ${nombre} con ${f(e.margen)} de margen.` });
         }
@@ -2439,7 +2439,7 @@ export function precioReferencial(d: Diseno, base: ProductoCatalogo | null, dise
   return Math.round(precio / 1000) * 1000 - 10;
 }
 
-const NOMBRE_MODELO_LAVAPLATOS: Record<string, string> = { simple: 'simple', doble: 'doble', rinonera: 'riñonera' };
+const NOMBRE_MODELO_LAVAPLATOS: Record<string, string> = NOMBRE_LAVAPLATOS;
 
 /**
  * Descuento al quitar un equipo de un mueble del catálogo (o pedirlo como solo corte): el mueble
@@ -2448,7 +2448,8 @@ const NOMBRE_MODELO_LAVAPLATOS: Record<string, string> = { simple: 'simple', dob
 export const DESCUENTO_EQUIPO = {
   encimera: { '3': 35000, '4': 55000 } as Record<'3' | '4', number>,
   // El doble no tiene descuento: la tienda no lo informa.
-  lavaplatos: { simple: 19000, doble: 0, rinonera: 19000 } as Record<'simple' | 'doble' | 'rinonera', number>,
+  // Los dobles (también el de pozo doble) no tienen descuento: la tienda no lo informa.
+  lavaplatos: { simple: 19000, doble: 0, rinonera: 19000, pozo: 19000, 'pozo-doble': 0 } as Record<'simple' | 'doble' | 'rinonera' | 'pozo' | 'pozo-doble', number>,
   /** Por cada horno que traía el producto y se retira. */
   horno: 120000,
 };

@@ -56,7 +56,7 @@ describe('precio de la tienda con descuentos por equipos', () => {
   });
 
   it('los valores de descuento son los de la tienda', () => {
-    expect(DESCUENTO_EQUIPO).toEqual({ encimera: { '3': 35000, '4': 55000 }, lavaplatos: { simple: 19000, doble: 0, rinonera: 19000 }, horno: 120000 });
+    expect(DESCUENTO_EQUIPO).toEqual({ encimera: { '3': 35000, '4': 55000 }, lavaplatos: { simple: 19000, doble: 0, rinonera: 19000, pozo: 19000, 'pozo-doble': 0 }, horno: 120000 });
   });
 
   it('cierre suave, sin manilla y especiero agregado se suman al precio de la tienda', () => {

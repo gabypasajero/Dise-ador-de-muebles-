@@ -3,6 +3,7 @@
 import { Html } from '@react-three/drei';
 import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
+import type { Lavaplatos as EquipoLavaplatos } from '../../shared/tipos';
 import { Cilindro, Panel, useMats } from './base3d';
 
 export interface Hueco {
@@ -149,7 +150,25 @@ export function trazarHueco(p: THREE.Path, h: Hueco) {
  * Huecos (cortes) de las cubetas, centrados en (cx, cz). Simple: cubeta de 40 × 36 cm con esquinas
  * redondeadas; doble: dos cubetas rectas; riñonera: una cubeta grande redondeada de 55 × 40 cm.
  */
-export function huecosLavaplatos(tipo: 'simple' | 'doble' | 'rinonera', cx: number, cz: number, escala = 1): Hueco[] {
+export function huecosLavaplatos(tipo: EquipoLavaplatos['modelo'], cx: number, cz: number, escala = 1): Hueco[] {
+  if (tipo === 'pozo') {
+    // De pozo: una cubeta cuadrada y honda, de esquinas apenas redondeadas.
+    const w = 480 * escala;
+    const d = 400 * escala;
+    return [{ x0: cx - w / 2, x1: cx + w / 2, z0: cz - d / 2, z1: cz + d / 2, radio: 14 * escala }];
+  }
+  if (tipo === 'pozo-doble') {
+    // De pozo doble: una cubeta grande y una más chica, separadas por un puente angosto.
+    const grande = 430 * escala;
+    const chica = 320 * escala;
+    const sep = 30 * escala;
+    const d = 400 * escala;
+    const x0 = cx - (grande + sep + chica) / 2;
+    return [
+      { x0, x1: x0 + grande, z0: cz - d / 2, z1: cz + d / 2, radio: 14 * escala },
+      { x0: x0 + grande + sep, x1: x0 + grande + sep + chica, z0: cz - d / 2, z1: cz + d / 2, radio: 14 * escala },
+    ];
+  }
   if (tipo === 'rinonera') {
     const w = 550 * escala;
     const d = 400 * escala;
@@ -168,8 +187,12 @@ export function huecosLavaplatos(tipo: 'simple' | 'doble' | 'rinonera', cx: numb
 /** Acero de la cubeta: algo más oscuro que el ala y visible por ambas caras (se ve desde adentro). */
 const MAT_CUBETA = new THREE.MeshStandardMaterial({ color: '#a4a8ad', metalness: 0.75, roughness: 0.38, side: THREE.DoubleSide });
 
+/** Acero oscuro (grafito) de los lavaplatos de pozo, como en las fotos de la tienda. */
+const MAT_POZO = new THREE.MeshStandardMaterial({ color: '#3c3f43', metalness: 0.3, roughness: 0.55, side: THREE.DoubleSide });
+const MAT_POZO_ALA = new THREE.MeshStandardMaterial({ color: '#6a6d72', metalness: 0.72, roughness: 0.36 });
+
 /** Cubeta de esquinas redondeadas: paredes (anillo extruido hacia abajo) y fondo. */
-function CubetaRedondeada({ h, yTop, p }: { h: Hueco; yTop: number; p: number }) {
+function CubetaRedondeada({ h, yTop, p, material = MAT_CUBETA }: { h: Hueco; yTop: number; p: number; material?: THREE.Material }) {
   const geo = useMemo(() => {
     const s = new THREE.Shape();
     trazarHueco(s, { ...h, x0: h.x0 - 1.5, x1: h.x1 + 1.5, z0: h.z0 - 1.5, z1: h.z1 + 1.5, radio: (h.radio ?? 0) + 1.5 });
@@ -195,8 +218,8 @@ function CubetaRedondeada({ h, yTop, p }: { h: Hueco; yTop: number; p: number })
   );
   return (
     <group>
-      <mesh geometry={geo.paredes} material={MAT_CUBETA} />
-      <mesh geometry={geo.fondo} material={MAT_CUBETA} />
+      <mesh geometry={geo.paredes} material={material} />
+      <mesh geometry={geo.fondo} material={material} />
     </group>
   );
 }
@@ -218,13 +241,14 @@ export function Lavaplatos({
   escala?: number;
   /** La llave es del lavaplatos: se puede cotizar sin ella. */
   llave?: boolean;
-  /** Simple: cubeta a la izquierda y secador estriado a la derecha; riñonera: repisa para la llave atrás. */
-  modelo?: 'simple' | 'doble' | 'rinonera';
+  /** Simple: cubeta a la izquierda y secador estriado a la derecha; riñonera: repisa para la llave atrás; de pozo: acero oscuro y cubetas hondas. */
+  modelo?: EquipoLavaplatos['modelo'];
   /** Ancho total del equipo (x0..x1) cuando es más que las cubetas con su ala (el secador del simple). */
   contorno?: { x0: number; x1: number };
 }) {
   const m = useMats();
-  const margen = (modelo === 'rinonera' ? 30 : 38) * escala;
+  const pozo = modelo === 'pozo' || modelo === 'pozo-doble';
+  const margen = (modelo === 'rinonera' ? 30 : pozo ? 34 : 38) * escala;
   const ext = {
     x0: contorno?.x0 ?? Math.min(...huecos.map((h) => h.x0)) - margen,
     x1: contorno?.x1 ?? Math.max(...huecos.map((h) => h.x1)) + margen,
@@ -247,6 +271,7 @@ export function Lavaplatos({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clave, yTop, margen, ext.x0, ext.x1]);
   useEffect(() => () => ala.dispose(), [ala]);
+  // La cubeta no baja del espesor de la cubierta: debajo está el techo del módulo.
   const p = profundidadCuba;
   const e = 1.5;
   const h0 = huecos[0];
@@ -272,7 +297,7 @@ export function Lavaplatos({
   }
   return (
     <group>
-      <mesh geometry={ala} material={m.acero} castShadow receiveShadow />
+      <mesh geometry={ala} material={pozo ? MAT_POZO_ALA : m.acero} castShadow receiveShadow />
       {/* Labio levantado del borde del ala. */}
       <Panel x0={ext.x0} x1={ext.x1} y0={yTop + 4} y1={yTop + 7} z0={ext.z0} z1={ext.z0 + 6 * escala} mat={m.aceroCepillado} sombra={false} />
       <Panel x0={ext.x0} x1={ext.x1} y0={yTop + 4} y1={yTop + 7} z0={ext.z1 - 6 * escala} z1={ext.z1} mat={m.aceroCepillado} sombra={false} />
@@ -287,7 +312,7 @@ export function Lavaplatos({
         return (
           <group key={i}>
             {h.radio ? (
-              <CubetaRedondeada h={h} yTop={yTop} p={p} />
+              <CubetaRedondeada h={h} yTop={yTop} p={p} material={pozo ? MAT_POZO : MAT_CUBETA} />
             ) : (
               <>
                 <Panel x0={h.x0} x1={h.x1} y0={yTop - p} y1={yTop - p + e} z0={h.z0} z1={h.z1} mat={m.aceroCepillado} sombra={false} />
