@@ -109,8 +109,14 @@ export function MenuFlotante() {
             </button>
           ))}
           <div className="menu-flotante-ajustes">
-            <button type="button" title={e.vertical ? 'Poner horizontal' : 'Poner vertical'} aria-label={e.vertical ? 'Poner horizontal' : 'Poner vertical'} onClick={() => setE((v) => ({ ...v, vertical: !v.vertical }))}>
-              {e.vertical ? '⇆' : '⇅'}
+            <button
+              type="button"
+              className="con-texto"
+              title={e.vertical ? 'Poner horizontal' : 'Poner vertical'}
+              aria-label={e.vertical ? 'Poner horizontal' : 'Poner vertical'}
+              onClick={() => setE((v) => ({ ...v, vertical: !v.vertical }))}
+            >
+              {e.vertical ? '⇆ Horizontal' : '⇅'}
             </button>
             <button type="button" title="Achicar al costado" aria-label="Achicar el menú al costado" onClick={achicar}>
               ⇥

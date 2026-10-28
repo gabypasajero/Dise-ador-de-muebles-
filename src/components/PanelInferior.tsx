@@ -301,6 +301,14 @@ export function PanelInferior() {
                 )}
               </div>
             )}
+            <Segmentado
+              valor={unidad}
+              onCambio={(u) => set({ unidad: u })}
+              opciones={[
+                { valor: 'cm', texto: 'cm', titulo: 'Centímetros' },
+                { valor: 'mm', texto: 'mm', titulo: 'Milímetros' },
+              ]}
+            />
             <button type="button" className="cerrar-seccion" aria-label={`Cerrar ${titulo}`} title="Cerrar" onClick={() => set({ pestana: null })}>
               ✕
             </button>
@@ -325,14 +333,6 @@ export function PanelInferior() {
           <FilaMedida nombre="Ancho" icono="↔" valor={d.ancho + esquinas} limites={[lim.ancho[0] + esquinas, lim.ancho[1] + esquinas]} unidad={unidad} onCambio={(mm) => operar({ op: 'fijarAncho', ancho: mm - esquinas }, 'ancho')} />
           <FilaMedida nombre="Alto" icono="↕" valor={d.alto} limites={lim.alto} unidad={unidad} onCambio={(mm) => operar({ op: 'fijarAlto', alto: mm }, 'alto')} />
           <FilaMedida nombre="Fondo" icono="⤢" valor={d.profundidad} limites={lim.profundidad} unidad={unidad} onCambio={(mm) => operar({ op: 'fijarProfundidad', profundidad: mm }, 'profundidad')} />
-          <Segmentado
-            valor={unidad}
-            onCambio={(u) => set({ unidad: u })}
-            opciones={[
-              { valor: 'cm', texto: 'cm', titulo: 'Centímetros' },
-              { valor: 'mm', texto: 'mm', titulo: 'Milímetros' },
-            ]}
-          />
           {d.plantilla === 'cocina' && (
             <Interruptor
               activo={d.aereos.activo}
@@ -378,13 +378,9 @@ export function PanelInferior() {
             <button type="button" className="boton primario" onClick={() => set({ modal: 'registrarCotizacion' })}>
               <IcoGuardar /> {editable ? `Actualizar ${cotizacion!.numero}` : 'Registrar cotización'}
             </button>
-            {cotizacion ? (
+            {cotizacion && (
               <button type="button" className="boton secundario" onClick={() => verActual()}>
                 Ver cotización
-              </button>
-            ) : (
-              <button type="button" className="boton secundario" onClick={() => set({ modal: 'cotizaciones' })}>
-                Mis cotizaciones
               </button>
             )}
           </div>

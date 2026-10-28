@@ -3720,8 +3720,8 @@ h3 {
 .barra-simple {
   display: flex;
   align-items: center;
-  gap: 12px 20px;
-  padding: 8px 16px;
+  gap: 6px 14px;
+  padding: 4px 12px;
   flex-wrap: wrap;
 }
 
@@ -3737,9 +3737,26 @@ h3 {
 }
 
 .app .barra-simple .fila-medida {
-  grid-template-columns: auto 150px;
-  padding: 4px 8px;
-  gap: 8px;
+  grid-template-columns: auto 92px;
+  padding: 2px 6px;
+  gap: 4px;
+  border: none;
+  background: none;
+}
+
+.app .barra-simple .fila-medida-nombre {
+  font-size: 13px;
+}
+
+.app .barra-simple .icono-medida {
+  display: none;
+}
+
+.app .barra-simple .boton,
+.app .barra-simple .segmentado button {
+  padding-top: 6px;
+  padding-bottom: 6px;
+  font-size: 13px;
 }
 
 /* El deslizador vive en la sección; la barra queda limpia, solo el número. */
@@ -3759,7 +3776,7 @@ h3 {
 }
 
 .app .barra-simple .precio {
-  font-size: 22px;
+  font-size: 19px;
 }
 
 .app .barra-simple .acciones-precio {
@@ -3788,7 +3805,7 @@ h3 {
 
 .seccion-abierta {
   border-bottom: 1px solid var(--borde);
-  padding: 0 16px 10px;
+  padding: 0 12px 6px;
   display: flex;
   flex-direction: column;
   animation: subir-seccion 0.18s ease-out;
@@ -3828,7 +3845,7 @@ h3 {
 }
 
 .seccion-cabeza h2 {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 800;
   margin: 0;
   color: var(--acento);
@@ -3839,8 +3856,8 @@ h3 {
   border: 1px solid var(--borde);
   background: var(--panel);
   border-radius: 999px;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   font-size: 15px;
   cursor: pointer;
 }
@@ -3848,7 +3865,7 @@ h3 {
 .seccion-abierta .pestana-panel,
 .seccion-abierta .pestana-panel.modulos {
   height: auto;
-  max-height: min(380px, 36dvh);
+  max-height: min(260px, 22dvh);
 }
 
 /* Colores en la franja: las muestras se reparten a lo ancho. */
@@ -3947,4 +3964,78 @@ h3 {
 .menu-flotante.achicado .menu-flotante-asa {
   opacity: 1;
   padding: 12px 8px;
+}
+
+/* Horizontal: barra larga como la del teclado de la tablet. */
+.menu-flotante:not(.vertical) {
+  border-radius: 999px;
+  padding: 4px 8px;
+}
+
+.menu-flotante:not(.vertical) button {
+  padding: 8px 14px;
+  border-radius: 999px;
+}
+
+.menu-flotante:not(.vertical) .menu-flotante-asa {
+  padding: 4px 6px;
+}
+
+.menu-flotante.vertical button {
+  padding: 8px 12px;
+}
+
+.menu-flotante-ajustes .con-texto {
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* En la barra solo el número: los botones − y + quedan en las secciones. */
+.app .barra-simple .campo-medida .boton-icono {
+  display: none;
+}
+
+.app .barra-simple .bloque-medidas {
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+}
+
+.app .barra-simple .bloque-precio > .campo-etiqueta {
+  display: none;
+}
+
+.app .barra-simple .bloque-precio:has(.estado-cotizacion) > .campo-etiqueta {
+  display: inline;
+}
+
+.seccion-cabeza .segmentado button {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.seccion-abierta .agarre {
+  height: 10px;
+}
+
+.app .barra-simple {
+  flex-wrap: nowrap;
+  gap: 10px;
+}
+
+.app .barra-simple .bloque-medidas {
+  gap: 4px 6px;
+}
+
+.app .barra-simple .bloque-precio {
+  flex-wrap: nowrap;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .app .barra-simple {
+    flex-wrap: wrap;
+  }
 }
