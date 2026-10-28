@@ -3,9 +3,9 @@ import { Acceso } from './components/Acceso';
 import { BarraVisor } from './components/BarraVisor';
 import { Cabecera } from './components/Cabecera';
 import { ModalCotizaciones, ModalDocumento, ModalRegistrarCotizacion, ModalVenta } from './components/Cotizaciones';
+import { MenuFlotante } from './components/MenuFlotante';
 import { ModalCatalogo } from './components/Modales';
 import { NuevaClave } from './components/NuevaClave';
-import { PanelColores } from './components/PanelColores';
 import { PanelInferior } from './components/PanelInferior';
 import { Visor3D } from './components/Visor3D';
 import { useApp } from './store/useApp';
@@ -33,7 +33,6 @@ export default function App() {
   const [nuevaClave, setNuevaClave] = useState(VIENE_DE_RECUPERAR);
   const errorCarga = useApp((s) => s.errorCarga);
   const cargado = useApp((s) => s.catalogo !== null && s.materiales !== null);
-  const coloresPlegados = useApp((s) => s.coloresPlegados);
 
   useEffect(() => {
     useApp.getState().cargarDatos();
@@ -82,7 +81,7 @@ export default function App() {
   return (
     <div className="app">
       <Cabecera />
-      <main className={`area-trabajo${coloresPlegados ? ' colores-plegados' : ''}`}>
+      <main className="area-trabajo colores-plegados">
         <section className="visor" aria-label="Vista 3D del mueble">
           {cargado ? (
             <Visor3D />
@@ -90,20 +89,10 @@ export default function App() {
             <div className="cargando-visor">{errorCarga ? `No se pudo conectar con el servidor: ${errorCarga}` : 'Preparando el taller 3D…'}</div>
           )}
           {cargado && <BarraVisor />}
-          <button
-            type="button"
-            className="plegar-colores"
-            aria-expanded={!coloresPlegados}
-            title={coloresPlegados ? 'Mostrar los colores' : 'Ocultar los colores para ver el mueble más grande'}
-            onClick={() => useApp.getState().fijarVista({ coloresPlegados: !coloresPlegados })}
-          >
-            {coloresPlegados ? '‹ Colores' : '›'}
-          </button>
         </section>
-        {/* Siempre montado: en el teléfono no hay botón para mostrarlo, así que ahí el CSS no lo oculta. */}
-        <PanelColores />
       </main>
       <PanelInferior />
+      {cargado && !modal && <MenuFlotante />}
       {modal === 'catalogo' && <ModalCatalogo />}
       {modal === 'registrarCotizacion' && <ModalRegistrarCotizacion />}
       {modal === 'cotizaciones' && <ModalCotizaciones />}

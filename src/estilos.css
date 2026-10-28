@@ -3705,3 +3705,246 @@ h3 {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* ---------- Pantalla ordenada: barra simple abajo + menú flotante ---------- */
+
+.app .panel-inferior {
+  display: flex;
+  flex-direction: column;
+}
+
+.app .panel-inferior .agarre {
+  visibility: visible;
+}
+
+.barra-simple {
+  display: flex;
+  align-items: center;
+  gap: 12px 20px;
+  padding: 8px 16px;
+  flex-wrap: wrap;
+}
+
+.app .barra-simple .bloque-medidas {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 0;
+  border: none;
+  flex: 1 1 520px;
+  min-width: 0;
+}
+
+.app .barra-simple .fila-medida {
+  grid-template-columns: auto 150px;
+  padding: 4px 8px;
+  gap: 8px;
+}
+
+/* El deslizador vive en la sección; la barra queda limpia, solo el número. */
+.app .barra-simple .fila-medida .deslizador {
+  display: none;
+}
+
+.app .barra-simple .bloque-precio {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 0;
+  border: none;
+  background: none;
+  margin-left: auto;
+}
+
+.app .barra-simple .precio {
+  font-size: 22px;
+}
+
+.app .barra-simple .acciones-precio {
+  flex-direction: row;
+  margin-top: 0;
+}
+
+.app .barra-simple .desglose-precio {
+  position: relative;
+}
+
+.app .barra-simple .desglose-lista {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  width: min(460px, 92vw);
+  max-height: 60dvh;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: 12px;
+  box-shadow: var(--sombra);
+  padding: 10px;
+}
+
+.seccion-abierta {
+  border-bottom: 1px solid var(--borde);
+  padding: 0 16px 10px;
+  display: flex;
+  flex-direction: column;
+  animation: subir-seccion 0.18s ease-out;
+}
+
+@keyframes subir-seccion {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+.seccion-abierta .agarre {
+  align-self: center;
+  width: 64px;
+  height: 14px;
+  cursor: ns-resize;
+  touch-action: none;
+  position: relative;
+}
+
+.seccion-abierta .agarre::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 5px;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--borde);
+}
+
+.seccion-cabeza {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.seccion-cabeza h2 {
+  font-size: 16px;
+  font-weight: 800;
+  margin: 0;
+  color: var(--acento);
+}
+
+.cerrar-seccion {
+  margin-left: auto;
+  border: 1px solid var(--borde);
+  background: var(--panel);
+  border-radius: 999px;
+  width: 34px;
+  height: 34px;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.seccion-abierta .pestana-panel,
+.seccion-abierta .pestana-panel.modulos {
+  height: auto;
+  max-height: min(380px, 36dvh);
+}
+
+/* Colores en la franja: las muestras se reparten a lo ancho. */
+.seccion-abierta .panel-colores {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  border: none;
+  padding: 4px 0 0;
+  overflow: visible;
+  gap: 14px 22px;
+}
+
+.seccion-abierta .panel-colores-cabeza {
+  grid-column: 1 / -1;
+}
+
+.seccion-abierta .panel-colores-cabeza h2 {
+  display: none;
+}
+
+.menu-flotante {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  background: rgba(32, 28, 34, 0.92);
+  color: #fff;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(8px);
+  user-select: none;
+}
+
+.menu-flotante.vertical {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.menu-flotante button {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 10px 14px;
+  border-radius: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.menu-flotante button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.menu-flotante button.activa {
+  background: var(--acento);
+}
+
+.menu-flotante-asa {
+  cursor: grab;
+  touch-action: none;
+  padding: 6px 10px;
+  text-align: center;
+  font-size: 18px;
+  opacity: 0.7;
+}
+
+.menu-flotante-ajustes {
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  padding-top: 4px;
+}
+
+.menu-flotante:not(.vertical) .menu-flotante-ajustes {
+  border-top: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 0 0 0 4px;
+}
+
+.menu-flotante-ajustes button {
+  padding: 6px 10px;
+  font-size: 16px;
+}
+
+.menu-flotante.achicado {
+  padding: 4px;
+  border-radius: 12px;
+}
+
+.menu-flotante.achicado .menu-flotante-asa {
+  opacity: 1;
+  padding: 12px 8px;
+}

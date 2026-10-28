@@ -41,7 +41,8 @@ interface Estado {
   abierto: boolean;
   cotas: boolean;
   fotoRef: boolean;
-  pestana: Pestana | null;
+  /** Sección abierta en la franja inferior (desde el menú flotante); null = cerrada. */
+  pestana: Pestana | 'colores' | null;
   /** Módulo seleccionado en la pestaña «Módulos y espacios» (índice dentro del tramo activo). */
   moduloActivo: number;
   /** Tramo que se edita: principal, lados de la L/U, aéreos y sus lados. */
@@ -175,7 +176,7 @@ export const useApp = create<Estado>((set, get) => ({
   abierto: false,
   cotas: true,
   fotoRef: true,
-  pestana: 'modulos',
+  pestana: null,
   moduloActivo: 0,
   tramoActivo: 'base',
   rechazo: null,

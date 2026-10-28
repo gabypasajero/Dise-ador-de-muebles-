@@ -4,9 +4,10 @@ import { LIMITES, advertencias, aUnidad, aplicarAjustes, formatear, formatoPreci
 import { nuevoId } from '../../shared/catalogo';
 import type { AjustesPrecio, Diseno, Unidad } from '../../shared/tipos';
 import { useApp } from '../store/useApp';
-import { CampoMedida, Segmentado } from './Controles';
+import { CampoMedida, Interruptor, Segmentado } from './Controles';
 import { backend } from '../datos';
 import { IcoAviso, IcoGuardar } from './Iconos';
+import { PanelColores } from './PanelColores';
 import { AvisoRechazo, PestanaCajones, PestanaEquipamiento, PestanaModulos, PestanaPuertas, pestanasDe } from './Pestanas';
 
 /** Una de las tres líneas de medida (alto, ancho, profundidad). */
@@ -207,14 +208,13 @@ export function PanelInferior() {
   const set = useApp((s) => s.set);
   const [verAvisos, setVerAvisos] = useState(false);
   const [verDesglose, setVerDesglose] = useState(false);
-  const plegado = useApp((s) => s.panelPlegado);
   const altoPestanas = useApp((s) => s.altoPestanas);
   const fijarVista = useApp((s) => s.fijarVista);
   const panelPestanas = useRef<HTMLDivElement>(null);
   const arrastre = useRef<{ y: number; alto: number; max: number } | null>(null);
   // Arrastrar el borde superior agranda o achica el panel; doble clic vuelve al tamaño automático.
   const empezarArrastre = (e: EventoPuntero<HTMLDivElement>) => {
-    if (plegado || !panelPestanas.current) return;
+    if (!panelPestanas.current) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     const alto = panelPestanas.current.getBoundingClientRect().height;
     // El visor conserva al menos 180 px (en ≤1100 px la fila de medidas y precio también va encima).
@@ -234,7 +234,7 @@ export function PanelInferior() {
   };
   const lim = LIMITES[d.plantilla];
   const pestanas = pestanasDe(d.plantilla);
-  const actual = pestanas.find((p) => p.id === pestana)?.id ?? pestanas[0].id;
+  const actual = pestana === 'colores' ? 'colores' : (pestanas.find((p) => p.id === pestana)?.id ?? null);
   const avisos = advertencias(d, unidad);
   const calculado = precioDiseno(d, producto, disenoBase);
   const precio = aplicarAjustes(calculado, d.ajustesPrecio);
@@ -256,165 +256,138 @@ export function PanelInferior() {
     }
   };
 
+  const titulo = actual === 'colores' ? 'Colores' : pestanas.find((p) => p.id === actual)?.texto;
+
   return (
     <section
-      className={`panel-inferior${plegado ? ' plegado' : ''}${altoPestanas ? ' alto-fijo' : ''}`}
+      className={`panel-inferior${altoPestanas ? ' alto-fijo' : ''}`}
       aria-label="Medidas del mueble"
       style={altoPestanas ? ({ '--alto-pestanas': `${altoPestanas}px` } as React.CSSProperties) : undefined}
     >
-      <div className="panel-asa">
-        <div
-          className="agarre"
-          role="separator"
-          aria-orientation="horizontal"
-          aria-label="Arrastra para agrandar o achicar el panel de medidas"
-          title="Arrastra para agrandar o achicar · doble clic: tamaño normal"
-          onPointerDown={empezarArrastre}
-          onPointerMove={moverArrastre}
-          onPointerUp={terminarArrastre}
-          onPointerCancel={terminarArrastre}
-          onDoubleClick={() => fijarVista({ altoPestanas: null })}
-        />
-        <button type="button" className="plegar-panel" aria-expanded={!plegado} onClick={() => fijarVista({ panelPlegado: !plegado })}>
-          {plegado ? '▴ Mostrar medidas' : '▾ Ocultar medidas'}
-        </button>
-      </div>
-      <div className="bloque-medidas">
-        <div className="bloque-medidas-cabeza">
-          <h2>Medidas</h2>
+      {actual && (
+        <div className="seccion-abierta" role="region" aria-label={titulo}>
+          <div
+            className="agarre"
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Arrastra para agrandar o achicar la sección"
+            title="Arrastra para agrandar o achicar · doble clic: tamaño normal"
+            onPointerDown={empezarArrastre}
+            onPointerMove={moverArrastre}
+            onPointerUp={terminarArrastre}
+            onPointerCancel={terminarArrastre}
+            onDoubleClick={() => fijarVista({ altoPestanas: null })}
+          />
+          <div className="seccion-cabeza">
+            <h2>{titulo}</h2>
+            {avisos.length > 0 && (
+              <div className="avisos-fabricacion">
+                <button
+                  type="button"
+                  className={`chip-aviso${avisos.some((a) => a.nivel === 'aviso') ? ' fuerte' : ''}`}
+                  onClick={() => setVerAvisos((v) => !v)}
+                  aria-expanded={verAvisos}
+                >
+                  <IcoAviso width={15} height={15} /> {avisos.length} {avisos.length === 1 ? 'recomendación' : 'recomendaciones'}
+                </button>
+                {verAvisos && (
+                  <ul className="lista-avisos" role="list">
+                    {avisos.map((a, i) => (
+                      <li key={i} className={a.nivel}>
+                        {a.texto}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+            <button type="button" className="cerrar-seccion" aria-label={`Cerrar ${titulo}`} title="Cerrar" onClick={() => set({ pestana: null })}>
+              ✕
+            </button>
+          </div>
+          {/* Módulos y el equipamiento de la cocina usan el panel alto (forma, tira, editor; tarjetas de equipos). */}
+          <div
+            ref={panelPestanas}
+            className={`pestana-panel${(actual === 'modulos' && d.plantilla !== 'tocador') || (actual === 'equipamiento' && esCocinaConEquipos) ? ' modulos' : ''}`}
+          >
+            <AvisoRechazo />
+            {actual === 'puertas' && <PestanaPuertas {...props} />}
+            {actual === 'cajones' && <PestanaCajones {...props} />}
+            {actual === 'modulos' && <PestanaModulos {...props} />}
+            {actual === 'equipamiento' && <PestanaEquipamiento {...props} />}
+            {actual === 'colores' && <PanelColores />}
+          </div>
+        </div>
+      )}
+
+      <div className="barra-simple">
+        <div className="bloque-medidas">
+          <FilaMedida nombre="Ancho" icono="↔" valor={d.ancho + esquinas} limites={[lim.ancho[0] + esquinas, lim.ancho[1] + esquinas]} unidad={unidad} onCambio={(mm) => operar({ op: 'fijarAncho', ancho: mm - esquinas }, 'ancho')} />
+          <FilaMedida nombre="Alto" icono="↕" valor={d.alto} limites={lim.alto} unidad={unidad} onCambio={(mm) => operar({ op: 'fijarAlto', alto: mm }, 'alto')} />
+          <FilaMedida nombre="Fondo" icono="⤢" valor={d.profundidad} limites={lim.profundidad} unidad={unidad} onCambio={(mm) => operar({ op: 'fijarProfundidad', profundidad: mm }, 'profundidad')} />
           <Segmentado
             valor={unidad}
             onCambio={(u) => set({ unidad: u })}
             opciones={[
-              { valor: 'cm', texto: 'Centímetros', titulo: 'Centímetros (cm)' },
-              { valor: 'mm', texto: 'Milímetros', titulo: 'Milímetros (mm)' },
+              { valor: 'cm', texto: 'cm', titulo: 'Centímetros' },
+              { valor: 'mm', texto: 'mm', titulo: 'Milímetros' },
             ]}
           />
+          {d.plantilla === 'cocina' && (
+            <Interruptor
+              activo={d.aereos.activo}
+              onCambio={(v) => {
+                const r = operar({ op: 'activarAereos', activo: v });
+                if (r.ok) set({ tramoActivo: v ? 'aereos' : 'base', moduloActivo: 0 });
+              }}
+              texto="Agregar aéreo"
+            />
+          )}
         </div>
-        <FilaMedida nombre="Alto" icono="↕" valor={d.alto} limites={lim.alto} unidad={unidad} onCambio={(mm) => operar({ op: 'fijarAlto', alto: mm }, 'alto')} />
-        <FilaMedida
-          nombre="Ancho"
-          icono="↔"
-          valor={d.ancho + esquinas}
-          limites={[lim.ancho[0] + esquinas, lim.ancho[1] + esquinas]}
-          unidad={unidad}
-          onCambio={(mm) => operar({ op: 'fijarAncho', ancho: mm - esquinas }, 'ancho')}
-        />
-        <FilaMedida
-          nombre="Fondo"
-          icono="⤢"
-          valor={d.profundidad}
-          limites={lim.profundidad}
-          unidad={unidad}
-          onCambio={(mm) => operar({ op: 'fijarProfundidad', profundidad: mm }, 'profundidad')}
-        />
-      </div>
 
-      <div className="categorias">
-        <div className="pestanas-cabeza">
-          <nav className="pestanas" role="tablist" aria-label="Categorías de medidas">
-            {pestanas.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                role="tab"
-                aria-selected={p.id === actual}
-                className={p.id === actual ? 'activa' : ''}
-                onClick={() => set({ pestana: p.id })}
-              >
-                {p.texto}
+        <div className="bloque-precio">
+          <span className="campo-etiqueta">
+            {cotizacion ? (
+              <>
+                {cotizacion.numero} · {cotizacion.cliente.nombre} · <span className={`estado-cotizacion ${cotizacion.estado}`}>{cotizacion.estado}</span>
+              </>
+            ) : oficial ? (
+              'Precio oficial'
+            ) : precio ? (
+              'Valor referencial'
+            ) : (
+              'Diseño a medida'
+            )}
+          </span>
+          <strong className="precio" title={lados.length > 0 ? `Con ${lados.join(' y ')}` : undefined}>
+            {cotizacion ? formatoPrecio(cotizacion.venta?.valor ?? cotizacion.valor) : precio ? formatoPrecio(precio.total) : 'Sin referencia'}
+          </strong>
+          {precio && precio.lineas.length > 0 && (
+            <div className="desglose-precio">
+              <button type="button" className="boton-desglose" aria-expanded={verDesglose} onClick={() => setVerDesglose((v) => !v)}>
+                {verDesglose ? '▾ Ocultar desglose' : '▸ Ver desglose'}
               </button>
-            ))}
-          </nav>
-          {avisos.length > 0 && (
-            <div className="avisos-fabricacion">
-              <button
-                type="button"
-                className={`chip-aviso${avisos.some((a) => a.nivel === 'aviso') ? ' fuerte' : ''}`}
-                onClick={() => setVerAvisos((v) => !v)}
-                aria-expanded={verAvisos}
-              >
-                <IcoAviso width={15} height={15} /> {avisos.length} {avisos.length === 1 ? 'recomendación' : 'recomendaciones'}
-              </button>
-              {verAvisos && (
-                <ul className="lista-avisos" role="list">
-                  {avisos.map((a, i) => (
-                    <li key={i} className={a.nivel}>
-                      {a.texto}
-                    </li>
-                  ))}
-                </ul>
+              {verDesglose && (
+                <div className="desglose-lista" role="region" aria-label="Desglose del precio">
+                  <TablaDesglose precio={precio} lineasBase={calculado!.lineas} cambiar={cambiar} />
+                </div>
               )}
             </div>
           )}
-        </div>
-        {/* Módulos y el equipamiento de la cocina usan el panel alto (forma, tira, editor; tarjetas de equipos). */}
-        <div
-          role="tabpanel"
-          ref={panelPestanas}
-          className={`pestana-panel${(actual === 'modulos' && d.plantilla !== 'tocador') || (actual === 'equipamiento' && esCocinaConEquipos) ? ' modulos' : ''}`}
-        >
-          <AvisoRechazo />
-          {actual === 'puertas' && <PestanaPuertas {...props} />}
-          {actual === 'cajones' && <PestanaCajones {...props} />}
-          {actual === 'modulos' && <PestanaModulos {...props} />}
-          {actual === 'equipamiento' && <PestanaEquipamiento {...props} />}
-        </div>
-      </div>
-
-      <div className="bloque-precio">
-        {cotizacion ? (
-          <span className="campo-etiqueta">
-            {cotizacion.numero} · {cotizacion.cliente.nombre} · <span className={`estado-cotizacion ${cotizacion.estado}`}>{cotizacion.estado}</span>
-          </span>
-        ) : (
-          <span className="campo-etiqueta">{oficial ? 'Precio oficial' : precio ? 'Valor referencial' : 'Diseño a medida'}</span>
-        )}
-        <strong className="precio">{cotizacion ? formatoPrecio(cotizacion.venta?.valor ?? cotizacion.valor) : precio ? formatoPrecio(precio.total) : 'Sin referencia'}</strong>
-        <span className="resumen-medidas">
-          {formatear(d.ancho + esquinas, unidad, false)} × {formatear(d.alto, unidad, false)} × {formatear(d.profundidad, unidad)}
-        </span>
-        {lados.length > 0 && <span className="tenue chico">Con {lados.join(' y ')}</span>}
-        <span className="tenue chico">
-          {cotizacion
-            ? precio
-              ? `${oficial ? 'Precio oficial' : 'Referencial'} con las medidas actuales: ${formatoPrecio(precio.total)}`
-              : 'Valor registrado en la cotización.'
-            : oficial
-              ? precio?.lineas[0]?.concepto === 'Precio de la tienda'
-                ? esCocinaConEquipos
-                  ? 'Precio de la tienda del producto (mismas medidas del mueble base), menos los equipos que se quitan o van solo con el corte, más el aéreo y las campanas que se agregan.'
-                  : 'Precio de la tienda del producto: se mantiene mientras no cambien sus medidas.'
-                : 'Precio de la tienda: metro lineal según el fondo, equipamiento y aéreo por metro.'
-              : precio
-                ? 'Calculado desde el precio de la tienda; lo ajustas al cotizar.'
-                : 'Ingresa el valor al registrar la cotización.'}
-        </span>
-        {precio && precio.lineas.length > 0 && (
-          <div className="desglose-precio">
-            <button type="button" className="boton-desglose" aria-expanded={verDesglose} onClick={() => setVerDesglose((v) => !v)}>
-              {verDesglose ? '▾ Ocultar desglose' : '▸ Ver desglose'}
+          <div className="acciones-precio">
+            <button type="button" className="boton primario" onClick={() => set({ modal: 'registrarCotizacion' })}>
+              <IcoGuardar /> {editable ? `Actualizar ${cotizacion!.numero}` : 'Registrar cotización'}
             </button>
-            {verDesglose && (
-              <div className="desglose-lista" role="region" aria-label="Desglose del precio">
-                <TablaDesglose precio={precio} lineasBase={calculado!.lineas} cambiar={cambiar} />
-              </div>
+            {cotizacion ? (
+              <button type="button" className="boton secundario" onClick={() => verActual()}>
+                Ver cotización
+              </button>
+            ) : (
+              <button type="button" className="boton secundario" onClick={() => set({ modal: 'cotizaciones' })}>
+                Mis cotizaciones
+              </button>
             )}
           </div>
-        )}
-        <div className="acciones-precio">
-          <button type="button" className="boton primario" onClick={() => set({ modal: 'registrarCotizacion' })}>
-            <IcoGuardar /> {editable ? `Actualizar ${cotizacion!.numero}` : 'Registrar cotización'}
-          </button>
-          {cotizacion ? (
-            <button type="button" className="boton secundario" onClick={() => verActual()}>
-              Ver cotización
-            </button>
-          ) : (
-            <button type="button" className="boton secundario" onClick={() => set({ modal: 'cotizaciones' })}>
-              Mis cotizaciones
-            </button>
-          )}
         </div>
       </div>
     </section>
