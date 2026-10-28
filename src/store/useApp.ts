@@ -172,7 +172,8 @@ export const useApp = create<Estado>((set, get) => ({
   ultimoGrupo: null,
 
   unidad: 'cm',
-  escenario: 'auto',
+  // Siempre parte en el estudio neutro; el vendedor lo cambia si lo necesita.
+  escenario: 'estudio',
   abierto: false,
   cotas: true,
   fotoRef: true,
