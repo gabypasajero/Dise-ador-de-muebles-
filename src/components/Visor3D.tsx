@@ -22,7 +22,7 @@ function proyectoAhora(): { proyecto: Diseno; principal: Diseno } {
 /** Esquinas (m) de las islas y los muebles en línea en la planta del proyecto: también deben entrar en el cuadro. */
 function puntosAdicionales(p: Diseno): THREE.Vector3[] {
   const out: THREE.Vector3[] = [];
-  for (const a of p.adicionales ?? []) {
+  for (const a of mueblesProyecto(p).slice(1)) {
     const c = dimensionesTotales(a.diseno);
     const m = centroPlanta(a.diseno);
     const g = (a.giro * Math.PI) / 180;
@@ -524,7 +524,7 @@ export function Visor3D() {
                 <Mueble3D
                   diseno={activo ? diseno : m.diseno}
                   materiales={materiales}
-                  respaldo={m.tipo === 'isla'}
+                  respaldo={m.respaldo}
                   vista={activo ? { abierto, cotas, distancias, etiquetasFrentes, unidad, modulos } : { abierto, cotas: false, distancias: false, etiquetasFrentes: false, unidad, modulos: null }}
                 />
               </group>

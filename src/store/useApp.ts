@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { clasificarProducto, disenoInicial, disenoLibre } from '../../shared/catalogo';
 import { cuerposDe, ejecutar, normalizar, tramosDe, type Operacion, type Resultado, type TramoId } from '../../shared/reglas';
-import { disenoIsla, disenoLinea, nuevoAdicional } from '../../shared/proyecto';
-import type { CatalogoMateriales, Cotizacion, Diseno, Escenario, MuebleAdicional, Plantilla, ProductoCatalogo, Unidad, Usuario } from '../../shared/tipos';
+import { acomodarCaras, agregarCara, disenoIsla, disenoLinea, nuevoAdicional, quitarCara } from '../../shared/proyecto';
+import type { CaraIsla, CatalogoMateriales, Cotizacion, Diseno, Escenario, MuebleAdicional, Plantilla, ProductoCatalogo, Unidad, Usuario } from '../../shared/tipos';
 import { obtenerCatalogo, obtenerMateriales, type RespuestaCatalogo } from '../datos/catalogo';
 import { backend } from '../datos';
 
@@ -99,6 +99,8 @@ interface Estado {
   quitarMueble: (id: string) => void;
   /** Cambia la ubicación (x, z en mm), el giro o el nombre de un mueble adicional. */
   ubicarMueble: (id: string, cambios: Partial<Pick<MuebleAdicional, 'x' | 'z' | 'giro' | 'nombre'>>) => void;
+  /** Agrega (o quita, si ya está) el lado trasero o un costado de la isla que se edita. */
+  alternarCara: (cara: CaraIsla) => void;
   /** Usa los colores del mueble que se edita en todos los muebles del proyecto. */
   coloresATodos: () => void;
   verCotizacion: (c: Cotizacion) => void;
@@ -318,6 +320,12 @@ export const useApp = create<Estado>((set, get) => ({
       // Si el cambio quita el tramo que se editaba (forma lineal, sin aéreos), se vuelve al principal.
       ...seleccionValida(nuevo, get().tramoActivo, get().moduloActivo),
     });
+    // Si se edita una isla o una de sus caras, las otras caras siguen sus medidas.
+    if (get().muebleActivo && get().principal) {
+      const p = proyectoDe(get());
+      const acomodado = acomodarCaras(p);
+      if (acomodado !== p) set({ principal: acomodado });
+    }
     guardarActual(get());
   },
 
@@ -352,6 +360,7 @@ export const useApp = create<Estado>((set, get) => ({
     const { disenoBase, diseno } = get();
     const adicional = adicionalActivo(get());
     // Un adicional vuelve a su medida estándar; el principal, al producto (y conserva sus adicionales).
+    if (adicional?.cara) return;
     if (adicional) get().cambiar(() => (adicional.tipo === 'isla' ? disenoIsla : disenoLinea)(get().principal!));
     else {
       const base = disenoBase ?? disenoLibre(diseno.plantilla);
@@ -419,7 +428,8 @@ export const useApp = create<Estado>((set, get) => ({
     const proyecto = proyectoDe(get());
     const a = proyecto.adicionales?.find((x) => x.id === id);
     if (!a) return;
-    const resto = (proyecto.adicionales ?? []).filter((x) => x.id !== id);
+    // Una cara se quita con quitarCara (el frente recupera el fondo); una isla se va con sus caras.
+    const resto = a.cara ? (quitarCara(proyecto, id).adicionales ?? []) : (proyecto.adicionales ?? []).filter((x) => x.id !== id && x.isla !== id);
     const { adicionales: _a, ...sin } = proyecto;
     set({ diseno: resto.length ? { ...sin, adicionales: resto } : sin, ...SIN_ADICIONAL, pasado: [], futuro: [], moduloActivo: 0, tramoActivo: 'base', rechazo: null, encuadre: get().encuadre + 1 });
     guardarActual(get());
@@ -431,6 +441,21 @@ export const useApp = create<Estado>((set, get) => ({
     if (get().muebleActivo) set({ principal: mover(get().principal!) });
     else set({ diseno: mover(get().diseno) });
     guardarActual(get());
+  },
+
+  alternarCara(cara) {
+    const s = get();
+    const proyecto = proyectoDe(s);
+    const activo = proyecto.adicionales?.find((a) => a.id === s.muebleActivo);
+    if (!activo || activo.tipo !== 'isla') return;
+    const islaId = activo.isla ?? activo.id;
+    const existente = proyecto.adicionales?.find((a) => a.isla === islaId && a.cara === cara);
+    const nuevo = existente ? quitarCara(proyecto, existente.id) : agregarCara(proyecto, islaId, cara);
+    // Se sigue editando la isla (o la cara, si se agregó): queda a la vista lo que se cambió.
+    const destino = existente ? islaId : (nuevo.adicionales?.find((a) => a.isla === islaId && a.cara === cara)?.id ?? islaId);
+    set({ diseno: nuevo, ...SIN_ADICIONAL });
+    get().editarMueble(destino);
+    set({ encuadre: get().encuadre + 1 });
   },
 
   coloresATodos() {

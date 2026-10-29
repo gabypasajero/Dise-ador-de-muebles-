@@ -3,8 +3,7 @@ import { largoPrincipalConEsquinas } from '../../shared/layout';
 import { LIMITES, advertencias, aUnidad, aplicarAjustes, formatear, formatoPrecio, limpiarAjustes, precioDiseno, type PrecioAjustado } from '../../shared/reglas';
 import { nuevoId } from '../../shared/catalogo';
 import type { AjustesPrecio, Diseno, Unidad } from '../../shared/tipos';
-import { precioProyecto } from '../../shared/proyecto';
-import { precioCocina, precioIsla } from '../../shared/tarifas';
+import { largoIsla, precioBaseAdicional, precioProyecto } from '../../shared/proyecto';
 import { adicionalActivo, proyectoDe, useApp } from '../store/useApp';
 import { PestanaMuebles } from './Muebles';
 import { CampoMedida, Interruptor, Segmentado } from './Controles';
@@ -244,10 +243,10 @@ export function PanelInferior() {
   const estadoProyecto = { diseno: d, muebleActivo, principal: principalGuardado };
   const adicional = adicionalActivo(estadoProyecto);
   // Una isla o un mueble en línea se cobran con su tarifa (no con el producto de la tienda del principal).
-  const calculado = adicional
-    ? { metodo: 'oficial' as const, ...(adicional.tipo === 'isla' ? precioIsla(d) : precioCocina(d)) }
-    : precioDiseno(d, producto, disenoBase);
   const proyecto = proyectoDe(estadoProyecto);
+  const calculado = adicional
+    ? { metodo: 'oficial' as const, ...precioBaseAdicional({ ...adicional, diseno: d }, adicional.tipo === 'isla' && !adicional.cara ? largoIsla(proyecto, { ...adicional, diseno: d }) : undefined) }
+    : precioDiseno(d, producto, disenoBase);
   const varios = (proyecto.adicionales?.length ?? 0) > 0;
   const nombrePrincipal = producto?.modelo ?? 'Mueble principal';
   const totalProyecto = varios ? precioProyecto(proyecto, producto, disenoBase, nombrePrincipal) : null;

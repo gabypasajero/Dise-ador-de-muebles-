@@ -1,5 +1,6 @@
 import { NOMBRE_PLANTILLA } from '../../shared/catalogo';
-import { mueblesProyecto, precioProyecto } from '../../shared/proyecto';
+import { mueblesProyecto, NOMBRE_CARA, precioProyecto } from '../../shared/proyecto';
+import type { CaraIsla } from '../../shared/tipos';
 import { formatear, formatoPrecio } from '../../shared/reglas';
 import { adicionalActivo, proyectoDe, useApp } from '../store/useApp';
 import { CampoMedida, Segmentado } from './Controles';
@@ -28,7 +29,7 @@ export function PestanaMuebles() {
       <div className="muebles-lista" role="list" aria-label="Muebles del proyecto">
         {muebles.map((m, i) => {
           const elegido = m.id === s.muebleActivo;
-          const precio = precios.partes[i]?.precio;
+          const precio = precios.partes.find((x) => x.id === m.id)?.precio ?? (i === 0 ? precios.partes[0]?.precio : null);
           return (
             <button
               key={m.id ?? 'principal'}
@@ -38,7 +39,7 @@ export function PestanaMuebles() {
               aria-pressed={elegido}
               onClick={() => s.editarMueble(m.id)}
             >
-              <span className="tarjeta-mueble-tipo">{m.tipo === 'principal' ? 'Principal' : m.tipo === 'isla' ? 'Isla' : 'En línea'}</span>
+              <span className="tarjeta-mueble-tipo">{m.tipo === 'principal' ? 'Principal' : m.cara ? `Isla · ${NOMBRE_CARA[m.cara]}` : m.tipo === 'isla' ? 'Isla' : 'En línea'}</span>
               <strong>{m.nombre}</strong>
               <span className="tenue chico">
                 {formatear(m.diseno.ancho, s.unidad, false)} × {formatear(m.diseno.alto, s.unidad, false)} × {formatear(m.diseno.profundidad, s.unidad)}
@@ -75,7 +76,30 @@ export function PestanaMuebles() {
         </button>
       )}
 
-      {activo && (
+      {activo?.tipo === 'isla' && (
+        <div className="caras-isla">
+          <span className="campo-etiqueta">Puertas y cajones de la isla, a elección del cliente</span>
+          <div className="caras-isla-botones">
+            {(['trasera', 'izq', 'der'] as CaraIsla[]).map((cara) => {
+              const islaId = activo.isla ?? activo.id;
+              const tiene = proyecto.adicionales?.some((a) => a.isla === islaId && a.cara === cara);
+              return (
+                <button key={cara} type="button" className={`boton ${tiene ? 'primario' : 'secundario'} chico`} aria-pressed={!!tiene} onClick={() => s.alternarCara(cara)}>
+                  {tiene ? '✓ ' : '＋ '}
+                  {NOMBRE_CARA[cara].charAt(0).toUpperCase() + NOMBRE_CARA[cara].slice(1)}
+                </button>
+              );
+            })}
+          </div>
+          <p className="tenue chico">
+            El frente es la isla misma. El lado trasero parte el fondo en dos (cada lado con sus puertas y cajones); los costados van en las puntas. Toca cada cara para editar sus módulos.
+          </p>
+        </div>
+      )}
+
+      {activo?.cara && <p className="tenue">Esta cara se mueve y gira con su isla: para ubicarla, elige la isla.</p>}
+
+      {activo && !activo.cara && (
         <div className="mueble-ubicacion">
           <label className="campo-texto">
             <span className="campo-etiqueta">Nombre</span>

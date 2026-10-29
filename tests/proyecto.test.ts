@@ -85,3 +85,65 @@ describe('proyecto con varios muebles', () => {
     expect(normalizar(p).adicionales).toBeUndefined();
   });
 });
+
+describe('isla con caras (lado trasero y costados)', () => {
+  const conIsla = () => {
+    const p = disenoLibre('cocina');
+    const isla = nuevoAdicional(p, 'isla');
+    return { p: { ...p, adicionales: [isla] }, isla };
+  };
+
+  it('el lado trasero parte el fondo en dos, espalda con espalda, y sin él vuelve entero', async () => {
+    const { agregarCara, quitarCara, mueblesProyecto } = await import('../shared/proyecto');
+    const { p, isla } = conIsla();
+    const t = agregarCara(p, isla.id, 'trasera');
+    const frente = t.adicionales!.find((a) => a.id === isla.id)!;
+    const trasera = t.adicionales!.find((a) => a.cara === 'trasera')!;
+    expect(frente.diseno.profundidad).toBe(450);
+    expect(trasera.diseno).toMatchObject({ ancho: 1500, profundidad: 450, alto: 900 });
+    const m = mueblesProyecto(t);
+    const mf = m.find((x) => x.id === isla.id)!;
+    const mt = m.find((x) => x.id === trasera.id)!;
+    // Espalda con espalda: centros a 450 mm, mirando a lados opuestos, y sin respaldo a la vista.
+    expect(mf.z - mt.z).toBe(450);
+    expect(mf.z + mt.z).toBe(2 * isla.z);
+    expect([mf.giro, mt.giro]).toEqual([0, 180]);
+    expect(mf.respaldo).toBe(false);
+    const sin = quitarCara(t, trasera.id);
+    expect(sin.adicionales!.find((a) => a.id === isla.id)!.diseno.profundidad).toBe(900);
+    expect(sin.adicionales).toHaveLength(1);
+  });
+
+  it('los costados miden el fondo total, van en las puntas y la isla se cobra con su largo', async () => {
+    const { agregarCara, mueblesProyecto, precioProyecto } = await import('../shared/proyecto');
+    const { p, isla } = conIsla();
+    let t = agregarCara(p, isla.id, 'trasera');
+    t = agregarCara(t, isla.id, 'der');
+    t = agregarCara(t, isla.id, 'izq');
+    const der = t.adicionales!.find((a) => a.cara === 'der')!;
+    expect(der.diseno.ancho).toBe(900);
+    const m = mueblesProyecto(t);
+    const md = m.find((x) => x.id === der.id)!;
+    expect(md.x - isla.x).toBe(750 + 225);
+    expect(md.giro).toBe(90);
+    expect(m.find((x) => x.cara === 'izq')!.giro).toBe(270);
+    const r = precioProyecto(t, null, null);
+    const pi = r.partes.find((x) => x.id === isla.id)!.precio!;
+    expect(pi.lineas[0]).toMatchObject({ concepto: 'Isla', cantidad: 2.4 });
+    // Las caras no vuelven a cobrar el metro de la isla.
+    expect(r.partes.find((x) => x.id === der.id)!.precio!.total).toBe(0);
+  });
+
+  it('las caras siguen las medidas de la isla, se guardan y se descartan sin su isla', async () => {
+    const { agregarCara, acomodarCaras } = await import('../shared/proyecto');
+    const { p, isla } = conIsla();
+    let t = agregarCara(agregarCara(p, isla.id, 'trasera'), isla.id, 'der');
+    t = { ...t, adicionales: t.adicionales!.map((a) => (a.id === isla.id ? { ...a, diseno: ejecutar(a.diseno, { op: 'fijarAncho', ancho: 2000 }).diseno } : a)) };
+    t = acomodarCaras(t);
+    expect(t.adicionales!.find((a) => a.cara === 'trasera')!.diseno.ancho).toBe(2000);
+    const n = normalizar(JSON.parse(JSON.stringify(t)));
+    expect(n.adicionales).toEqual(t.adicionales);
+    const huerfanas = normalizar({ ...t, adicionales: t.adicionales!.filter((a) => a.id !== isla.id) });
+    expect(huerfanas.adicionales).toBeUndefined();
+  });
+});

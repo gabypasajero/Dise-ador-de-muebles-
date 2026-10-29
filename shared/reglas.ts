@@ -2230,9 +2230,18 @@ function normalizarAdicionales(x: unknown): MuebleAdicional[] {
       z: Math.round(numero(a.z, 0)),
       giro: ((Math.round(numero(a.giro, 0)) % 360) + 360) % 360,
       diseno: normalizar({ ...diseno, plantilla: 'cocina' }),
+      ...(tipo === 'isla' && (a.cara === 'trasera' || a.cara === 'izq' || a.cara === 'der') && typeof a.isla === 'string' ? { cara: a.cara, isla: a.isla } : {}),
     });
   }
-  return out;
+  // Una cara sin su isla (o repetida) no se puede ubicar: se descarta.
+  const vistas = new Set<string>();
+  return out.filter((a) => {
+    if (!a.cara) return true;
+    const clave = `${a.isla}:${a.cara}`;
+    if (vistas.has(clave) || !out.some((x) => x.id === a.isla && !x.cara && x.tipo === 'isla')) return false;
+    vistas.add(clave);
+    return true;
+  });
 }
 
 // ---------- Advertencias de fabricación ----------

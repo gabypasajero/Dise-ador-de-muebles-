@@ -263,7 +263,16 @@ export interface MuebleAdicional {
   /** Giro en grados, mirado desde arriba (0 = de frente, como el principal; 180 = mira al muro). */
   giro: number;
   diseno: Diseno;
+  /**
+   * Cara de una isla con sus propias puertas y cajones: el lado trasero o un costado. Va pegada a la
+   * isla `isla` (su id) y se mueve y gira con ella; sus medidas siguen a las de la isla.
+   */
+  cara?: CaraIsla;
+  isla?: string;
 }
+
+/** Caras extra de una isla (el frente es la isla misma). */
+export type CaraIsla = 'trasera' | 'izq' | 'der';
 
 export interface AjustePrecioExtra {
   id: string;

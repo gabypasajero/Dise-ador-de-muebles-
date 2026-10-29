@@ -4358,3 +4358,17 @@ h3 {
 .recomendaciones-cuerpo li.aviso::before {
   background: #e0a33a;
 }
+
+.caras-isla {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--borde);
+}
+
+.caras-isla-botones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
