@@ -59,3 +59,20 @@ describe('los cajones toman primero la diferencia', () => {
     expect(d.cuerpos[3].ancho).toBe(antes[3]);
   });
 });
+
+describe('las medidas fijadas se conservan al cambiar el mueble', () => {
+  it('al cambiar el ancho total o agregar un módulo, los fijados no se mueven', () => {
+    let d = cocina400();
+    const ids = d.cuerpos.map((c) => c.id);
+    d = ejecutar(d, { op: 'fijarAnchoModulo', tramo: 'base', modulo: ids[0], ancho: 900 }).diseno;
+    d = ejecutar(d, { op: 'fijarAnchoModulo', tramo: 'base', modulo: ids[1], ancho: 800 }).diseno;
+    const fijo = (x: Diseno) => [x.cuerpos.find((c) => c.id === ids[0])!.ancho, x.cuerpos.find((c) => c.id === ids[1])!.ancho];
+    const mas = ejecutar(d, { op: 'fijarAncho', ancho: 4500 }).diseno;
+    expect(fijo(mas)).toEqual([900, 800]);
+    const menos = ejecutar(d, { op: 'fijarAncho', ancho: 3600 }).diseno;
+    expect(fijo(menos)).toEqual([900, 800]);
+    const otro = ejecutar(d, { op: 'agregarModulo', tramo: 'base', preset: 'puerta' }).diseno;
+    expect(fijo(otro)).toEqual([900, 800]);
+    expect(validarDiseno(mas)).toEqual([]);
+  });
+});

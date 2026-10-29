@@ -129,12 +129,13 @@ export function absorberCercanos(anchos: number[], lims: Limite[], candidatos: b
 
 /**
  * Lleva la suma de `anchos` a `total` repartiendo la diferencia en proporción entre
- * los módulos del nivel 1 y, si no alcanza, entre los del nivel 2 (0 = no participa).
- * Devuelve la diferencia que no se pudo repartir (0 si se logró). Modifica `anchos`.
+ * los módulos del nivel 1 y, si no alcanza, entre los del nivel 2, y así sucesivamente
+ * (0 = no participa). Devuelve la diferencia que no se pudo repartir (0 si se logró).
+ * Modifica `anchos`.
  */
 export function ajustarSuma(anchos: number[], lims: Limite[], niveles: number[], total: number): number {
   let delta = Math.round(total - suma(anchos));
-  for (const nivel of [1, 2]) {
+  for (const nivel of [...new Set(niveles.filter((n) => n > 0))].sort((a, b) => a - b)) {
     if (delta === 0) break;
     const idx = anchos.map((_, i) => i).filter((i) => niveles[i] === nivel);
     if (!idx.length) continue;

@@ -306,12 +306,15 @@ function absorber(d: Diseno, t: TramoId, delta: number, centro: number, excluir:
  * ajustables y, si no alcanza, también los equipados (nunca los de medida fija).
  * Devuelve lo que faltó repartir.
  */
-function ajustarTramo(d: Diseno, t: TramoId, objetivo: number, conEquipados = true): number {
+function ajustarTramo(d: Diseno, t: TramoId, objetivo: number, conEquipados = true, respetarManuales = false): number {
   const cs = cuerposDe(d, t);
   const lims = limitesDe(d, t, cs);
+  // Los ajustables y luego los equipados; al cambiar el ancho del mueble, los que el vendedor fijó
+  // a mano van al final (conservan su medida mientras alcance).
   const niveles = cs.map((c) => {
     const r = rolModulo(d, t, c);
-    return r === 'ajustable' ? 1 : r === 'equipado' && conEquipados ? 2 : 0;
+    const nivel = r === 'ajustable' ? 1 : r === 'equipado' && conEquipados ? 2 : 0;
+    return nivel && respetarManuales && c.manual ? nivel + 2 : nivel;
   });
   const anchos = cs.map((c) => c.ancho);
   const resto = ajustarSuma(anchos, lims, niveles, objetivo);
@@ -329,9 +332,13 @@ function ajustarTramo(d: Diseno, t: TramoId, objetivo: number, conEquipados = tr
 function anchosParejos(d: Diseno, t: TramoId, cs: Cuerpo[], total: number, conservar: Cuerpo[] = [], minimos = new Map<Cuerpo, number>(), hastaNivel: 1 | 2 | 3 = 3): number[] | null {
   // Primero solo las cajoneras (o abatibles); si no alcanza, también los módulos de puertas
   // (sus 35 cm por puerta son el estándar, no un tope) y, al final, los que llevan equipamiento.
-  for (const nivel of ([1, 2, 3] as const).filter((n) => n <= hastaNivel)) {
-    const r = anchosParejosNivel(d, t, cs, total, conservar, minimos, nivel);
-    if (r) return r;
+  // Las medidas que el vendedor fijó a mano se conservan mientras se pueda; si no cabe, se reparte con todos.
+  const fijados = cs.filter((c) => c.manual && !conservar.includes(c));
+  for (const conserva of fijados.length ? [[...conservar, ...fijados], conservar] : [conservar]) {
+    for (const nivel of ([1, 2, 3] as const).filter((n) => n <= hastaNivel)) {
+      const r = anchosParejosNivel(d, t, cs, total, conserva, minimos, nivel);
+      if (r) return r;
+    }
   }
   return null;
 }
@@ -930,7 +937,7 @@ function opFijarAncho(out: Diseno, ctx: Ctx, ancho: number) {
     ctx.avisos.push(`El ancho quedó en ${cm(limitado)}: ${motivo}.`);
   }
   objetivo = limitado;
-  ajustarTramo(out, 'base', objetivo - sep);
+  ajustarTramo(out, 'base', objetivo - sep, true, true);
   out.ancho = largoTramo(out, 'base');
 }
 
@@ -1647,7 +1654,7 @@ function opFijarLado(out: Diseno, ctx: Ctx, lado: LadoId, cambios: CambiosLado) 
     r.largo = Math.max(min, Math.min(max, pedido));
     if (r.largo !== pedido) ctx.avisos.push(`El largo del lado quedó en ${cm(r.largo)}: ${r.largo > pedido ? 'es lo mínimo para sus módulos' : 'es su largo máximo'}.`);
   }
-  if (ajustarTramo(out, lado, r.largo - out.profundidad) !== 0) r.largo = out.profundidad + largoTramo(out, lado);
+  if (ajustarTramo(out, lado, r.largo - out.profundidad, true, true) !== 0) r.largo = out.profundidad + largoTramo(out, lado);
 }
 
 // ---------- Aéreos ----------
@@ -1722,7 +1729,7 @@ function opLadoAereo(out: Diseno, ctx: Ctx, lado: LadoId, cambios: CambiosLado) 
     if (largo !== r.largo) a.cuadrado = false;
     r.largo = largo;
   }
-  if (ajustarTramo(out, t, r.largo - a.profundidad) !== 0) r.largo = a.profundidad + largoTramo(out, t);
+  if (ajustarTramo(out, t, r.largo - a.profundidad, true, true) !== 0) r.largo = a.profundidad + largoTramo(out, t);
 }
 
 function opLargoAereos(out: Diseno, ctx: Ctx, largo: number) {
@@ -1745,7 +1752,7 @@ function opLargoAereos(out: Diseno, ctx: Ctx, largo: number) {
   }
   const [x0, x1] = extremosPrincipal(out);
   if (objetivo !== Math.round(x1 - x0)) a.cuadrado = false;
-  ajustarTramo(out, 'aereos', objetivo);
+  ajustarTramo(out, 'aereos', objetivo, true, true);
 }
 
 // ---------- Cocina y terminaciones ----------

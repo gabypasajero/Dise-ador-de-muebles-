@@ -135,6 +135,8 @@ function revisarReparto(antes: Diseno, despues: Diseno, tramo: Tramo, donde: str
   const previos = new Map(cuerposDe(antes, t).map((c) => [c.id, c]));
   const libres = cs
     .filter((c) => {
+      // Los fijados a mano conservan su medida (no se reparten con los demás).
+      if (c.manual) return false;
       if (!absorbe(despues, t, c)) return false;
       const l = limitesReparto(despues, t, previos.get(c.id) ?? c);
       return c.ancho > l.min && c.ancho < l.max;
