@@ -3,6 +3,7 @@ import { Acceso } from './components/Acceso';
 import { BarraVisor } from './components/BarraVisor';
 import { Cabecera } from './components/Cabecera';
 import { ModalCotizaciones, ModalDocumento, ModalRegistrarCotizacion, ModalVenta } from './components/Cotizaciones';
+import { EdicionRapida } from './components/EdicionRapida';
 import { MenuFlotante } from './components/MenuFlotante';
 import { RecomendacionesFlotante } from './components/RecomendacionesFlotante';
 import { ModalCatalogo } from './components/Modales';
@@ -90,6 +91,7 @@ export default function App() {
             <div className="cargando-visor">{errorCarga ? `No se pudo conectar con el servidor: ${errorCarga}` : 'Preparando el taller 3D…'}</div>
           )}
           {cargado && <BarraVisor />}
+          {cargado && <EdicionRapida />}
         </section>
       </main>
       <PanelInferior />

@@ -214,14 +214,14 @@ function CabeceraCuerpo({ d, i, c, tramo, unidad }: { d: Diseno; i: number; c: C
   );
 }
 
-interface Grupo {
+export interface Grupo {
   tramo: TramoId;
   cuerpos: Cuerpo[];
   frentes: Frente[];
 }
 
 /** Tramos con módulos del mueble y sus frentes, de izquierda a derecha (para las pestañas Puertas y Cajones). */
-function gruposDe(d: Diseno, conAereos: boolean): Grupo[] {
+export function gruposDe(d: Diseno, conAereos: boolean): Grupo[] {
   const out: Grupo[] = [];
   for (const t of tramosOrdenados(d)) {
     if (esAereo(t) && !conAereos) continue;
