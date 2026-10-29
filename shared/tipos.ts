@@ -83,6 +83,11 @@ export interface Cuerpo {
   pisos?: number;
   /** Aéreos: id de la encimera cuya campana aloja este módulo de campana. */
   campanaDe?: string;
+  /**
+   * El vendedor le dio este ancho a mano: al editar otro módulo del tramo, la diferencia la toman
+   * primero los módulos que no se han fijado (este conserva su medida mientras alcance).
+   */
+  manual?: boolean;
 }
 
 /** Costado de una L o de una U. */

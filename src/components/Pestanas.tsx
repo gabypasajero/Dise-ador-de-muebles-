@@ -763,12 +763,15 @@ const TEXTO_ROL = { fijo: 'Fijo', equipado: 'Equipado', ajustable: 'Ajustable' }
 /** Texto del chip de rol: el espacio libre no lleva equipamiento, queda reservado para un equipo. */
 function textoRol(rol: keyof typeof TEXTO_ROL, c: Cuerpo, conserva = false): string {
   if (conserva) return 'Medida fija';
+  if (c.manual && rol === 'ajustable') return 'Fijado a mano';
   return c.tipo === 'hueco' && rol === 'equipado' ? 'Reservado' : TEXTO_ROL[rol];
 }
 
 function ayudaRol(d: Diseno, tramo: TramoId, c: Cuerpo, unidad: Unidad): string {
   const rol = rolModulo(d, tramo, c);
   if (rol === 'fijo') return `Mide siempre ${formatear(c.ancho, unidad)}: no cede ni toma espacio.`;
+  if (c.manual && rol === 'ajustable')
+    return `Le diste ${formatear(c.ancho, unidad)} a mano: al cambiar otro módulo conserva su medida (la diferencia la toman los módulos que no has fijado).`;
   if (rol === 'equipado') return 'Aloja la campana: va siempre centrado sobre su encimera.';
   const cocina = d.plantilla === 'cocina' || d.plantilla === 'compacto';
   if (!cocina) return 'Se reparte parejo con los demás módulos cuando agregas o quitas módulos.';

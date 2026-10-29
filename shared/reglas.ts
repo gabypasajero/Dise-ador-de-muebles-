@@ -1215,14 +1215,21 @@ function opAnchoModulo(out: Diseno, ctx: Ctx, tramo: Tramo, ref: RefModulo, anch
   const objetivo = Math.max(lim.min, pedido);
   if (objetivo !== pedido) ctx.avisos.push(`El ${nombre} mide al menos ${cm(lim.min)}.`);
   const delta = objetivo - c.ancho;
+  c.manual = true;
   if (delta === 0) return;
+  // Las medidas que el vendedor ya fijó a mano se conservan: la diferencia la toman primero los
+  // otros módulos; solo si ellos no alcanzan, ceden también los fijados.
+  const fijados = cs.filter((x) => x !== c && x.manual);
+  const signoF = delta > 0 ? -1 : 1;
+  const alcanza = (excl: Cuerpo[]) => capacidad(out, t, signoF, excl, false) >= Math.abs(delta) || capacidad(out, t, signoF, excl, true) >= Math.abs(delta) || capacidad(out, t, signoF, excl, true, true) >= Math.abs(delta);
+  const excluir = fijados.length && alcanza([c, ...fijados]) ? [c, ...fijados] : [c];
   // Primero ceden los módulos sin equipamiento; si no alcanza, también los que lo llevan.
   // Los vecinos se ajustan dentro de sus medidas normales; solo si no alcanza pasan su máximo
   // (por ejemplo, una cajonera sobre 90 cm): a mano el vendedor siempre puede.
   const signo = delta > 0 ? -1 : 1;
-  const sinTope = capacidad(out, t, signo, [c], false) < Math.abs(delta) && capacidad(out, t, signo, [c], true) < Math.abs(delta);
-  const conEquipados = capacidad(out, t, signo, [c], false, sinTope) < Math.abs(delta);
-  const cap = capacidad(out, t, signo, [c], conEquipados, sinTope);
+  const sinTope = capacidad(out, t, signo, excluir, false) < Math.abs(delta) && capacidad(out, t, signo, excluir, true) < Math.abs(delta);
+  const conEquipados = capacidad(out, t, signo, excluir, false, sinTope) < Math.abs(delta);
+  const cap = capacidad(out, t, signo, excluir, conEquipados, sinTope);
   if (cap <= 0) {
     rechazar(
       cs.length === 1
@@ -1234,7 +1241,7 @@ function opAnchoModulo(out: Diseno, ctx: Ctx, tramo: Tramo, ref: RefModulo, anch
   }
   const efectivo = Math.sign(delta) * Math.min(Math.abs(delta), cap);
   if (Math.abs(efectivo) < Math.abs(delta)) ctx.avisos.push(`El ${nombre} quedó en ${cm(c.ancho + efectivo)}: es lo que podían ${delta > 0 ? 'ceder' : 'tomar'} los demás módulos.`);
-  absorber(out, t, -efectivo, i, [c], 'No hay espacio.', conEquipados, sinTope);
+  absorber(out, t, -efectivo, i, excluir, 'No hay espacio.', conEquipados, sinTope);
   c.ancho += efectivo;
 }
 
