@@ -730,9 +730,10 @@ export const MEDIDAS_EQUIPO = {
     simple: { ancho: 400, fondo: 360, anchoTotal: 800, cubeta: 440 },
     doble: { ancho: 770, fondo: 380, anchoTotal: 770, cubeta: 770 },
     rinonera: { ancho: 550, fondo: 400, anchoTotal: 610, cubeta: 610 },
-    // De pozo: medidas estimadas de las fotos de la tienda (por confirmar).
-    pozo: { ancho: 480, fondo: 400, anchoTotal: 550, cubeta: 550 },
-    'pozo-doble': { ancho: 780, fondo: 400, anchoTotal: 820, cubeta: 820 },
+    // De pozo (medidas de la tienda): exterior 49 × 39 cm, cubeta 43,7 × 33,7 cm.
+    pozo: { ancho: 437, fondo: 337, anchoTotal: 490, cubeta: 490 },
+    // De pozo doble: exterior 78 × 43 cm, cubeta grande 37 × 38 cm y chica 33 × 33 cm.
+    'pozo-doble': { ancho: 730, fondo: 380, anchoTotal: 780, cubeta: 780 },
   },
   campana: { ancho: 600, fondo: 480 },
   horno: { ancho: 595, alto: ALTO_HORNO },
@@ -741,7 +742,7 @@ export const MEDIDAS_EQUIPO = {
 /** Distancia mínima (mm) entre el lavaplatos y el borde al que va pegado. */
 export const MARGEN_MIN_LAVAPLATOS = 50;
 /** Ancho de módulo con el que el lavaplatos queda dentro de su mueble. */
-export const MODULO_MIN_LAVAPLATOS = { simple: 450, doble: 800, rinonera: 600, pozo: 600, 'pozo-doble': 900 } as const;
+export const MODULO_MIN_LAVAPLATOS = { simple: 450, doble: 800, rinonera: 600, pozo: 550, 'pozo-doble': 800 } as const;
 
 /**
  * Cuánto se extiende el equipo completo (mm) a la izquierda y a la derecha del centro de su

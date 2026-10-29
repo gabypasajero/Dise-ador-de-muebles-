@@ -152,21 +152,23 @@ export function trazarHueco(p: THREE.Path, h: Hueco) {
  */
 export function huecosLavaplatos(tipo: EquipoLavaplatos['modelo'], cx: number, cz: number, escala = 1): Hueco[] {
   if (tipo === 'pozo') {
-    // De pozo: una cubeta cuadrada y honda, de esquinas apenas redondeadas.
-    const w = 480 * escala;
-    const d = 400 * escala;
+    // De pozo: una cubeta de 43,7 × 33,7 cm, de esquinas apenas redondeadas (exterior 49 × 39 cm).
+    const w = 437 * escala;
+    const d = 337 * escala;
     return [{ x0: cx - w / 2, x1: cx + w / 2, z0: cz - d / 2, z1: cz + d / 2, radio: 14 * escala }];
   }
   if (tipo === 'pozo-doble') {
-    // De pozo doble: una cubeta grande y una más chica, separadas por un puente angosto.
-    const grande = 430 * escala;
-    const chica = 320 * escala;
+    // De pozo doble: cubeta grande de 37 × 38 cm y chica de 33 × 33 cm, separadas por un puente de 3 cm
+    // (exterior 78 × 43 cm).
+    const grande = 370 * escala;
+    const chica = 330 * escala;
     const sep = 30 * escala;
-    const d = 400 * escala;
+    const dG = 380 * escala;
+    const dC = 330 * escala;
     const x0 = cx - (grande + sep + chica) / 2;
     return [
-      { x0, x1: x0 + grande, z0: cz - d / 2, z1: cz + d / 2, radio: 14 * escala },
-      { x0: x0 + grande + sep, x1: x0 + grande + sep + chica, z0: cz - d / 2, z1: cz + d / 2, radio: 14 * escala },
+      { x0, x1: x0 + grande, z0: cz - dG / 2, z1: cz + dG / 2, radio: 14 * escala },
+      { x0: x0 + grande + sep, x1: x0 + grande + sep + chica, z0: cz - dC / 2, z1: cz + dC / 2, radio: 14 * escala },
     ];
   }
   if (tipo === 'rinonera') {
@@ -248,7 +250,8 @@ export function Lavaplatos({
 }) {
   const m = useMats();
   const pozo = modelo === 'pozo' || modelo === 'pozo-doble';
-  const margen = (modelo === 'rinonera' ? 30 : pozo ? 34 : 38) * escala;
+  // Ala del pozo: 2,65 cm alrededor de la cubeta (49 × 39 cm); la del pozo doble, 2,5 cm (78 × 43 cm).
+  const margen = (modelo === 'rinonera' ? 30 : modelo === 'pozo' ? 26.5 : modelo === 'pozo-doble' ? 25 : 38) * escala;
   const ext = {
     x0: contorno?.x0 ?? Math.min(...huecos.map((h) => h.x0)) - margen,
     x1: contorno?.x1 ?? Math.max(...huecos.map((h) => h.x1)) + margen,

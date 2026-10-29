@@ -122,8 +122,8 @@ const TEXTO_LAVAPLATOS: Record<Lavaplatos['modelo'], string> = {
   simple: 'Simple (con secador, 80 cm)',
   doble: 'Doble (77 cm)',
   rinonera: 'Riñonera (61 cm)',
-  pozo: 'De pozo (acero oscuro, 55 cm)',
-  'pozo-doble': 'De pozo doble (acero oscuro, 82 cm)',
+  pozo: 'De pozo (acero oscuro, 49 × 39 cm)',
+  'pozo-doble': 'De pozo doble (acero oscuro, 78 × 43 cm)',
 };
 
 // ---------- Tramos ----------

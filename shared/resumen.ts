@@ -69,8 +69,8 @@ function layoutAereo(d: Diseno, t: TramoId): LayoutAereos | null {
 export function textoModeloLavaplatos(m: Lavaplatos['modelo']): string {
   if (m === 'doble') return 'Lavaplatos doble (2 cubetas)';
   const w = MEDIDAS_EQUIPO.lavaplatos[m].anchoTotal / 10;
-  if (m === 'pozo') return `Lavaplatos de pozo (1 cubeta cuadrada honda, acero oscuro, ${w} cm)`;
-  if (m === 'pozo-doble') return `Lavaplatos de pozo doble (2 cubetas cuadradas, acero oscuro, ${w} cm)`;
+  if (m === 'pozo') return 'Lavaplatos de pozo (acero oscuro, 49 × 39 cm; cubeta 43,7 × 33,7 cm)';
+  if (m === 'pozo-doble') return 'Lavaplatos de pozo doble (acero oscuro, 78 × 43 cm; cubetas 37 × 38 y 33 × 33 cm)';
   return m === 'rinonera' ? `Lavaplatos riñonera (1 cubeta, ${w} cm)` : `Lavaplatos simple (1 cubeta con secador, ${w} cm)`;
 }
 

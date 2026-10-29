@@ -23,9 +23,9 @@ describe('lavaplatos de pozo', () => {
     expect(precioCocina(conModelo('pozo-doble')).lineas.find((l) => l.concepto === 'Lavaplatos de pozo doble')?.valor).toBe(70000);
   });
 
-  it('miden 55 y 82 cm de ancho total y se guardan y abren igual', () => {
-    expect(MEDIDAS_EQUIPO.lavaplatos.pozo.anchoTotal).toBe(550);
-    expect(MEDIDAS_EQUIPO.lavaplatos['pozo-doble'].anchoTotal).toBe(820);
+  it('miden 49 × 39 y 78 × 43 cm (medidas de la tienda) y se guardan y abren igual', () => {
+    expect(MEDIDAS_EQUIPO.lavaplatos.pozo).toMatchObject({ ancho: 437, fondo: 337, anchoTotal: 490 });
+    expect(MEDIDAS_EQUIPO.lavaplatos['pozo-doble']).toMatchObject({ anchoTotal: 780 });
     for (const m of ['pozo', 'pozo-doble'] as const) {
       const d = conModelo(m);
       expect(validarDiseno(d)).toEqual([]);

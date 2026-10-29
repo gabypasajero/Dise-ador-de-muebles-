@@ -57,7 +57,7 @@ describe('recomendaciones', () => {
     d = ejecutar(d, { op: 'fijarAnchoModulo', tramo: 'base', modulo: lav.modulo, ancho: 700 }).diseno;
     const aviso = recomendaciones(d, 'cm').flatMap((g) => g.items).find((x) => x.texto.startsWith('El lavaplatos pide'));
     expect(aviso?.nivel).toBe('aviso');
-    expect(aviso?.accion?.op).toMatchObject({ op: 'fijarAnchoModulo', ancho: 900 });
+    expect(aviso?.accion?.op).toMatchObject({ op: 'fijarAnchoModulo', ancho: 800 });
     expect(i).toBeGreaterThanOrEqual(0);
   });
 });

@@ -61,7 +61,7 @@ const CAMBIOS_MODULO: Record<string, CampoOperacion> = {
 const CAMBIOS_EQUIPO: Record<string, CampoOperacion> = {
   platos: { tipo: 'opcion', valores: ['2', '3', '4'], opcional: true, descripcion: "encimera: '3' o '4' (la infantil también '2')" },
   campana: { tipo: 'booleano', opcional: true, descripcion: 'encimera: con o sin campana encima' },
-  modelo: { tipo: 'opcion', valores: ['simple', 'doble', 'rinonera', 'pozo', 'pozo-doble'], opcional: true, descripcion: "lavaplatos: 'simple' (1 cubeta con secador, 80 cm), 'doble' (2 cubetas, 77 cm), 'rinonera' (riñonera: 1 cubeta redondeada sin secador, 61 cm), 'pozo' (1 cubeta cuadrada honda de acero oscuro, 55 cm) o 'pozo-doble' (2 cubetas cuadradas de acero oscuro, 82 cm)" },
+  modelo: { tipo: 'opcion', valores: ['simple', 'doble', 'rinonera', 'pozo', 'pozo-doble'], opcional: true, descripcion: "lavaplatos: 'simple' (1 cubeta con secador, 80 cm), 'doble' (2 cubetas, 77 cm), 'rinonera' (riñonera: 1 cubeta redondeada sin secador, 61 cm), 'pozo' (1 cubeta de 43,7 × 33,7 cm de acero oscuro, 49 × 39 cm) o 'pozo-doble' (cubetas de 37 × 38 y 33 × 33 cm de acero oscuro, 78 × 43 cm)" },
   llave: { tipo: 'booleano', opcional: true, descripcion: 'lavaplatos: con o sin llave' },
   posicion: { tipo: 'opcion', valores: ['centro', 'izq', 'der'], opcional: true, descripcion: 'lavaplatos centrado o pegado a un borde de su módulo' },
   margen: mm('lavaplatos pegado a un borde: distancia del borde del módulo al borde del lavaplatos completo (mínimo 50)', true),
