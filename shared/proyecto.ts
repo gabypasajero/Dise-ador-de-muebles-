@@ -364,7 +364,7 @@ export function precioAdicional(a: Pick<MuebleAdicional, 'tipo' | 'diseno' | 'ca
 /** El precio calculado (sin las correcciones del vendedor) de un mueble adicional. */
 export function precioBaseAdicional(a: Pick<MuebleAdicional, 'tipo' | 'diseno' | 'cara'>, largoIsla?: number): { total: number; lineas: ReturnType<typeof precioCocina>['lineas'] } {
   if (a.cara) {
-    const lineas = precioCocina(a.diseno).lineas.filter((l) => !l.concepto.startsWith('Mueble base') && l.concepto !== 'Cierre suave en puertas y cajones' && l.concepto !== 'Sistema sin manilla');
+    const lineas = precioCocina(a.diseno).lineas.filter((l) => !l.concepto.startsWith('Mueble base') && !l.concepto.startsWith('Cierre suave') && l.concepto !== 'Sistema sin manilla');
     return { total: lineas.reduce((s, l) => s + l.valor, 0), lineas };
   }
   return a.tipo === 'isla' ? precioIsla(a.diseno, largoIsla) : precioCocina(a.diseno);

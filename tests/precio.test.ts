@@ -193,23 +193,30 @@ describe('precio oficial de la cocina', () => {
     const base = precioCocina(d).total;
     d = ejecutar(d, { op: 'fijarAcabados', cierreSuave: true, tirador: 'sin' }).diseno;
     expect(d.cierreSuave).toBe(true);
-    // En U de 3 m con sus lados pasa los 3 m de largo: tramo mayor.
-    expect(valor(d, 'Cierre suave en puertas y cajones')).toBe(80000);
+    // En U de 3 m con sus lados pasa los 2 m de largo: tramo de 2 a 5 m.
+    expect(valor(d, 'Cierre suave · mueble base')).toBe(80000);
     expect(valor(d, 'Sistema sin manilla')).toBe(20000);
     expect(precioCocina(d).total).toBe(base + 80000 + 20000);
     // No depende de la cantidad de módulos.
     const mas = agregarModulo(d, presetsModulo('cocina').find((p) => p.id === 'puerta')!, 0);
-    expect(valor(mas, 'Cierre suave en puertas y cajones')).toBe(80000);
+    expect(valor(mas, 'Cierre suave · mueble base')).toBe(80000);
     expect(valor(mas, 'Sistema sin manilla')).toBe(20000);
   });
 
-  it('el cierre suave va de $40.000 a $80.000 según el largo del mueble', () => {
-    const cierre = (ancho: number) => valor(ejecutar(fijarAncho(full(), ancho), { op: 'fijarAcabados', cierreSuave: true }).diseno, 'Cierre suave en puertas y cajones');
-    expect(cierre(1500)).toBe(40000);
-    expect(cierre(2000)).toBe(40000);
-    expect(cierre(2400)).toBe(60000);
-    expect(cierre(3000)).toBe(60000);
-    expect(cierre(3200)).toBe(80000);
+  it('el cierre suave se cobra por mueble: $50.000 hasta 2 m y $80.000 de 2 a 5 m', () => {
+    const cierre = (ancho: number) => valor(ejecutar(fijarAncho(full(), ancho), { op: 'fijarAcabados', cierreSuave: true }).diseno, 'Cierre suave · mueble base');
+    expect(cierre(1500)).toBe(50000);
+    expect(cierre(2000)).toBe(50000);
+    expect(cierre(2400)).toBe(80000);
+    expect(cierre(5000)).toBe(80000);
+  });
+
+  it('con aéreo, el cierre suave del aéreo se cobra aparte con la misma regla', () => {
+    const d = ejecutar(activarAereos(fijarAncho(full(), 2500), true), { op: 'fijarAcabados', cierreSuave: true }).diseno;
+    expect(valor(d, 'Cierre suave · mueble base')).toBe(80000);
+    expect(valor(d, 'Cierre suave · aéreo')).toBe(80000);
+    const chico = ejecutar(activarAereos(full(), true), { op: 'fijarAcabados', cierreSuave: true }).diseno;
+    expect(valor(chico, 'Cierre suave · aéreo')).toBe(50000);
   });
 
   it('el aéreo vale $130.000 por metro lineal (cada lado de la L/U a su largo completo)', () => {

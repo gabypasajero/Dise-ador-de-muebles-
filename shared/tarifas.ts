@@ -27,12 +27,13 @@ export const TARIFAS = {
   /** Especiero extraíble, por cada uno. */
   especiero: 20000,
   /**
-   * Cierre suave en bisagras y correderas, una vez por mueble, según el largo del mueble base
-   * (ancho más sus lados): de 40.000 a 80.000. Los cortes por largo están por confirmar con la tienda.
+   * Cierre suave en bisagras y correderas, por cada mueble según su largo (la dueña lo pidió así):
+   * el mueble base y el aéreo se cobran cada uno por separado. Hasta 2 m, 50.000; de 2 a 5 m, 80.000.
+   * Sobre 5 m se mantiene el último valor (por confirmar).
    */
   cierreSuave: [
-    { hastaCm: 200, valor: 40000 },
-    { hastaCm: 300, valor: 60000 },
+    { hastaCm: 200, valor: 50000 },
+    { hastaCm: 500, valor: 80000 },
     { hastaCm: Infinity, valor: 80000 },
   ],
   /** Sistema sin manilla (sin tiradores, apertura por perfil o push): una vez por mueble completo. */
@@ -196,15 +197,22 @@ export function lineasOpciones(d: Diseno, base?: Diseno): LineaPrecio[] {
   const especieros = contarModulos(d, 'especiero') - (base ? contarModulos(base, 'especiero') : 0);
   if (especieros > 0) lineas.push(lineaUnidades(base ? 'Especiero agregado' : 'Especiero', especieros, TARIFAS.especiero));
   if (d.cierreSuave && !base?.cierreSuave) {
+    // Cada mueble por separado: el mueble base y, si lo lleva, el aéreo.
     const largo = largoCierreSuave(d);
-    const valor = TARIFAS.cierreSuave.find((t) => largo <= t.hastaCm * 10)!.valor;
-    lineas.push(lineaUnidades('Cierre suave en puertas y cajones', 1, valor, `una vez por mueble · largo ${Math.round(largo / 10)} cm`));
+    lineas.push(lineaUnidades('Cierre suave · mueble base', 1, valorCierreSuave(largo), `largo ${Math.round(largo / 10)} cm`));
+    const aereo = d.plantilla === 'cocina' && d.aereos.activo && d.aereos.cuerpos.length ? largoAereo(d) : 0;
+    if (aereo) lineas.push(lineaUnidades('Cierre suave · aéreo', 1, valorCierreSuave(aereo), `largo ${Math.round(aereo / 10)} cm`));
   }
   if (d.tirador === 'sin' && base?.tirador !== 'sin') lineas.push(lineaUnidades('Sistema sin manilla', 1, TARIFAS.sinManilla, 'sin tiradores, apertura por perfil o push; una vez por mueble'));
   return lineas;
 }
 
 /** Largo del mueble base para el cierre suave: el ancho más los lados de la L o la U. */
+/** Valor del cierre suave de un mueble de ese largo (mm). */
+export function valorCierreSuave(largo: number): number {
+  return TARIFAS.cierreSuave.find((t) => largo <= t.hastaCm * 10)!.valor;
+}
+
 export function largoCierreSuave(d: Diseno): number {
   return d.ancho + (d.lados?.izq?.largo ?? 0) + (d.lados?.der?.largo ?? 0);
 }
