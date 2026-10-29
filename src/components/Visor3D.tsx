@@ -316,6 +316,11 @@ function encuadreCaptura(d: Diseno, aspecto: number, altoReal: number | null, ex
   const az = Math.max(-0.96, Math.min(0.96, Math.atan2(m.x, m.z)));
   const el = Math.max(0.1, Math.min(0.9, Math.asin(Math.max(-1, Math.min(1, m.y)))));
   const dir = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el));
+  return encuadrarPuntos(puntos, aspecto, dir);
+}
+
+/** Cámara mirando en la dirección `dir` (hacia la cámara) que deja todos los puntos dentro del cuadro, centrados. */
+function encuadrarPuntos(puntos: THREE.Vector3[], aspecto: number, dir: THREE.Vector3) {
   const derecha = dir.clone().negate().cross(new THREE.Vector3(0, 1, 0)).normalize();
   const arriba = derecha.clone().cross(dir.clone().negate()).normalize();
   const tanV = Math.tan(THREE.MathUtils.degToRad(CAPTURA.fov) / 2);
@@ -409,7 +414,34 @@ function Capturador() {
           gl.setPixelRatio(1);
           gl.setSize(ancho, alto, false);
           gl.render(scene, camara);
-          const lienzo = gl.domElement;
+          let lienzo: HTMLCanvasElement = gl.domElement;
+          // Isla con lado trasero: burbuja redonda con la vista desde atrás sobre la imagen principal.
+          const trasera = vistaTrasera(proyecto);
+          if (trasera) {
+            const c = document.createElement('canvas');
+            c.width = ancho;
+            c.height = alto;
+            const g = c.getContext('2d')!;
+            g.drawImage(lienzo, 0, 0);
+            const lado = Math.round(alto * 0.46);
+            const cam2 = new THREE.PerspectiveCamera(CAPTURA.fov, 1, 0.03, 80);
+            const e2 = encuadrarPuntos(trasera.puntos, 1, trasera.dir);
+            cam2.position.copy(e2.pos);
+            cam2.lookAt(e2.objetivo);
+            cam2.updateProjectionMatrix();
+            cam2.updateMatrixWorld();
+            // Solo la isla y sus caras: el resto (el mueble principal contra el muro) taparía la vista.
+            const otros: THREE.Object3D[] = [];
+            scene.traverse((o) => {
+              if (o.name.startsWith('mueble:') && !trasera.ids.has(o.name.slice(7)) && o.visible) otros.push(o);
+            });
+            otros.forEach((o) => (o.visible = false));
+            gl.setSize(lado, lado, false);
+            gl.render(scene, cam2);
+            otros.forEach((o) => (o.visible = true));
+            burbuja(g, gl.domElement, ancho, alto, lado);
+            lienzo = c;
+          }
           // JPEG de buena calidad; si la imagen pesa demasiado para guardarla, baja un poco.
           for (const calidad of [0.92, 0.88, 0.84, 0.78, 0.7]) {
             const url = lienzo.toDataURL('image/jpeg', calidad);
@@ -435,6 +467,68 @@ function Capturador() {
     return () => useApp.getState().set({ capturar: null });
   }, [gl, scene, camera, controls]);
   return null;
+}
+
+/**
+ * Vista desde atrás de las islas que tienen lado trasero: sus piezas (frente y caras), sus esquinas
+ * y la dirección opuesta a su frente, apenas desde arriba. null si ninguna isla tiene lado trasero.
+ */
+function vistaTrasera(p: Diseno): { ids: Set<string>; puntos: THREE.Vector3[]; dir: THREE.Vector3 } | null {
+  const islas = (p.adicionales ?? []).filter((a) => a.tipo === 'isla' && !a.cara && p.adicionales!.some((x) => x.isla === a.id && x.cara === 'trasera'));
+  if (!islas.length) return null;
+  const ids = new Set<string>();
+  for (const a of islas) {
+    ids.add(a.id);
+    for (const x of p.adicionales ?? []) if (x.isla === a.id) ids.add(x.id);
+  }
+  const solo: Diseno = { ...p, adicionales: (p.adicionales ?? []).filter((a) => ids.has(a.id)) };
+  // Las esquinas de esas piezas (puntosAdicionales trae las de todos los adicionales del proyecto dado).
+  const puntos = puntosAdicionales(solo);
+  const g = (islas[0].giro * Math.PI) / 180;
+  const el = 0.32;
+  // El frente de la isla mira a +z girado; desde atrás se mira en sentido contrario.
+  const dir = new THREE.Vector3(-Math.sin(g) * Math.cos(el), Math.sin(el), -Math.cos(g) * Math.cos(el));
+  return { ids, puntos, dir };
+}
+
+/** Dibuja la vista trasera como una burbuja redonda con borde blanco, abajo a la derecha, con su rótulo. */
+function burbuja(g: CanvasRenderingContext2D, imagen: HTMLCanvasElement, ancho: number, alto: number, lado: number) {
+  const r = lado / 2;
+  const margen = Math.round(alto * 0.04);
+  const cx = ancho - margen - r;
+  const cy = alto - margen - r;
+  g.save();
+  g.shadowColor = 'rgba(30, 20, 30, 0.28)';
+  g.shadowBlur = Math.round(alto * 0.025);
+  g.beginPath();
+  g.arc(cx, cy, r + Math.round(alto * 0.008), 0, Math.PI * 2);
+  g.fillStyle = '#ffffff';
+  g.fill();
+  g.restore();
+  g.save();
+  g.beginPath();
+  g.arc(cx, cy, r, 0, Math.PI * 2);
+  g.clip();
+  g.fillStyle = '#f3f1ee';
+  g.fillRect(cx - r, cy - r, lado, lado);
+  g.drawImage(imagen, 0, 0, lado, lado, cx - r, cy - r, lado, lado);
+  g.restore();
+  // Rótulo.
+  const tam = Math.round(alto * 0.028);
+  g.font = `800 ${tam}px Nunito, Arial, sans-serif`;
+  const texto = 'Vista trasera';
+  const w = g.measureText(texto).width + tam * 1.4;
+  const h = tam * 1.7;
+  const x = cx - w / 2;
+  const y = cy + r - h * 0.55;
+  g.fillStyle = '#a8325e';
+  g.beginPath();
+  g.roundRect(x, y, w, h, h / 2);
+  g.fill();
+  g.fillStyle = '#ffffff';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(texto, cx, y + h / 2);
 }
 
 /** Solo en desarrollo: deja la escena y la cámara en window.__three para las pruebas de color y encuadre. */
@@ -509,6 +603,7 @@ export function Visor3D() {
           return (
             <group
               key={m.id ?? 'principal'}
+              name={`mueble:${m.id ?? 'principal'}`}
               position={[m.x / 1000, 0, m.z / 1000]}
               rotation={[0, (m.giro * Math.PI) / 180, 0]}
               onClick={
