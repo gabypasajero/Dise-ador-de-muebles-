@@ -1223,29 +1223,39 @@ function opAnchoModulo(out: Diseno, ctx: Ctx, tramo: Tramo, ref: RefModulo, anch
   if (objetivo !== pedido) ctx.avisos.push(`El ${nombre} mide al menos ${cm(lim.min)}.`);
   const delta = objetivo - c.ancho;
   c.manual = true;
+  // Orden de fijado: el recién editado es el más nuevo.
+  c.fijadoEn = Math.max(0, ...cs.map((x) => (x === c ? 0 : (x.fijadoEn ?? 0)))) + 1;
   if (delta === 0) return;
-  // Las medidas que el vendedor ya fijó a mano se conservan: la diferencia la toman primero los
-  // otros módulos; solo si ellos no alcanzan, ceden también los fijados.
-  const fijados = cs.filter((x) => x !== c && x.manual);
-  const signoF = delta > 0 ? -1 : 1;
-  const alcanza = (excl: Cuerpo[]) => capacidad(out, t, signoF, excl, false) >= Math.abs(delta) || capacidad(out, t, signoF, excl, true) >= Math.abs(delta) || capacidad(out, t, signoF, excl, true, true) >= Math.abs(delta);
-  // Con módulos de cajones, la diferencia se ajusta primero en ellos (la dueña lo pidió así).
-  const sinCajones = cs.filter((x) => x !== c && !x.manual && !(x.cajones > 0));
-  const conCajones = cs.some((x) => x !== c && !x.manual && x.cajones > 0);
-  const excluir =
-    conCajones && alcanza([c, ...fijados, ...sinCajones])
-      ? [c, ...fijados, ...sinCajones]
-      : fijados.length && alcanza([c, ...fijados])
-        ? [c, ...fijados]
-        : [c];
-  // Primero ceden los módulos sin equipamiento; si no alcanza, también los que lo llevan.
-  // Los vecinos se ajustan dentro de sus medidas normales; solo si no alcanza pasan su máximo
-  // (por ejemplo, una cajonera sobre 90 cm): a mano el vendedor siempre puede.
-  const signo = delta > 0 ? -1 : 1;
-  const sinTope = capacidad(out, t, signo, excluir, false) < Math.abs(delta) && capacidad(out, t, signo, excluir, true) < Math.abs(delta);
-  const conEquipados = capacidad(out, t, signo, excluir, false, sinTope) < Math.abs(delta);
-  const cap = capacidad(out, t, signo, excluir, conEquipados, sinTope);
-  if (cap <= 0) {
+  const anchosAntes = new Map(cs.map((x) => [x, x.ancho]));
+  // La diferencia se reparte por etapas y cada una toma todo lo que puede antes de pasar a la
+  // siguiente: 1) los módulos con cajones que no se han fijado a mano (la dueña lo pidió así),
+  // 2) los demás no fijados y 3) solo lo que falte, los fijados a mano. En cada etapa ceden primero
+  // dentro de sus medidas normales, luego también los que llevan equipos y, al final, pasando su
+  // máximo (a mano el vendedor siempre puede).
+  const otros = cs.filter((x) => x !== c);
+  const fijados = otros.filter((x) => x.manual);
+  const sinCajones = otros.filter((x) => !x.manual && !(x.cajones > 0));
+  // Entre los fijados cede primero uno con cajones y, entre ellos, el que se fijó hace más tiempo
+  // (nunca el recién editado).
+  const porAntiguedad = [...fijados].sort((a, b) => (b.cajones > 0 ? 1 : 0) - (a.cajones > 0 ? 1 : 0) || (a.fijadoEn ?? 0) - (b.fijadoEn ?? 0));
+  const etapas: Cuerpo[][] = [[c, ...fijados, ...sinCajones], [c, ...fijados], ...porAntiguedad.map((f) => [c, ...fijados.filter((x) => x !== f)]), [c]];
+  const signo: 1 | -1 = delta > 0 ? -1 : 1;
+  let resto = Math.abs(delta);
+  for (const excluir of etapas) {
+    for (const [conEquipados, sinTope] of [
+      [false, false],
+      [true, false],
+      [true, true],
+    ] as const) {
+      if (resto <= 0) break;
+      const toma = Math.min(resto, capacidad(out, t, signo, excluir, conEquipados, sinTope));
+      if (toma <= 0) continue;
+      absorber(out, t, signo * toma, i, excluir, 'No hay espacio.', conEquipados, sinTope);
+      resto -= toma;
+    }
+  }
+  const efectivo = Math.sign(delta) * (Math.abs(delta) - resto);
+  if (efectivo === 0) {
     rechazar(
       cs.length === 1
         ? `El ancho del ${nombre} es el largo ${delTramo(out, t)}: cambia la medida del mueble.`
@@ -1254,9 +1264,12 @@ function opAnchoModulo(out: Diseno, ctx: Ctx, tramo: Tramo, ref: RefModulo, anch
           : `No hay módulos que puedan tomar ese espacio. Para achicar el ${nombre}, agrega un módulo o cambia la medida del mueble.`,
     );
   }
-  const efectivo = Math.sign(delta) * Math.min(Math.abs(delta), cap);
-  if (Math.abs(efectivo) < Math.abs(delta)) ctx.avisos.push(`El ${nombre} quedó en ${cm(c.ancho + efectivo)}: es lo que podían ${delta > 0 ? 'ceder' : 'tomar'} los demás módulos.`);
-  absorber(out, t, -efectivo, i, excluir, 'No hay espacio.', conEquipados, sinTope);
+  if (resto > 0) ctx.avisos.push(`El ${nombre} quedó en ${cm(c.ancho + efectivo)}: es lo que podían ${delta > 0 ? 'ceder' : 'tomar'} los demás módulos.`);
+  const ajustados = fijados.filter((x) => x.ancho !== anchosAntes.get(x));
+  if (ajustados.length)
+    ctx.avisos.push(
+      `Todos los demás módulos ya tenían su medida fijada: se ajustó el ${ajustados.map((x) => nombreModuloEn(out, t, cs.indexOf(x))).join(' y el ')} (el de cajones o, si no hay, el que fijaste hace más tiempo). Para que no cambie, agranda el ancho ${t === 'base' ? 'del mueble' : 'del tramo'}.`,
+    );
   c.ancho += efectivo;
 }
 

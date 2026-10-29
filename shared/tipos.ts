@@ -88,6 +88,8 @@ export interface Cuerpo {
    * primero los módulos que no se han fijado (este conserva su medida mientras alcance).
    */
   manual?: boolean;
+  /** Orden en que se fijó a mano (1 = el primero): si todos están fijados, cede primero el más antiguo. */
+  fijadoEn?: number;
 }
 
 /** Costado de una L o de una U. */

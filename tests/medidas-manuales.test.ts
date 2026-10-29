@@ -76,3 +76,36 @@ describe('las medidas fijadas se conservan al cambiar el mueble', () => {
     expect(validarDiseno(mas)).toEqual([]);
   });
 });
+
+describe('cuando todos los módulos están fijados', () => {
+  it('cede primero el fijado con cajones (nunca el recién editado) y avisa', () => {
+    let d = cocina400();
+    const ids = d.cuerpos.map((c) => c.id);
+    for (const [k, a] of [[0, 900], [1, 800], [2, 700], [3, 1500]] as const) d = ejecutar(d, { op: 'fijarAnchoModulo', tramo: 'base', modulo: ids[k], ancho: a }).diseno;
+    const r = ejecutar(d, { op: 'fijarAnchoModulo', tramo: 'base', modulo: ids[3], ancho: 1400 });
+    const w = (x: Diseno, k: number) => x.cuerpos.find((c) => c.id === ids[k])!.ancho;
+    expect(w(r.diseno, 3)).toBe(1400);
+    // El módulo 2 es la cajonera: toma la diferencia; el 1 y el 3 quedan igual.
+    expect(d.cuerpos.find((c) => c.id === ids[1])!.cajones).toBeGreaterThan(0);
+    expect(w(r.diseno, 1)).toBe(w(d, 1) + 100);
+    expect([w(r.diseno, 0), w(r.diseno, 2)]).toEqual([w(d, 0), w(d, 2)]);
+    expect(r.avisos.join(' ')).toContain('ya tenían su medida fijada');
+  });
+});
+
+describe('caso del video (cocina XL de 400 cm)', () => {
+  it('al cambiar el módulo 1 la cajonera ya fijada no vuelve a crecer', async () => {
+    const fs = await import('node:fs');
+    const { clasificarProducto, disenoInicial } = await import('../shared/catalogo');
+    const productos = JSON.parse(fs.readFileSync('public/datos/productos-respaldo.json', 'utf8'));
+    let d = disenoInicial(clasificarProducto(productos.find((x: { id: number }) => x.id === 160)));
+    d = ejecutar(d, { op: 'fijarAncho', ancho: 4000 }).diseno;
+    while (d.cuerpos.length < 4) d = ejecutar(d, { op: 'agregarModulo', tramo: 'base', preset: 'dos-puertas', posicion: 2 }).diseno;
+    const ids = d.cuerpos.map((c) => c.id);
+    d = ejecutar(d, { op: 'fijarAnchoModulo', tramo: 'base', modulo: ids[1], ancho: 700 }).diseno;
+    d = ejecutar(d, { op: 'fijarAnchoModulo', tramo: 'base', modulo: ids[0], ancho: 700 }).diseno;
+    expect(d.cuerpos.find((c) => c.id === ids[1])!.ancho).toBe(700);
+    d = ejecutar(d, { op: 'fijarAnchoModulo', tramo: 'base', modulo: ids[2], ancho: 700 }).diseno;
+    expect(d.cuerpos.slice(0, 3).map((c) => c.ancho)).toEqual([700, 700, 700]);
+  });
+});
