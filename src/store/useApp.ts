@@ -99,7 +99,7 @@ interface Estado {
   quitarMueble: (id: string) => void;
   /** Cambia la ubicación (x, z en mm), el giro o el nombre de un mueble adicional. */
   /** Cambia la ubicación (al moverlo a mano se suelta del principal), el giro, el nombre o si va pegado al principal. */
-  ubicarMueble: (id: string, cambios: Partial<Pick<MuebleAdicional, 'x' | 'z' | 'giro' | 'nombre' | 'pegado'>>) => void;
+  ubicarMueble: (id: string, cambios: Partial<Pick<MuebleAdicional, 'x' | 'z' | 'giro' | 'nombre' | 'pegado' | 'voladizo'>>) => void;
   /** Agrega (o quita, si ya está) el lado trasero o un costado de la isla que se edita. */
   alternarCara: (cara: CaraIsla) => void;
   /** Usa los colores del mueble que se edita en todos los muebles del proyecto. */

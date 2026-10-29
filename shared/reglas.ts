@@ -91,6 +91,7 @@ import type {
   Lavaplatos,
   Materiales,
   MuebleAdicional,
+  Voladizo,
   Plantilla,
   ProductoCatalogo,
   Retorno,
@@ -2210,6 +2211,12 @@ export function normalizar(entrada: Diseno | DisenoGuardado): Diseno {
   return out;
 }
 
+/** Voladizo de la cubierta de una isla: de 0 a 150 cm por lado. */
+function normalizarVoladizo(v: Partial<Voladizo>): Voladizo {
+  const n = (x: unknown) => Math.round(Math.max(0, Math.min(1500, numero(x, 0))));
+  return { frente: n(v.frente), trasero: n(v.trasero), izq: n(v.izq), der: n(v.der) };
+}
+
 /** Islas y muebles en línea guardados con el proyecto: cada uno es una cocina completa (sin adicionales propios). */
 function normalizarAdicionales(x: unknown): MuebleAdicional[] {
   if (!Array.isArray(x)) return [];
@@ -2231,6 +2238,7 @@ function normalizarAdicionales(x: unknown): MuebleAdicional[] {
       giro: ((Math.round(numero(a.giro, 0)) % 360) + 360) % 360,
       diseno: normalizar({ ...diseno, plantilla: 'cocina' }),
       ...(tipo === 'linea' && a.pegado === true ? { pegado: true } : {}),
+      ...(tipo === 'isla' && !a.cara && a.voladizo && typeof a.voladizo === 'object' ? { voladizo: normalizarVoladizo(a.voladizo) } : {}),
       ...(tipo === 'isla' && (a.cara === 'trasera' || a.cara === 'izq' || a.cara === 'der') && typeof a.isla === 'string' ? { cara: a.cara, isla: a.isla } : {}),
     });
   }

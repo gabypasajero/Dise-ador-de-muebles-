@@ -607,6 +607,17 @@ export function contenidoHoja(
     try {
       const fa = fichaFabricacion(a.diseno, null, unidad, materiales, { numero: opciones.numero ?? undefined, cliente: opciones.cliente });
       ficha.secciones.push(...fa.secciones.map((sec) => ({ ...sec, titulo: `${a.nombre} · ${sec.titulo}` })));
+      const v = a.voladizo;
+      if (!a.cara && v && (v.frente || v.trasero || v.izq || v.der)) {
+        const f = (mm: number) => formatear(mm, unidad);
+        ficha.secciones.push({
+          titulo: `${a.nombre} · Cubierta para sentarse`,
+          lineas: [
+            { etiqueta: 'Voladizo', valor: `Atrás ${f(v.trasero)} · adelante ${f(v.frente)} · izquierda ${f(v.izq)} · derecha ${f(v.der)}` },
+            { etiqueta: 'Cubierta', valor: 'Una sola pieza sobre toda la isla (frente, lado trasero y costados), más grande que el mueble para sentarse alrededor.' },
+          ],
+        });
+      }
       muros.push(...murosDe(a.diseno).map((m) => ({ ...m, titulo: `${a.nombre} · ${m.titulo}` })));
     } catch (e) {
       ficha.secciones.push({ titulo: a.nombre, lineas: [{ etiqueta: 'Aviso', valor: `No se pudo armar la ficha: ${(e as Error).message}` }] });

@@ -56,12 +56,15 @@ export function Mueble3D({
   materiales,
   vista,
   respaldo = false,
+  cubiertaIsla,
 }: {
   diseno: Diseno;
   materiales: CatalogoMateriales | null;
   vista: OpcionesVista;
   /** Isla: el respaldo queda a la vista, terminado en la melamina de los frentes. */
   respaldo?: boolean;
+  /** Isla con voladizo: cubierta grande (mm, en las coordenadas de este mueble) para sentarse alrededor. */
+  cubiertaIsla?: { x0: number; x1: number; z0: number; z1: number };
 }) {
   const props = { abierto: vista.abierto, etiquetas: vista.etiquetasFrentes, unidad: vista.unidad };
   const base = useMemo(() => disenoBase(diseno), [diseno]);
@@ -131,12 +134,21 @@ export function Mueble3D({
           </>
         )}
         {respaldo && <Respaldo d={diseno} />}
+        {cubiertaIsla && <CubiertaIsla d={diseno} r={cubiertaIsla} />}
         {vista.cotas && <Cotas diseno={diseno} unidad={vista.unidad} />}
         {vista.distancias && diseno.plantilla !== 'tocador' && <DistanciasEquipos diseno={diseno} unidad={vista.unidad} />}
         {vista.modulos && diseno.plantilla !== 'tocador' && <EtiquetasModulos diseno={diseno} unidad={vista.unidad} {...vista.modulos} />}
       </group>
     </MaterialesProvider>
   );
+}
+
+/** Cubierta grande de la isla: una sola pieza sobre todo el mueble que sobresale para sentarse. */
+function CubiertaIsla({ d, r }: { d: Diseno; r: { x0: number; x1: number; z0: number; z1: number } }) {
+  const m = useMats();
+  const e = d.cocina.espesorCubierta;
+  // Apenas sobre la cubierta normal, para que no se mezclen.
+  return <Panel x0={r.x0} x1={r.x1} y0={d.alto - e + 0.5} y1={d.alto + 1} z0={r.z0} z1={r.z1} mat={m.cubierta} />;
 }
 
 /** Respaldo terminado de una isla: tapa toda la cara de atrás bajo la cubierta. */

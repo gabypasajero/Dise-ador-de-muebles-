@@ -97,6 +97,8 @@ export function PestanaMuebles() {
         </div>
       )}
 
+      {activo?.tipo === 'isla' && <VoladizoIsla islaId={activo.isla ?? activo.id} />}
+
       {activo?.cara && <p className="tenue">Esta cara se mueve y gira con su isla: para ubicarla, elige la isla.</p>}
 
       {activo && !activo.cara && (
@@ -171,5 +173,44 @@ function EnLinea() {
         <input type="range" min={0} max={4000} step={10} value={Math.min(4000, separacion)} onChange={(e) => mover(lado, Number(e.target.value))} aria-label="Separación del mueble principal" />
       </label>
     </>
+  );
+}
+
+const SIN_VOLADIZO = { frente: 0, trasero: 0, izq: 0, der: 0 };
+
+/** Cubierta de la isla más grande que el mueble, para sentarse alrededor: cuánto sobresale por cada lado. */
+function VoladizoIsla({ islaId }: { islaId: string }) {
+  const s = useApp();
+  const isla = proyectoDe(s).adicionales?.find((a) => a.id === islaId);
+  if (!isla) return null;
+  const v = isla.voladizo ?? SIN_VOLADIZO;
+  const fijar = (cambios: Partial<typeof v>) => s.ubicarMueble(islaId, { voladizo: { ...v, ...cambios } });
+  const lados = [
+    { k: 'trasero', texto: 'Atrás' },
+    { k: 'frente', texto: 'Adelante' },
+    { k: 'izq', texto: 'Izquierda' },
+    { k: 'der', texto: 'Derecha' },
+  ] as const;
+  return (
+    <div className="voladizo-isla">
+      <span className="campo-etiqueta">Cubierta más grande para sentarse (cuánto sobresale del mueble)</span>
+      <div className="voladizo-isla-campos">
+        {lados.map((l) => (
+          <CampoMedida key={l.k} etiqueta={l.texto} compacto valor={v[l.k]} unidad={s.unidad} min={0} max={1500} paso={s.unidad === 'cm' ? 50 : 10} onCambio={(mm) => fijar({ [l.k]: Math.round(mm) })} />
+        ))}
+      </div>
+      <div className="voladizo-isla-rapidos">
+        <button type="button" className="boton secundario chico" onClick={() => fijar({ trasero: 300 })}>
+          Barra atrás de 30 cm
+        </button>
+        <button type="button" className="boton secundario chico" onClick={() => fijar({ izq: 300, der: 300 })}>
+          30 cm en los costados
+        </button>
+        <button type="button" className="boton fantasma chico" onClick={() => s.ubicarMueble(islaId, { voladizo: { ...SIN_VOLADIZO } })}>
+          Sin voladizo
+        </button>
+      </div>
+      <p className="tenue chico">Para sentarse cómodo se recomiendan 25 a 30 cm de voladizo (las piernas quedan bajo la cubierta).</p>
+    </div>
   );
 }

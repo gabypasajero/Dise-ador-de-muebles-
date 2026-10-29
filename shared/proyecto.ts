@@ -280,6 +280,40 @@ export interface MuebleProyecto {
   /** Isla sin lado trasero: su respaldo queda a la vista, terminado. */
   respaldo: boolean;
   cara?: CaraIsla;
+  /**
+   * Frente de una isla con voladizo: la cubierta grande de toda la isla (frente, caras y lo que
+   * sobresale para sentarse), en las coordenadas de este mueble (mm).
+   */
+  cubiertaIsla?: { x0: number; x1: number; z0: number; z1: number };
+}
+
+/** Si la isla tiene cubierta más grande que el mueble (algún lado con voladizo). */
+export function conVoladizo(a: Pick<MuebleAdicional, 'voladizo'>): boolean {
+  const v = a.voladizo;
+  return !!v && (v.frente > 0 || v.trasero > 0 || v.izq > 0 || v.der > 0);
+}
+
+/**
+ * Cubierta grande de una isla con voladizo, en las coordenadas de su frente: cubre el frente, el lado
+ * trasero y los costados, y sobresale lo pedido por cada lado.
+ */
+function cubierta(isla: MuebleAdicional, lista: MuebleAdicional[]): Pick<MuebleProyecto, 'cubiertaIsla'> {
+  if (!conVoladizo(isla)) return {};
+  const v = isla.voladizo!;
+  const d = isla.diseno;
+  const caras = lista.filter((x) => x.isla === isla.id);
+  const fT = caras.find((x) => x.cara === 'trasera')?.diseno.profundidad ?? 0;
+  const sI = caras.find((x) => x.cara === 'izq')?.diseno.profundidad ?? 0;
+  const sD = caras.find((x) => x.cara === 'der')?.diseno.profundidad ?? 0;
+  const vuelo = d.cocina.vueloCubierta;
+  return {
+    cubiertaIsla: {
+      x0: -d.ancho / 2 - sI - Math.max(vuelo, v.izq),
+      x1: d.ancho / 2 + sD + Math.max(vuelo, v.der),
+      z0: -fT - Math.max(fT ? vuelo : 0, v.trasero),
+      z1: d.profundidad + Math.max(vuelo, v.frente),
+    },
+  };
 }
 
 /**
@@ -293,7 +327,7 @@ export function mueblesProyecto(p: Diseno, nombrePrincipal = 'Mueble principal')
   const out: MuebleProyecto[] = [{ id: null, tipo: 'principal', nombre: nombrePrincipal, diseno: principal, x: 0, z: 0, giro: 0, respaldo: false }];
   for (const a of lista) {
     const base = { id: a.id, tipo: a.tipo, nombre: a.nombre, diseno: a.diseno };
-    if (a.tipo !== 'isla' || (!a.cara && !lista.some((x) => x.isla === a.id))) {
+    if (a.tipo !== 'isla' || (!a.cara && !lista.some((x) => x.isla === a.id) && !conVoladizo(a))) {
       out.push({ ...base, x: a.x, z: a.z, giro: a.giro, respaldo: a.tipo === 'isla' });
       continue;
     }
@@ -312,7 +346,7 @@ export function mueblesProyecto(p: Diseno, nombrePrincipal = 'Mueble principal')
     else if (a.cara === 'der') [local, giro] = [[L / 2 + a.diseno.profundidad / 2, 0], 90];
     else [local, giro] = [[-L / 2 - a.diseno.profundidad / 2, 0], 270];
     const [dx, dz] = girarPlanta(local[0], local[1], isla.giro);
-    out.push({ ...base, x: Math.round(isla.x + dx), z: Math.round(isla.z + dz), giro: (isla.giro + giro) % 360, respaldo: !a.cara && !trasera, cara: a.cara });
+    out.push({ ...base, x: Math.round(isla.x + dx), z: Math.round(isla.z + dz), giro: (isla.giro + giro) % 360, respaldo: !a.cara && !trasera, cara: a.cara, ...(a.cara ? {} : cubierta(a, lista)) });
   }
   return out;
 }
@@ -373,6 +407,11 @@ export function detalleProyecto(p: Diseno, producto: ProductoCatalogo | null, un
         ? `${a.cara === 'trasera' ? 'Lado trasero' : NOMBRE_CARA[a.cara].charAt(0).toUpperCase() + NOMBRE_CARA[a.cara].slice(1)} de la isla, con sus puertas y cajones: ${formatear(d.ancho, unidad, false)} × ${formatear(d.alto, unidad, false)} × ${formatear(d.profundidad, unidad)}`
         : `${NOMBRE_TIPO_ADICIONAL[a.tipo]} de ${formatear(d.ancho, unidad, false)} × ${formatear(d.alto, unidad, false)} × ${formatear(d.profundidad, unidad)} (ancho × alto × profundidad)${a.tipo === 'isla' && !(adicionales ?? []).some((x) => x.isla === a.id && x.cara === 'trasera') ? ', con respaldo terminado' : ''}`,
     });
+    if (!a.cara && conVoladizo(a)) {
+      const v = a.voladizo!;
+      const partes = [v.trasero && `atrás ${formatear(v.trasero, unidad)}`, v.frente && `adelante ${formatear(v.frente, unidad)}`, v.izq && `izquierda ${formatear(v.izq, unidad)}`, v.der && `derecha ${formatear(v.der, unidad)}`].filter(Boolean);
+      lineas.push({ etiqueta: `${a.nombre} · Cubierta para sentarse`, valor: `Cubierta más grande que el mueble, sobresale ${partes.join(', ')}` });
+    }
     for (const l of detalleCotizacion(d, null, unidad, materiales)) {
       if (l.etiqueta === 'Modelo base' || l.etiqueta === 'Medidas') continue;
       lineas.push({ ...l, etiqueta: `${a.nombre} · ${l.etiqueta}` });

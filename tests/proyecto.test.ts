@@ -203,3 +203,19 @@ describe('mueble en línea alineado con el principal', () => {
     expect(ladoEnLinea(p, encima.adicionales![0]).separacion).toBe(0);
   });
 });
+
+describe('cubierta de la isla para sentarse', () => {
+  it('sobresale lo pedido por cada lado, se guarda y sale en el detalle', async () => {
+    const { mueblesProyecto, detalleProyecto, agregarCara } = await import('../shared/proyecto');
+    const p = disenoLibre('cocina');
+    const isla = { ...nuevoAdicional(p, 'isla'), voladizo: { frente: 0, trasero: 300, izq: 0, der: 250 } };
+    let t: Diseno = { ...p, adicionales: [isla] };
+    t = agregarCara(t, isla.id, 'trasera');
+    const m = mueblesProyecto(t).find((x) => x.id === isla.id)!;
+    const trasera = t.adicionales!.find((a) => a.cara === 'trasera')!;
+    expect(m.cubiertaIsla).toEqual({ x0: -750 - isla.diseno.cocina.vueloCubierta, x1: 750 + 250, z0: -trasera.diseno.profundidad - 300, z1: 450 + isla.diseno.cocina.vueloCubierta });
+    const n = normalizar(JSON.parse(JSON.stringify(t)));
+    expect(n.adicionales!.find((a) => a.id === isla.id)!.voladizo).toEqual(isla.voladizo);
+    expect(detalleProyecto(t, null, 'cm', null).find((l) => l.etiqueta === 'Isla · Cubierta para sentarse')?.valor).toContain('atrás 30 cm');
+  });
+});

@@ -4451,3 +4451,19 @@ h3 {
   accent-color: var(--acento);
   width: 100%;
 }
+
+.voladizo-isla {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--borde);
+}
+
+.voladizo-isla-campos,
+.voladizo-isla-rapidos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: flex-end;
+}

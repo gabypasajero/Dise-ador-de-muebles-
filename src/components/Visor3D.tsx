@@ -622,6 +622,7 @@ export function Visor3D() {
                   diseno={activo ? diseno : m.diseno}
                   materiales={materiales}
                   respaldo={m.respaldo}
+                  cubiertaIsla={m.cubiertaIsla}
                   vista={activo ? { abierto, cotas, distancias, etiquetasFrentes, unidad, modulos } : { abierto, cotas: false, distancias: false, etiquetasFrentes: false, unidad, modulos: null }}
                 />
               </group>

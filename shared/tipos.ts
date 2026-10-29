@@ -275,6 +275,19 @@ export interface MuebleAdicional {
    * al moverlo a mano.
    */
   pegado?: boolean;
+  /**
+   * Isla: cuánto sobresale la cubierta del mueble por cada lado (mm), para sentarse alrededor con las
+   * piernas debajo. Sin dato, la cubierta lleva solo su vuelo normal.
+   */
+  voladizo?: Voladizo;
+}
+
+/** Cubierta de la isla más grande que el mueble, por lado (mm). */
+export interface Voladizo {
+  frente: number;
+  trasero: number;
+  izq: number;
+  der: number;
 }
 
 /** Caras extra de una isla (el frente es la isla misma). */
