@@ -36,8 +36,16 @@ self.addEventListener('activate', (e) => {
       } catch {
         /* sin catálogo de respaldo */
       }
+      // Todo guardado: se avisa a la app para que el vendedor sepa que ya puede desconectarse.
+      for (const c of await self.clients.matchAll({ includeUncontrolled: true })) c.postMessage({ tipo: 'listo-sin-conexion', version: VERSION });
     })(),
   );
+});
+
+// La app pregunta si ya está todo guardado (al abrirla otra vez con la misma versión).
+self.addEventListener('message', (e) => {
+  if (e.data?.tipo === 'estado-sin-conexion')
+    caches.has(CACHE).then((listo) => listo && e.source?.postMessage({ tipo: 'listo-sin-conexion', version: VERSION }));
 });
 
 self.addEventListener('fetch', (e) => {
