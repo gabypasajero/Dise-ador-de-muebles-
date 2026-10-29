@@ -1222,7 +1222,15 @@ function opAnchoModulo(out: Diseno, ctx: Ctx, tramo: Tramo, ref: RefModulo, anch
   const fijados = cs.filter((x) => x !== c && x.manual);
   const signoF = delta > 0 ? -1 : 1;
   const alcanza = (excl: Cuerpo[]) => capacidad(out, t, signoF, excl, false) >= Math.abs(delta) || capacidad(out, t, signoF, excl, true) >= Math.abs(delta) || capacidad(out, t, signoF, excl, true, true) >= Math.abs(delta);
-  const excluir = fijados.length && alcanza([c, ...fijados]) ? [c, ...fijados] : [c];
+  // Con módulos de cajones, la diferencia se ajusta primero en ellos (la dueña lo pidió así).
+  const sinCajones = cs.filter((x) => x !== c && !x.manual && !(x.cajones > 0));
+  const conCajones = cs.some((x) => x !== c && !x.manual && x.cajones > 0);
+  const excluir =
+    conCajones && alcanza([c, ...fijados, ...sinCajones])
+      ? [c, ...fijados, ...sinCajones]
+      : fijados.length && alcanza([c, ...fijados])
+        ? [c, ...fijados]
+        : [c];
   // Primero ceden los módulos sin equipamiento; si no alcanza, también los que lo llevan.
   // Los vecinos se ajustan dentro de sus medidas normales; solo si no alcanza pasan su máximo
   // (por ejemplo, una cajonera sobre 90 cm): a mano el vendedor siempre puede.

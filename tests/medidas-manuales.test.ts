@@ -46,3 +46,16 @@ describe('medidas de módulos dadas a mano', () => {
     expect(validarDiseno(r.diseno)).toEqual([]);
   });
 });
+
+describe('los cajones toman primero la diferencia', () => {
+  it('al agrandar un módulo de puertas se achica la cajonera, no las otras puertas', () => {
+    let d = cocina400();
+    // Módulo 2 de cajones; los demás de puertas.
+    d = ejecutar(d, { op: 'actualizarModulo', tramo: 'base', modulo: d.cuerpos[1].id, cambios: { puertas: 0, cajones: 3 } }).diseno;
+    const antes = d.cuerpos.map((c) => c.ancho);
+    d = ejecutar(d, { op: 'fijarAnchoModulo', tramo: 'base', modulo: d.cuerpos[0].id, ancho: antes[0] + 100 }).diseno;
+    expect(d.cuerpos[1].ancho).toBe(antes[1] - 100);
+    expect(d.cuerpos[2].ancho).toBe(antes[2]);
+    expect(d.cuerpos[3].ancho).toBe(antes[3]);
+  });
+});
