@@ -3,6 +3,7 @@ import { Acceso } from './components/Acceso';
 import { BarraVisor } from './components/BarraVisor';
 import { Cabecera } from './components/Cabecera';
 import { ModalCotizaciones, ModalDocumento, ModalRegistrarCotizacion, ModalVenta } from './components/Cotizaciones';
+import { AvisoSinConexion } from './components/AvisoSinConexion';
 import { EdicionRapida } from './components/EdicionRapida';
 import { MenuFlotante } from './components/MenuFlotante';
 import { RecomendacionesFlotante } from './components/RecomendacionesFlotante';
@@ -92,6 +93,7 @@ export default function App() {
           )}
           {cargado && <BarraVisor />}
           {cargado && <EdicionRapida />}
+          <AvisoSinConexion />
         </section>
       </main>
       <PanelInferior />

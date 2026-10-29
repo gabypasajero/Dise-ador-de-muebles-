@@ -4741,3 +4741,40 @@ h3 {
 .visor .edicion-rapida.derecha {
   max-height: max(170px, calc(100% - 430px));
 }
+
+/* ---------- Modo sin conexión ---------- */
+
+.aviso-sin-conexion {
+  position: absolute;
+  left: 50%;
+  top: 60px;
+  transform: translateX(-50%);
+  z-index: 30;
+  max-width: min(640px, calc(100% - 24px));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: #3c343c;
+  color: #fff;
+  font-size: 13px;
+  box-shadow: var(--sombra);
+}
+
+.aviso-sin-conexion.con-pendientes {
+  background: #fdf3e1;
+  color: var(--texto);
+  border: 1px solid #e0a33a;
+}
+
+.aviso-sin-conexion button {
+  border: none;
+  background: var(--acento);
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+  border-radius: 999px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
