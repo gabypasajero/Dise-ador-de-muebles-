@@ -5,25 +5,38 @@ import { cajonesIdeales, distribucionIdeal, puertasIdeales, recomendaciones } fr
 import { ejecutar } from '../shared/reglas';
 
 describe('recomendaciones', () => {
-  it('puertas entre 30 y 60 cm: 1 hasta 60, 2 en 70 a 120, 3 sobre eso', () => {
-    expect([300, 450, 600, 700, 900, 1200, 1500].map(puertasIdeales)).toEqual([1, 1, 1, 2, 2, 2, 3]);
+  it('puertas de 35 cm con ±10: cada una entre 25 y 45 cm, lo más cerca de 35', () => {
+    expect([250, 350, 450, 500, 700, 900, 1000, 1400].map(puertasIdeales)).toEqual([1, 1, 1, 2, 2, 2, 3, 4]);
   });
 
   it('3 cajones en un mueble de cocina de 90 cm', () => {
     expect(cajonesIdeales(900 - 100 - 28)).toBe(3);
   });
 
-  it('distribuye el largo libre: cajonera de 60 a 90 y módulos de 2 puertas', () => {
-    expect(distribucionIdeal(900, true)).toEqual([{ cantidad: 1, tipo: 'cajonera', puertas: 0, ancho: 900 }]);
-    expect(distribucionIdeal(1600, true)).toEqual([
-      { cantidad: 1, tipo: 'cajonera', puertas: 0, ancho: 900 },
+  it('distribuye el largo libre: cajonera de 40 (hasta 90) y módulos de 2 puertas de 35', () => {
+    expect(distribucionIdeal(1100, true)).toEqual([
+      { cantidad: 1, tipo: 'cajonera', puertas: 0, ancho: 400 },
       { cantidad: 1, tipo: 'puertas', puertas: 2, ancho: 700 },
     ]);
-    expect(distribucionIdeal(1500, false)).toEqual([{ cantidad: 2, tipo: 'puertas', puertas: 2, ancho: 750 }]);
-    expect(distribucionIdeal(1800, false)).toEqual([
-      { cantidad: 2, tipo: 'puertas', puertas: 2, ancho: 700 },
+    expect(distribucionIdeal(1500, true)).toEqual([
+      { cantidad: 1, tipo: 'cajonera', puertas: 0, ancho: 400 },
+      { cantidad: 1, tipo: 'puertas', puertas: 2, ancho: 700 },
       { cantidad: 1, tipo: 'puertas', puertas: 1, ancho: 400 },
     ]);
+    // Lo que sobra agranda la cajonera (sin pasar de 90).
+    expect(distribucionIdeal(2000, true)).toEqual([
+      { cantidad: 1, tipo: 'cajonera', puertas: 0, ancho: 600 },
+      { cantidad: 2, tipo: 'puertas', puertas: 2, ancho: 700 },
+    ]);
+    expect(distribucionIdeal(1500, false)).toEqual([{ cantidad: 2, tipo: 'puertas', puertas: 2, ancho: 750 }]);
+    for (const l of [400, 900, 1300, 2350, 3100]) {
+      const r = distribucionIdeal(l, true);
+      expect(r.reduce((s, m) => s + m.cantidad * m.ancho, 0)).toBeCloseTo(l, -1);
+      for (const m of r) {
+        if (m.tipo === 'cajonera') expect(m.ancho).toBeLessThanOrEqual(900);
+        else expect(m.ancho / m.puertas).toBeLessThanOrEqual(450);
+      }
+    }
   });
 
   it('una puerta de 90 cm sugiere 2 puertas, con el cambio listo para aplicar', () => {

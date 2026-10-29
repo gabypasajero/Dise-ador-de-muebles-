@@ -7,10 +7,10 @@ import { advertencias, formatear, type Operacion } from './reglas';
 import { ANCHO_POR_PUERTA, ANCHO_MAX_CAJONERA, cuerposDe, esCajonera, tramosDe } from './tramos';
 import type { Diseno, TramoId, Unidad } from './tipos';
 
-/** Puerta cómoda de abrir: hasta 60 cm de ancho; más angosta que 30 cm no conviene. */
-export const PUERTA = { ideal: ANCHO_POR_PUERTA, min: 300, max: 600 };
-/** Cajonera de cocina: de 60 a 90 cm. */
-export const CAJONERA = { min: 600, max: ANCHO_MAX_CAJONERA };
+/** Puertas estándar de 35 cm, con 10 cm de margen hacia cada lado (la dueña lo pidió así). */
+export const PUERTA = { ideal: ANCHO_POR_PUERTA, min: ANCHO_POR_PUERTA - 100, max: ANCHO_POR_PUERTA + 100 };
+/** Cajonera estándar de 40 cm: desde 30 cm y hasta 90 cm de ancho. */
+export const CAJONERA = { ideal: 400, min: 300, max: ANCHO_MAX_CAJONERA };
 /** Alto de frente de cajón cómodo (mm): alrededor de 24 cm (3 cajones en un mueble de 90), nunca menos de 9 cm. */
 export const CAJON = { ideal: 240, min: 90 };
 
@@ -26,14 +26,18 @@ export interface GrupoRecomendaciones {
   items: Recomendacion[];
 }
 
-/** Puertas ideales para un módulo de ese ancho (cada puerta entre 30 y 60 cm, cerca de 35). */
+/**
+ * Puertas ideales para un módulo de ese ancho: la menor cantidad con la que cada puerta queda entre
+ * 25 y 45 cm (estándar 35); si ninguna cantidad cabe en ese rango, la que más se acerca a 35 cm.
+ */
 export function puertasIdeales(ancho: number): number {
-  const n = Math.max(1, Math.round(ancho / (PUERTA.ideal * 1.45)));
-  // Que ninguna puerta pase de 60 cm ni quede bajo 30 cm.
-  let k = n;
-  while (ancho / k > PUERTA.max) k++;
-  while (k > 1 && ancho / k < PUERTA.min) k--;
-  return Math.min(4, k);
+  for (let n = 1; n <= 4; n++) {
+    const cada = ancho / n;
+    if (cada >= PUERTA.min && cada <= PUERTA.max) return n;
+  }
+  let mejor = 1;
+  for (let n = 2; n <= 4; n++) if (Math.abs(ancho / n - PUERTA.ideal) < Math.abs(ancho / mejor - PUERTA.ideal)) mejor = n;
+  return mejor;
 }
 
 /** Cajones ideales para un alto de frentes dado (frentes de unos 18 cm, entre 2 y 5). */
@@ -56,33 +60,48 @@ export interface ModuloIdeal {
 
 /**
  * Distribución ideal del largo libre de un tramo (lo que no ocupan hornos, especieros y módulos de
- * equipos): una cajonera de 60 a 90 cm (en el mueble base de la cocina) y el resto en módulos de
- * 2 puertas de unos 70 cm; si sobra poco, se reparte entre ellos.
+ * equipos), según los estándares de la tienda: una cajonera de 40 cm (en el mueble base de la
+ * cocina) y el resto en módulos de 2 puertas de 35 cm (70 cm); si sobra, un módulo de 1 puerta
+ * (25 a 45 cm) y lo que todavía quede agranda la cajonera (hasta 90 cm) o las puertas (hasta 45 cm).
  */
 export function distribucionIdeal(libre: number, conCajonera: boolean): ModuloIdeal[] {
-  const out: ModuloIdeal[] = [];
-  let resto = libre;
   const par = 2 * PUERTA.ideal;
-  if (conCajonera && resto >= CAJONERA.min) {
-    const cajonera = resto <= CAJONERA.max ? resto : Math.min(CAJONERA.max, resto - Math.floor((resto - CAJONERA.min) / par) * par);
-    out.push({ cantidad: 1, tipo: 'cajonera', puertas: 0, ancho: cajonera });
-    resto -= cajonera;
-  }
-  if (resto <= 0) return out;
-  let n = Math.floor(resto / par);
-  const sobra = resto - n * par;
-  if (n === 0) {
-    out.push({ cantidad: 1, tipo: 'puertas', puertas: puertasIdeales(resto), ancho: resto });
-    return out;
-  }
-  // Lo que sobra: un módulo de 1 puerta si alcanza (30 cm o más); si no, se reparte entre los de 2 puertas.
+  let cajonera = conCajonera && libre >= CAJONERA.min ? Math.min(CAJONERA.ideal, libre) : 0;
+  const resto = libre - cajonera;
+  let pares = Math.floor(resto / par);
+  let sobra = resto - pares * par;
+  let una = 0;
   if (sobra >= PUERTA.min) {
-    out.push({ cantidad: n, tipo: 'puertas', puertas: 2, ancho: par });
-    out.push({ cantidad: 1, tipo: 'puertas', puertas: puertasIdeales(sobra), ancho: sobra });
-  } else {
-    while (n > 1 && resto / n > 2 * PUERTA.max) n++;
-    out.push({ cantidad: n, tipo: 'puertas', puertas: 2, ancho: Math.round(resto / n) });
+    una = Math.min(PUERTA.max, sobra);
+    sobra -= una;
   }
+  // Lo que sobra: primero la cajonera (hasta 90 cm), luego la puerta suelta y los módulos de 2 puertas (hasta 45 cm cada puerta).
+  if (sobra > 0 && cajonera) {
+    const extra = Math.min(sobra, CAJONERA.max - cajonera);
+    cajonera += extra;
+    sobra -= extra;
+  }
+  if (sobra > 0 && una) {
+    const extra = Math.min(sobra, PUERTA.max - una);
+    una += extra;
+    sobra -= extra;
+  }
+  let anchoPar = par;
+  if (sobra > 0 && pares > 0) {
+    anchoPar = par + sobra / pares;
+    // Si las puertas quedarían de más de 45 cm, se agrega un módulo más de 2 puertas.
+    while (anchoPar > 2 * PUERTA.max) {
+      pares++;
+      anchoPar = (resto - una) / pares;
+    }
+    sobra = 0;
+  }
+  if (sobra > 0 && !pares && !una && !cajonera) una = sobra;
+  else if (sobra > 0 && cajonera) cajonera += sobra;
+  const out: ModuloIdeal[] = [];
+  if (cajonera) out.push({ cantidad: 1, tipo: 'cajonera', puertas: 0, ancho: Math.round(cajonera) });
+  if (pares) out.push({ cantidad: pares, tipo: 'puertas', puertas: 2, ancho: Math.round(anchoPar) });
+  if (una) out.push({ cantidad: 1, tipo: 'puertas', puertas: 1, ancho: Math.round(una) });
   return out;
 }
 
@@ -117,10 +136,10 @@ function recomendacionesTramo(d: Diseno, t: TramoId, unidad: Unidad): Recomendac
     if (c.puertas > 0) {
       const ideal = puertasIdeales(c.ancho);
       const cada = c.ancho / c.puertas;
-      if (ideal !== c.puertas && (cada > PUERTA.max || cada < PUERTA.min || Math.abs(c.ancho / ideal - PUERTA.ideal) < Math.abs(cada - PUERTA.ideal) - 80))
+      if (ideal !== c.puertas && (cada > PUERTA.max || cada < PUERTA.min))
         items.push({
           nivel: cada > PUERTA.max || cada < PUERTA.min ? 'aviso' : 'info',
-          texto: `${mayus(nombre)} (${f(c.ancho)}): con ${c.puertas} ${c.puertas === 1 ? 'puerta' : 'puertas'} quedan de ${f(Math.round(cada))}; lo ideal son ${ideal} de ${f(Math.round(c.ancho / ideal))}.`,
+          texto: `${mayus(nombre)} (${f(c.ancho)}): con ${c.puertas} ${c.puertas === 1 ? 'puerta' : 'puertas'} quedan de ${f(Math.round(cada))}; lo ideal son ${ideal} de ${f(Math.round(c.ancho / ideal))} (puertas de ${f(PUERTA.ideal)}, entre ${f(PUERTA.min)} y ${f(PUERTA.max)}).`,
           accion: { texto: `Poner ${ideal} ${ideal === 1 ? 'puerta' : 'puertas'}`, op: { op: 'actualizarModulo', tramo: t, modulo: c.id, cambios: { puertas: ideal } } },
         });
     }
@@ -135,7 +154,7 @@ function recomendacionesTramo(d: Diseno, t: TramoId, unidad: Unidad): Recomendac
           accion: { texto: `Poner ${ideal} cajones`, op: { op: 'actualizarModulo', tramo: t, modulo: c.id, cambios: { cajones: ideal } } },
         });
       if (esCocinaAdulta(d) && esCajonera(c) && (c.ancho < CAJONERA.min || c.ancho > CAJONERA.max))
-        items.push({ nivel: c.ancho > CAJONERA.max ? 'aviso' : 'info', texto: `La cajonera del ${nombre} mide ${f(c.ancho)}: lo ideal es entre ${f(CAJONERA.min)} y ${f(CAJONERA.max)}.` });
+        items.push({ nivel: c.ancho > CAJONERA.max ? 'aviso' : 'info', texto: `La cajonera del ${nombre} mide ${f(c.ancho)}: el estándar es ${f(CAJONERA.ideal)}, entre ${f(CAJONERA.min)} y ${f(CAJONERA.max)}.` });
     }
   });
   // Distribución ideal del largo que queda libre.
