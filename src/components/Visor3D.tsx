@@ -202,6 +202,8 @@ function Camara() {
   const forma = useApp((s) => formaDe((s.muebleActivo && s.principal ? s.principal : s.diseno).lados ?? { izq: null, der: null }));
   // Al agregar o quitar una isla o un mueble en línea se vuelve a encuadrar todo.
   const adicionales = useApp((s) => (s.muebleActivo && s.principal ? s.principal : s.diseno).adicionales?.length ?? 0);
+  // Con una isla la cámara da la vuelta completa para verla por todos sus lados.
+  const conIsla = useApp((s) => !!(s.muebleActivo && s.principal ? s.principal : s.diseno).adicionales?.some((a) => a.tipo === 'isla'));
   const animando = useRef(0);
   const destino = useRef<{ objetivo: THREE.Vector3; pos: THREE.Vector3 } | null>(null);
   // Una L grande en el teléfono puede necesitar más de 9 m: el control no debe acercar la cámara y cortarla.
@@ -263,8 +265,8 @@ function Camara() {
       maxDistance={maxDistancia}
       minPolarAngle={0.12}
       maxPolarAngle={Math.PI / 2 - 0.03}
-      minAzimuthAngle={-1.3}
-      maxAzimuthAngle={1.3}
+      minAzimuthAngle={conIsla ? -Infinity : -1.3}
+      maxAzimuthAngle={conIsla ? Infinity : 1.3}
       onStart={() => (animando.current = 0)}
     />
   );

@@ -4351,11 +4351,11 @@ h3 {
   background: #8a8f96;
 }
 
-.recomendaciones-cuerpo li.ok::before {
+.recomendaciones-cuerpo li.nivel-ok::before {
   background: #2e9e5b;
 }
 
-.recomendaciones-cuerpo li.aviso::before {
+.recomendaciones-cuerpo li.nivel-aviso::before {
   background: #e0a33a;
 }
 
@@ -4371,4 +4371,70 @@ h3 {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* Texto siempre legible (no hereda el estilo de las notificaciones). */
+.recomendaciones-cuerpo li {
+  color: var(--texto, #2a2328);
+}
+
+.recomendaciones-cuerpo li.nivel-aviso {
+  background: #fdf3e1;
+}
+
+.recomendaciones-cuerpo li .boton {
+  color: var(--acento);
+  background: #fff;
+  border: 1px solid var(--acento);
+}
+
+/* ---------- Qué estás editando (arriba de cada pestaña) ---------- */
+
+.selector-parte {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.selector-parte-fila {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.selector-parte-fila .campo-etiqueta {
+  min-width: 56px;
+}
+
+.selector-parte-fila button {
+  border: 1px solid var(--borde);
+  background: var(--panel);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 5px 12px;
+  cursor: pointer;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selector-parte-fila button.activo {
+  background: var(--acento);
+  border-color: var(--acento);
+  color: #fff;
+}
+
+/* Siempre a la vista aunque la sección se desplace. */
+.selector-parte {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--panel);
+  padding: 4px 0 6px;
+  border-bottom: 1px solid var(--borde);
 }

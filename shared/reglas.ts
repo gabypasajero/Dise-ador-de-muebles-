@@ -2230,6 +2230,7 @@ function normalizarAdicionales(x: unknown): MuebleAdicional[] {
       z: Math.round(numero(a.z, 0)),
       giro: ((Math.round(numero(a.giro, 0)) % 360) + 360) % 360,
       diseno: normalizar({ ...diseno, plantilla: 'cocina' }),
+      ...(tipo === 'linea' && a.pegado === true ? { pegado: true } : {}),
       ...(tipo === 'isla' && (a.cara === 'trasera' || a.cara === 'izq' || a.cara === 'der') && typeof a.isla === 'string' ? { cara: a.cara, isla: a.isla } : {}),
     });
   }

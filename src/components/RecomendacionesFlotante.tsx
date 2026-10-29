@@ -86,7 +86,7 @@ export function RecomendacionesFlotante() {
             <h3>{g.titulo}</h3>
             <ul>
               {g.items.map((it, k) => (
-                <li key={k} className={it.nivel}>
+                <li key={k} className={`nivel-${it.nivel}`}>
                   <span>{it.texto}</span>
                   {it.accion && (
                     <button type="button" className="boton secundario chico" onClick={() => operar(it.accion!.op)}>

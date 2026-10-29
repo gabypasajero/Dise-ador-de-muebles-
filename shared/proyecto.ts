@@ -3,7 +3,7 @@
 // proyecto es la suma de todos y cada uno guarda sus propias correcciones del desglose.
 import { nuevoId } from './catalogo';
 import { disenoLibre } from './catalogo';
-import { dimensionesTotales, extremosPrincipal } from './layout';
+import { calcularLayoutAereos, dimensionesTotales, extremosPrincipal } from './layout';
 import { aplicarAjustes, ejecutar, formatear, precioDiseno, type Operacion, type PrecioAjustado } from './reglas';
 import { detalleCotizacion } from './resumen';
 import { precioCocina, precioIsla } from './tarifas';
@@ -15,6 +15,38 @@ export const ISLA_ESTANDAR = { ancho: 1500, alto: 900, profundidad: 900 };
 export const LINEA_ESTANDAR = { ancho: 1200 };
 /** Pasillo entre el mueble principal y la isla al agregarla. */
 export const PASILLO_ISLA = 1100;
+/** Espacio para el refrigerador entre el mueble principal y el mueble en línea (refrigerador de 70 cm más holgura). */
+export const HUECO_REFRIGERADOR = 1000;
+
+/**
+ * Dónde empieza (x, mm) el primer mueble en línea pegado: después del mueble principal y de su
+ * aéreo y del espacio del refrigerador; si el aéreo ya tiene su módulo sobre el refrigerador, justo
+ * después de él (el refrigerador queda bajo ese módulo y el aéreo une los dos muebles).
+ */
+export function inicioEnLinea(principal: Diseno): number {
+  const [, x1] = extremosPrincipal(principal);
+  const la = principal.aereos.activo ? calcularLayoutAereos(principal) : null;
+  const fin = Math.max(x1, la?.montaje === 'mural' ? la.x1 : -Infinity);
+  const sobreRefri = la?.cuerpos.some((c) => c.cuerpo.tipo === 'refrigerador') ?? false;
+  return Math.round(fin + (sobreRefri ? 0 : HUECO_REFRIGERADOR));
+}
+
+/** Ubica los muebles en línea pegados uno tras otro desde inicioEnLinea. Devuelve el mismo proyecto si ya están. */
+export function ordenarEnLinea(p: Diseno): Diseno {
+  const lista = p.adicionales ?? [];
+  const pegados = lista.filter((a) => a.tipo === 'linea' && a.pegado).sort((a, b) => a.x - b.x);
+  if (!pegados.length) return p;
+  const { adicionales: _a, ...principal } = p;
+  let cursor = inicioEnLinea(principal);
+  const nuevos = new Map<string, Pick<MuebleAdicional, 'x' | 'z' | 'giro'>>();
+  for (const a of pegados) {
+    const pos = { x: Math.round(cursor + a.diseno.ancho / 2), z: Math.round(a.diseno.profundidad / 2), giro: 0 };
+    if (pos.x !== a.x || pos.z !== a.z || a.giro !== 0) nuevos.set(a.id, pos);
+    cursor += a.diseno.ancho;
+  }
+  if (!nuevos.size) return p;
+  return { ...p, adicionales: lista.map((a) => (nuevos.has(a.id) ? { ...a, ...nuevos.get(a.id)! } : a)) };
+}
 
 export const NOMBRE_TIPO_ADICIONAL: Record<MuebleAdicional['tipo'], string> = { isla: 'Isla', linea: 'Mueble en línea' };
 
@@ -76,10 +108,11 @@ export function nuevoAdicional(p: Diseno, tipo: MuebleAdicional['tipo']): Mueble
     const fondo = dimensionesTotales(p).fondo;
     return { id: nuevoId('m'), tipo, nombre: nombreLibre(p, tipo), x: islas * (d.ancho + 600), z: Math.round(fondo + PASILLO_ISLA + d.profundidad / 2), giro: 0, diseno: d };
   }
+  // Pegado al principal, después del refrigerador y de los otros muebles en línea pegados.
   const d = disenoLinea(p);
-  const [, x1] = extremosPrincipal(p);
-  const derecha = otros.filter((a) => a.tipo === 'linea' && a.giro === 0 && a.z === Math.round(a.diseno.profundidad / 2)).reduce((m, a) => Math.max(m, a.x + a.diseno.ancho / 2), x1);
-  return { id: nuevoId('m'), tipo, nombre: nombreLibre(p, tipo), x: Math.round(derecha + d.ancho / 2), z: Math.round(d.profundidad / 2), giro: 0, diseno: d };
+  const { adicionales: _a, ...principal } = p;
+  const fin = otros.filter((a) => a.tipo === 'linea' && a.pegado).reduce((m, a) => m + a.diseno.ancho, inicioEnLinea(principal));
+  return { id: nuevoId('m'), tipo, nombre: nombreLibre(p, tipo), x: Math.round(fin + d.ancho / 2), z: Math.round(d.profundidad / 2), giro: 0, diseno: d, pegado: true };
 }
 
 /**

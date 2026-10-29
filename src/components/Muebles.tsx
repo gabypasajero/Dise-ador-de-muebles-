@@ -3,7 +3,7 @@ import { mueblesProyecto, NOMBRE_CARA, precioProyecto } from '../../shared/proye
 import type { CaraIsla } from '../../shared/tipos';
 import { formatear, formatoPrecio } from '../../shared/reglas';
 import { adicionalActivo, proyectoDe, useApp } from '../store/useApp';
-import { CampoMedida, Segmentado } from './Controles';
+import { CampoMedida, Interruptor, Segmentado } from './Controles';
 import { IcoBasura, IcoMas } from './Iconos';
 
 const GIROS = [
@@ -105,6 +105,13 @@ export function PestanaMuebles() {
             <span className="campo-etiqueta">Nombre</span>
             <input value={activo.nombre} maxLength={60} onChange={(e) => s.ubicarMueble(activo.id, { nombre: e.target.value })} onBlur={(e) => !e.target.value.trim() && s.ubicarMueble(activo.id, { nombre: activo.tipo === 'isla' ? 'Isla' : 'Mueble en línea' })} />
           </label>
+          {activo.tipo === 'linea' && (
+            <Interruptor
+              activo={!!activo.pegado}
+              onCambio={(v) => s.ubicarMueble(activo.id, { pegado: v })}
+              texto="Pegado al mueble principal, después del espacio del refrigerador (se corre solo si el principal crece)"
+            />
+          )}
           <CampoMedida etiqueta="Centro: hacia el lado (desde el centro del principal)" compacto valor={activo.x} unidad={s.unidad} paso={paso} onCambio={(mm) => s.ubicarMueble(activo.id, { x: Math.round(mm) })} />
           <CampoMedida etiqueta="Centro: distancia desde el muro" compacto valor={activo.z} unidad={s.unidad} paso={paso} onCambio={(mm) => s.ubicarMueble(activo.id, { z: Math.round(mm) })} />
           <Segmentado

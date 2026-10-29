@@ -6,6 +6,7 @@ import type { AjustesPrecio, Diseno, Unidad } from '../../shared/tipos';
 import { largoIsla, precioBaseAdicional, precioProyecto } from '../../shared/proyecto';
 import { adicionalActivo, proyectoDe, useApp } from '../store/useApp';
 import { PestanaMuebles } from './Muebles';
+import { SelectorParte } from './SelectorParte';
 import { CampoMedida, Interruptor, Segmentado } from './Controles';
 import { backend } from '../datos';
 import { IcoAviso, IcoGuardar } from './Iconos';
@@ -331,10 +332,11 @@ export function PanelInferior() {
             ref={panelPestanas}
             className={`pestana-panel${(actual === 'modulos' && d.plantilla !== 'tocador') || (actual === 'equipamiento' && esCocinaConEquipos) ? ' modulos' : ''}`}
           >
+            {actual !== 'colores' && actual !== 'muebles' && <SelectorParte />}
             <AvisoRechazo />
             {actual === 'puertas' && <PestanaPuertas {...props} />}
             {actual === 'cajones' && <PestanaCajones {...props} />}
-            {actual === 'modulos' && <PestanaModulos {...props} />}
+            {actual === 'modulos' && <PestanaModulos {...props} selectorArriba />}
             {actual === 'equipamiento' && <PestanaEquipamiento {...props} />}
             {actual === 'colores' && <PanelColores />}
             {actual === 'muebles' && <PestanaMuebles />}

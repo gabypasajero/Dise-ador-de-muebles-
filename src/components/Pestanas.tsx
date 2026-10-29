@@ -139,7 +139,7 @@ export function tramosOrdenados(d: Diseno): TramoId[] {
 const esAereo = (t: TramoId) => t === 'aereos' || t === 'aereos-izq' || t === 'aereos-der';
 
 /** Texto corto de la pestaña de cada tramo. */
-function etiquetaTramo(d: Diseno, t: TramoId): string {
+export function etiquetaTramo(d: Diseno, t: TramoId): string {
   if (d.plantilla === 'compacto') return t === 'base' ? 'Mueble base' : 'Mueble superior';
   switch (t) {
     case 'izq':
@@ -237,6 +237,16 @@ function gruposDe(d: Diseno, conAereos: boolean): Grupo[] {
   return out;
 }
 
+/**
+ * Solo el tramo que se eligió en el selector de arriba («qué estás editando»). Si el tramo elegido no
+ * está en la lista (los aéreos en Cajones, por ejemplo), se muestran todos.
+ */
+function delTramo<T extends { tramo: TramoId }>(grupos: T[], tramo: TramoId): T[] {
+  if (grupos.length <= 1) return grupos;
+  const g = grupos.filter((x) => x.tramo === tramo);
+  return g.length ? g : grupos;
+}
+
 function SeparadorTramo({ titulo }: { titulo: string }) {
   return (
     <div className="separador-tramo" role="heading" aria-level={3}>
@@ -263,7 +273,8 @@ function Apertura({ c, onCambio }: { c: Cuerpo; onCambio: (b: Cuerpo['bisagra'])
 // ---------- Puertas ----------
 
 export function PestanaPuertas({ d, unidad }: PropsPestana) {
-  const grupos = gruposDe(d, true);
+  const tramoElegido = useApp((s) => s.tramoActivo);
+  const grupos = delTramo(gruposDe(d, true), tramoElegido);
   return (
     <div className="pestana-contenido">
       <div className="opciones-globales">
@@ -328,7 +339,8 @@ export function PestanaPuertas({ d, unidad }: PropsPestana) {
 
 export function PestanaCajones({ d, unidad, cambiar }: PropsPestana) {
   if (d.plantilla === 'tocador') return <CajonesTocador d={d} unidad={unidad} cambiar={cambiar} />;
-  const grupos = gruposDe(d, false);
+  const tramoElegido = useApp((s) => s.tramoActivo);
+  const grupos = delTramo(gruposDe(d, false), tramoElegido);
   const principal = grupos.find((g) => g.tramo === 'base')!;
   const fila = principal.frentes.filter((f) => f.tipo === 'cajon' && f.cuerpo === -1);
   return (
@@ -535,6 +547,7 @@ function FormaCocina({ d }: { d: Diseno }) {
         }}
         texto="Muebles aéreos"
       />
+      {forma === 'lineal' && <BotonSobreRefrigerador d={d} />}
       {d.aereos.activo && (
         <Segmentado
           etiqueta="Forma de los aéreos"
@@ -544,6 +557,29 @@ function FormaCocina({ d }: { d: Diseno }) {
         />
       )}
     </>
+  );
+}
+
+/**
+ * Aéreo sobre el refrigerador con un toque: activa los aéreos si hace falta y les agrega al final el
+ * módulo sobre el refrigerador (o lo quita si ya está). Solo en cocinas lineales.
+ */
+function BotonSobreRefrigerador({ d }: { d: Diseno }) {
+  const set = useApp((s) => s.set);
+  const modulo = d.aereos.activo ? d.aereos.cuerpos.find((c) => c.tipo === 'refrigerador') : undefined;
+  const alternar = () => {
+    if (modulo) {
+      operar({ op: 'quitarModulo', tramo: 'aereos', modulo: modulo.id });
+      return;
+    }
+    if (!d.aereos.activo && !operar({ op: 'activarAereos', activo: true }).ok) return;
+    const r = operar({ op: 'agregarModulo', tramo: 'aereos', preset: 'sobre-refrigerador' });
+    if (r.ok) set({ tramoActivo: 'aereos', moduloActivo: cuerposDe(r.diseno, 'aereos').length - 1 });
+  };
+  return (
+    <button type="button" className={`boton ${modulo ? 'primario' : 'secundario'} chico`} aria-pressed={!!modulo} onClick={alternar} title="Mueble aéreo con un cajón (o puerta abatible) arriba del refrigerador">
+      {modulo ? '✓ Aéreo sobre el refrigerador' : '＋ Aéreo sobre el refrigerador'}
+    </button>
   );
 }
 
@@ -742,7 +778,7 @@ function ayudaRol(d: Diseno, tramo: TramoId, c: Cuerpo, unidad: Unidad): string 
   return 'Medida estándar de 35 cm por puerta: se ajusta solo si las cajoneras no alcanzan. Puedes cambiarla a mano.';
 }
 
-export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
+export function PestanaModulos({ d, unidad, cambiar, selectorArriba = false }: PropsPestana & { selectorArriba?: boolean }) {
   const guardado = useApp((s) => s.moduloActivo);
   const tramoGuardado = useApp((s) => s.tramoActivo);
   const set = useApp((s) => s.set);
@@ -930,7 +966,7 @@ export function PestanaModulos({ d, unidad, cambiar }: PropsPestana) {
       {conTramos && (
         <div className="modulos-forma">
           {d.plantilla === 'cocina' && <FormaCocina d={d} />}
-          {tramos.length > 1 && (
+          {tramos.length > 1 && !selectorArriba && (
             <div className="selector-tramo" role="tablist" aria-label="Tramo que editas">
               {tramos.map((t) => (
                 <button key={t} type="button" role="tab" aria-selected={t === tramo} className={t === tramo ? 'activo' : ''} onClick={() => elegirTramo(t)}>
@@ -1250,10 +1286,13 @@ function EquipamientoCocina({ d, unidad }: { d: Diseno; unidad: Unidad }) {
   const encimeras = d.equipos.filter((e): e is Encimera => e.tipo === 'encimera');
   const lavaplatos = d.equipos.filter((e): e is Lavaplatos => e.tipo === 'lavaplatos');
   const principales = items.filter((i) => i.tipo === 'encimera' || i.tipo === 'lavaplatos' || i.tipo === 'horno');
-  const grupos = tramosOrdenados(d)
+  const tramoElegido = useApp((s) => s.tramoActivo);
+  const todos = tramosOrdenados(d)
     .filter((t) => !esAereo(t))
     .map((t) => ({ t, items: principales.filter((i) => i.tramo === t) }))
     .filter((g) => g.items.length);
+  // Los equipos van en el mueble base: con un tramo base elegido arriba se ven solo los suyos.
+  const grupos = todos.some((g) => g.t === tramoElegido) && todos.length > 1 ? todos.filter((g) => g.t === tramoElegido) : todos;
   const sinCampana = encimeras.find((e) => !e.campana);
   const sinLlave = lavaplatos.find((l) => !l.llave && !l.soloCorte);
   const verDistancias = useApp((s) => s.distancias);

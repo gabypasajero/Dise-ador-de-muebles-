@@ -269,6 +269,12 @@ export interface MuebleAdicional {
    */
   cara?: CaraIsla;
   isla?: string;
+  /**
+   * Mueble en línea pegado al principal: va contra el mismo muro, después del espacio del
+   * refrigerador, y se corre solo cuando el principal (o su aéreo) cambia de largo. Se suelta
+   * al moverlo a mano.
+   */
+  pegado?: boolean;
 }
 
 /** Caras extra de una isla (el frente es la isla misma). */

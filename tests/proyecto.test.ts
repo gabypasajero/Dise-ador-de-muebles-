@@ -30,12 +30,13 @@ describe('proyecto con varios muebles', () => {
     expect(validarDiseno(a.diseno)).toEqual([]);
   });
 
-  it('el mueble en línea va a la derecha del principal, contra el mismo muro', () => {
+  it('el mueble en línea va a la derecha del principal, contra el mismo muro, dejando el espacio del refrigerador', () => {
     const p = disenoLibre('cocina');
     const a = nuevoAdicional(p, 'linea');
     const [, x1] = extremosPrincipal(p);
     expect(a.z).toBe(a.diseno.profundidad / 2);
-    expect(a.x - a.diseno.ancho / 2).toBe(x1);
+    expect(a.pegado).toBe(true);
+    expect(a.x - a.diseno.ancho / 2).toBe(x1 + 1000);
     expect(a.diseno.profundidad).toBe(p.profundidad);
     // El segundo va después del primero.
     const b = nuevoAdicional({ ...p, adicionales: [a] }, 'linea');
@@ -145,5 +146,41 @@ describe('isla con caras (lado trasero y costados)', () => {
     expect(n.adicionales).toEqual(t.adicionales);
     const huerfanas = normalizar({ ...t, adicionales: t.adicionales!.filter((a) => a.id !== isla.id) });
     expect(huerfanas.adicionales).toBeUndefined();
+  });
+});
+
+describe('mueble en línea pegado al principal', () => {
+  it('se corre cuando el principal o su aéreo crecen, sin montarse sobre el refrigerador', async () => {
+    const { ordenarEnLinea, inicioEnLinea } = await import('../shared/proyecto');
+    const p = disenoLibre('cocina');
+    const a = nuevoAdicional(p, 'linea');
+    let t: Diseno = { ...p, adicionales: [a] };
+    t = ordenarEnLinea({ ...ejecutar(t, { op: 'fijarAncho', ancho: 2500 }).diseno });
+    const [, x1] = extremosPrincipal(t);
+    expect(t.adicionales![0].x - a.diseno.ancho / 2).toBe(x1 + 1000);
+    // Con un aéreo más largo que el base, cuenta el aéreo.
+    t = ordenarEnLinea(ejecutar(ejecutar(t, { op: 'activarAereos', activo: true }).diseno, { op: 'agregarModulo', tramo: 'aereos', preset: 'aereo-dos' }).diseno);
+    const { adicionales: _x, ...principal } = t;
+    expect(t.adicionales![0].x - a.diseno.ancho / 2).toBe(inicioEnLinea(principal));
+    expect(inicioEnLinea(principal)).toBeGreaterThanOrEqual(x1 + 1000);
+  });
+
+  it('con el aéreo sobre el refrigerador empieza justo después de él (el aéreo une los dos muebles)', async () => {
+    const { ordenarEnLinea } = await import('../shared/proyecto');
+    const { calcularLayoutAereos } = await import('../shared/layout');
+    let t: Diseno = { ...disenoLibre('cocina') };
+    t = ejecutar(t, { op: 'activarAereos', activo: true }).diseno;
+    t = ejecutar(t, { op: 'agregarModulo', tramo: 'aereos', preset: 'sobre-refrigerador' }).diseno;
+    const a = nuevoAdicional(t, 'linea');
+    t = ordenarEnLinea({ ...t, adicionales: [a] });
+    expect(t.adicionales![0].x - a.diseno.ancho / 2).toBe(calcularLayoutAereos(t)!.x1);
+  });
+
+  it('suelto (movido a mano) no se corre', async () => {
+    const { ordenarEnLinea } = await import('../shared/proyecto');
+    const p = disenoLibre('cocina');
+    const a = { ...nuevoAdicional(p, 'linea'), pegado: false, x: 5000 };
+    const t = ordenarEnLinea({ ...ejecutar({ ...p, adicionales: [a] }, { op: 'fijarAncho', ancho: 3000 }).diseno });
+    expect(t.adicionales![0].x).toBe(5000);
   });
 });

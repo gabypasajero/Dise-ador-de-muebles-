@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { clasificarProducto, disenoInicial, disenoLibre } from '../../shared/catalogo';
 import { cuerposDe, ejecutar, normalizar, tramosDe, type Operacion, type Resultado, type TramoId } from '../../shared/reglas';
-import { acomodarCaras, agregarCara, disenoIsla, disenoLinea, nuevoAdicional, quitarCara } from '../../shared/proyecto';
+import { acomodarCaras, agregarCara, disenoIsla, disenoLinea, nuevoAdicional, ordenarEnLinea, quitarCara } from '../../shared/proyecto';
 import type { CaraIsla, CatalogoMateriales, Cotizacion, Diseno, Escenario, MuebleAdicional, Plantilla, ProductoCatalogo, Unidad, Usuario } from '../../shared/tipos';
 import { obtenerCatalogo, obtenerMateriales, type RespuestaCatalogo } from '../datos/catalogo';
 import { backend } from '../datos';
@@ -98,7 +98,8 @@ interface Estado {
   agregarMueble: (tipo: MuebleAdicional['tipo']) => void;
   quitarMueble: (id: string) => void;
   /** Cambia la ubicación (x, z en mm), el giro o el nombre de un mueble adicional. */
-  ubicarMueble: (id: string, cambios: Partial<Pick<MuebleAdicional, 'x' | 'z' | 'giro' | 'nombre'>>) => void;
+  /** Cambia la ubicación (al moverlo a mano se suelta del principal), el giro, el nombre o si va pegado al principal. */
+  ubicarMueble: (id: string, cambios: Partial<Pick<MuebleAdicional, 'x' | 'z' | 'giro' | 'nombre' | 'pegado'>>) => void;
   /** Agrega (o quita, si ya está) el lado trasero o un costado de la isla que se edita. */
   alternarCara: (cara: CaraIsla) => void;
   /** Usa los colores del mueble que se edita en todos los muebles del proyecto. */
@@ -185,6 +186,11 @@ export function adicionalActivo(s: EstadoProyecto): MuebleAdicional | null {
 /** El borrador guarda siempre el proyecto completo: al recargar vuelve lo que se ve. */
 function guardarActual(s: EstadoProyecto & { producto: ProductoCatalogo | null; unidad: Unidad; cotizacionActual: CotizacionEnEdicion | null }) {
   escribirBorrador(s.producto?.id ?? null, proyectoDe(s), s.unidad, s.cotizacionActual);
+}
+
+/** Las caras siguen a su isla y los muebles en línea pegados se corren con el principal. */
+function acomodar(p: Diseno): Diseno {
+  return ordenarEnLinea(acomodarCaras(p));
 }
 
 /** Al cambiar de producto o de cotización se vuelve a editar el principal. */
@@ -307,8 +313,10 @@ export const useApp = create<Estado>((set, get) => ({
 
   cambiar(f, grupo) {
     const { diseno, pasado, ultimoGrupo } = get();
-    const nuevo = f(diseno);
-    if (nuevo === diseno) return;
+    const cambiado = f(diseno);
+    if (cambiado === diseno) return;
+    // Editando el principal, sus adicionales se acomodan en el mismo paso (y se deshacen con él).
+    const nuevo = get().muebleActivo ? cambiado : acomodar(cambiado);
     const ahora = Date.now();
     const mismoGrupo = grupo && ultimoGrupo && ultimoGrupo.clave === grupo && ahora - ultimoGrupo.t < 1200;
     set({
@@ -323,8 +331,11 @@ export const useApp = create<Estado>((set, get) => ({
     // Si se edita una isla o una de sus caras, las otras caras siguen sus medidas.
     if (get().muebleActivo && get().principal) {
       const p = proyectoDe(get());
-      const acomodado = acomodarCaras(p);
-      if (acomodado !== p) set({ principal: acomodado });
+      const acomodado = acomodar(p);
+      if (acomodado !== p) {
+        const propio = acomodado.adicionales?.find((a) => a.id === get().muebleActivo)?.diseno;
+        set({ principal: acomodado, ...(propio && propio !== get().diseno ? { diseno: propio } : {}) });
+      }
     }
     guardarActual(get());
   },
@@ -418,7 +429,7 @@ export const useApp = create<Estado>((set, get) => ({
   agregarMueble(tipo) {
     const proyecto = proyectoDe(get());
     const a = nuevoAdicional(proyecto, tipo);
-    set({ diseno: { ...proyecto, adicionales: [...(proyecto.adicionales ?? []), a] }, ...SIN_ADICIONAL });
+    set({ diseno: acomodar({ ...proyecto, adicionales: [...(proyecto.adicionales ?? []), a] }), ...SIN_ADICIONAL });
     get().editarMueble(a.id);
     set({ encuadre: get().encuadre + 1 });
     get().avisar(`«${a.nombre}» se agregó al proyecto. Elige en «Muebles» cuál editas y dónde va.`);
@@ -437,7 +448,9 @@ export const useApp = create<Estado>((set, get) => ({
   },
 
   ubicarMueble(id, cambios) {
-    const mover = (p: Diseno): Diseno => ({ ...p, adicionales: (p.adicionales ?? []).map((a) => (a.id === id ? { ...a, ...cambios } : a)) });
+    // Moverlo o girarlo a mano lo suelta del principal; «pegado» lo vuelve a ubicar tras el refrigerador.
+    const suelto = 'x' in cambios || 'z' in cambios || 'giro' in cambios ? { pegado: false } : {};
+    const mover = (p: Diseno): Diseno => acomodar({ ...p, adicionales: (p.adicionales ?? []).map((a) => (a.id === id ? { ...a, ...suelto, ...cambios } : a)) });
     if (get().muebleActivo) set({ principal: mover(get().principal!) });
     else set({ diseno: mover(get().diseno) });
     guardarActual(get());
