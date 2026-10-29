@@ -28,13 +28,13 @@ export const TARIFAS = {
   especiero: 20000,
   /**
    * Cierre suave en bisagras y correderas, por cada mueble según su largo (la dueña lo pidió así):
-   * el mueble base y el aéreo se cobran cada uno por separado. Hasta 2 m, 50.000; de 2 a 5 m, 80.000.
-   * Sobre 5 m se mantiene el último valor (por confirmar).
+   * el mueble base y el aéreo se cobran cada uno por separado. Hasta 2 m, 50.000; de 2 a 5 m, 80.000;
+   * sobre 5 m, 100.000.
    */
   cierreSuave: [
     { hastaCm: 200, valor: 50000 },
     { hastaCm: 500, valor: 80000 },
-    { hastaCm: Infinity, valor: 80000 },
+    { hastaCm: Infinity, valor: 100000 },
   ],
   /** Sistema sin manilla (sin tiradores, apertura por perfil o push): una vez por mueble completo. */
   sinManilla: 20000,
