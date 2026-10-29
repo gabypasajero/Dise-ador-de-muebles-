@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { clasificarProducto, disenoInicial, disenoLibre } from '../../shared/catalogo';
 import { cuerposDe, ejecutar, normalizar, tramosDe, type Operacion, type Resultado, type TramoId } from '../../shared/reglas';
-import { acomodarCaras, agregarCara, disenoIsla, disenoLinea, nuevoAdicional, ordenarEnLinea, quitarCara } from '../../shared/proyecto';
+import { acomodarCaras, agregarCara, alinearEnLinea, disenoIsla, disenoLinea, nuevoAdicional, ordenarEnLinea, quitarCara } from '../../shared/proyecto';
 import type { CaraIsla, CatalogoMateriales, Cotizacion, Diseno, Escenario, MuebleAdicional, Plantilla, ProductoCatalogo, Unidad, Usuario } from '../../shared/tipos';
 import { obtenerCatalogo, obtenerMateriales, type RespuestaCatalogo } from '../datos/catalogo';
 import { backend } from '../datos';
@@ -190,7 +190,7 @@ function guardarActual(s: EstadoProyecto & { producto: ProductoCatalogo | null; 
 
 /** Las caras siguen a su isla y los muebles en línea pegados se corren con el principal. */
 function acomodar(p: Diseno): Diseno {
-  return ordenarEnLinea(acomodarCaras(p));
+  return alinearEnLinea(ordenarEnLinea(acomodarCaras(p)));
 }
 
 /** Al cambiar de producto o de cotización se vuelve a editar el principal. */

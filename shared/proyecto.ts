@@ -24,11 +24,57 @@ export const HUECO_REFRIGERADOR = 1000;
  * después de él (el refrigerador queda bajo ese módulo y el aéreo une los dos muebles).
  */
 export function inicioEnLinea(principal: Diseno): number {
-  const [, x1] = extremosPrincipal(principal);
+  const [, fin] = extremosConAereo(principal);
   const la = principal.aereos.activo ? calcularLayoutAereos(principal) : null;
-  const fin = Math.max(x1, la?.montaje === 'mural' ? la.x1 : -Infinity);
   const sobreRefri = la?.cuerpos.some((c) => c.cuerpo.tipo === 'refrigerador') ?? false;
   return Math.round(fin + (sobreRefri ? 0 : HUECO_REFRIGERADOR));
+}
+
+/** Puntas (x, mm) del mueble principal contra su muro, contando su aéreo si es más largo que el base. */
+export function extremosConAereo(principal: Diseno): [number, number] {
+  const [x0, x1] = extremosPrincipal(principal);
+  const la = principal.aereos.activo ? calcularLayoutAereos(principal) : null;
+  if (la?.montaje !== 'mural') return [x0, x1];
+  return [Math.min(x0, la.x0), Math.max(x1, la.x1)];
+}
+
+/**
+ * Ubicación de un mueble en línea a un lado del principal y a cierta separación de él: siempre
+ * contra el mismo muro, alineado con el principal y sin girar (como quedará en la cocina).
+ */
+export function posicionEnLinea(principal: Diseno, a: Pick<MuebleAdicional, 'diseno'>, lado: 'izq' | 'der', separacion: number): Pick<MuebleAdicional, 'x' | 'z' | 'giro'> {
+  const [x0, x1] = extremosConAereo(principal);
+  const sep = Math.max(0, Math.round(separacion));
+  const x = lado === 'der' ? x1 + sep + a.diseno.ancho / 2 : x0 - sep - a.diseno.ancho / 2;
+  return { x: Math.round(x), z: Math.round(a.diseno.profundidad / 2), giro: 0 };
+}
+
+/** A qué lado del principal está un mueble en línea y a qué separación (mm). */
+export function ladoEnLinea(principal: Diseno, a: Pick<MuebleAdicional, 'x' | 'diseno'>): { lado: 'izq' | 'der'; separacion: number } {
+  const [x0, x1] = extremosConAereo(principal);
+  const centro = (x0 + x1) / 2;
+  if (a.x >= centro) return { lado: 'der', separacion: Math.max(0, Math.round(a.x - a.diseno.ancho / 2 - x1)) };
+  return { lado: 'izq', separacion: Math.max(0, Math.round(x0 - (a.x + a.diseno.ancho / 2))) };
+}
+
+/**
+ * Los muebles en línea van siempre alineados con el principal: contra su muro y sin girar, y nunca
+ * encima de él (si quedaron montados, se corren a su lado). Devuelve el mismo proyecto si ya están.
+ */
+export function alinearEnLinea(p: Diseno): Diseno {
+  const lista = p.adicionales ?? [];
+  if (!lista.some((a) => a.tipo === 'linea' && !a.pegado)) return p;
+  const { adicionales: _a, ...principal } = p;
+  let cambio = false;
+  const nueva = lista.map((a) => {
+    if (a.tipo !== 'linea' || a.pegado) return a;
+    const { lado, separacion } = ladoEnLinea(principal, a);
+    const pos = posicionEnLinea(principal, a, lado, separacion);
+    if (pos.x === a.x && pos.z === a.z && pos.giro === a.giro) return a;
+    cambio = true;
+    return { ...a, ...pos };
+  });
+  return cambio ? { ...p, adicionales: nueva } : p;
 }
 
 /** Ubica los muebles en línea pegados uno tras otro desde inicioEnLinea. Devuelve el mismo proyecto si ya están. */

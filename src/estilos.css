@@ -4438,3 +4438,16 @@ h3 {
   padding: 4px 0 6px;
   border-bottom: 1px solid var(--borde);
 }
+
+.deslizar-linea {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 220px;
+  flex: 1 1 240px;
+}
+
+.deslizar-linea input[type='range'] {
+  accent-color: var(--acento);
+  width: 100%;
+}

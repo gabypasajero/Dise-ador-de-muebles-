@@ -184,3 +184,22 @@ describe('mueble en línea pegado al principal', () => {
     expect(t.adicionales![0].x).toBe(5000);
   });
 });
+
+describe('mueble en línea alineado con el principal', () => {
+  it('solo se desliza hacia los lados: siempre contra el muro y sin girar, nunca encima del principal', async () => {
+    const { alinearEnLinea, posicionEnLinea, ladoEnLinea } = await import('../shared/proyecto');
+    const p = disenoLibre('cocina');
+    const a = { ...nuevoAdicional(p, 'linea'), pegado: false };
+    // Movido a mano con un giro y lejos del muro: vuelve a la línea del principal.
+    const t = alinearEnLinea({ ...p, adicionales: [{ ...a, z: 2000, giro: 90 }] });
+    expect(t.adicionales![0]).toMatchObject({ z: a.diseno.profundidad / 2, giro: 0 });
+    // A la izquierda, a 30 cm.
+    const izq = posicionEnLinea(p, a, 'izq', 300);
+    const [x0] = extremosPrincipal(p);
+    expect(izq.x + a.diseno.ancho / 2).toBe(x0 - 300);
+    expect(ladoEnLinea(p, { ...a, ...izq })).toEqual({ lado: 'izq', separacion: 300 });
+    // Montado sobre el principal: se corre a su lado.
+    const encima = alinearEnLinea({ ...p, adicionales: [{ ...a, x: 100 }] });
+    expect(ladoEnLinea(p, encima.adicionales![0]).separacion).toBe(0);
+  });
+});

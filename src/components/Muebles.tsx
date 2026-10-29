@@ -1,5 +1,5 @@
 import { NOMBRE_PLANTILLA } from '../../shared/catalogo';
-import { mueblesProyecto, NOMBRE_CARA, precioProyecto } from '../../shared/proyecto';
+import { ladoEnLinea, mueblesProyecto, NOMBRE_CARA, posicionEnLinea, precioProyecto } from '../../shared/proyecto';
 import type { CaraIsla } from '../../shared/tipos';
 import { formatear, formatoPrecio } from '../../shared/reglas';
 import { adicionalActivo, proyectoDe, useApp } from '../store/useApp';
@@ -112,14 +112,20 @@ export function PestanaMuebles() {
               texto="Pegado al mueble principal, después del espacio del refrigerador (se corre solo si el principal crece)"
             />
           )}
-          <CampoMedida etiqueta="Centro: hacia el lado (desde el centro del principal)" compacto valor={activo.x} unidad={s.unidad} paso={paso} onCambio={(mm) => s.ubicarMueble(activo.id, { x: Math.round(mm) })} />
-          <CampoMedida etiqueta="Centro: distancia desde el muro" compacto valor={activo.z} unidad={s.unidad} paso={paso} onCambio={(mm) => s.ubicarMueble(activo.id, { z: Math.round(mm) })} />
-          <Segmentado
-            etiqueta="Orientación"
-            valor={String([0, 90, 180, 270].includes(activo.giro) ? activo.giro : 0) as '0' | '90' | '180' | '270'}
-            onCambio={(v) => s.ubicarMueble(activo.id, { giro: Number(v) })}
-            opciones={GIROS.map((g) => ({ ...g }))}
-          />
+          {activo.tipo === 'linea' ? (
+            <EnLinea />
+          ) : (
+            <>
+              <CampoMedida etiqueta="Centro: hacia el lado (desde el centro del principal)" compacto valor={activo.x} unidad={s.unidad} paso={paso} onCambio={(mm) => s.ubicarMueble(activo.id, { x: Math.round(mm) })} />
+              <CampoMedida etiqueta="Centro: distancia desde el muro" compacto valor={activo.z} unidad={s.unidad} paso={paso} onCambio={(mm) => s.ubicarMueble(activo.id, { z: Math.round(mm) })} />
+              <Segmentado
+                etiqueta="Orientación"
+                valor={String([0, 90, 180, 270].includes(activo.giro) ? activo.giro : 0) as '0' | '90' | '180' | '270'}
+                onCambio={(v) => s.ubicarMueble(activo.id, { giro: Number(v) })}
+                opciones={GIROS.map((g) => ({ ...g }))}
+              />
+            </>
+          )}
           <button
             type="button"
             className="boton fantasma peligro chico"
@@ -132,5 +138,38 @@ export function PestanaMuebles() {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Ubicación del mueble en línea: va siempre contra el muro del principal, alineado con él; solo se
+ * elige a qué lado va y cuánto se separa (se desliza hacia los lados), como quedará en la cocina.
+ */
+function EnLinea() {
+  const s = useApp();
+  const proyecto = proyectoDe(s);
+  const activo = adicionalActivo(s);
+  if (!activo) return null;
+  const { adicionales: _a, ...principal } = proyecto;
+  const a = { ...activo, diseno: s.diseno };
+  const { lado, separacion } = ladoEnLinea(principal, a);
+  const mover = (l: 'izq' | 'der', sep: number) => s.ubicarMueble(activo.id, posicionEnLinea(principal, a, l, sep));
+  return (
+    <>
+      <Segmentado
+        etiqueta="Lado del mueble principal"
+        valor={lado}
+        onCambio={(v) => mover(v, separacion)}
+        opciones={[
+          { valor: 'izq', texto: '← Izquierda' },
+          { valor: 'der', texto: 'Derecha →' },
+        ]}
+      />
+      <CampoMedida etiqueta="Separación del mueble principal" compacto valor={separacion} unidad={s.unidad} min={0} paso={s.unidad === 'cm' ? 50 : 10} onCambio={(mm) => mover(lado, mm)} />
+      <label className="deslizar-linea">
+        <span className="campo-etiqueta">Deslizar a lo largo del muro</span>
+        <input type="range" min={0} max={4000} step={10} value={Math.min(4000, separacion)} onChange={(e) => mover(lado, Number(e.target.value))} aria-label="Separación del mueble principal" />
+      </label>
+    </>
   );
 }
