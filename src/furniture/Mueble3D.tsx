@@ -56,6 +56,7 @@ export function Mueble3D({
   materiales,
   vista,
   respaldo = false,
+  frenteLiso = false,
   cubiertaIsla,
 }: {
   diseno: Diseno;
@@ -63,6 +64,8 @@ export function Mueble3D({
   vista: OpcionesVista;
   /** Isla: el respaldo queda a la vista, terminado en la melamina de los frentes. */
   respaldo?: boolean;
+  /** Isla lisa: frente cerrado con un panel liso, sin puertas ni cajones. */
+  frenteLiso?: boolean;
   /** Isla con voladizo: cubierta grande (mm, en las coordenadas de este mueble) para sentarse alrededor. */
   cubiertaIsla?: { x0: number; x1: number; z0: number; z1: number };
 }) {
@@ -134,6 +137,7 @@ export function Mueble3D({
           </>
         )}
         {respaldo && <Respaldo d={diseno} />}
+        {frenteLiso && <FrenteLiso d={diseno} />}
         {cubiertaIsla && <CubiertaIsla d={diseno} r={cubiertaIsla} />}
         {vista.cotas && <Cotas diseno={diseno} unidad={vista.unidad} />}
         {vista.distancias && diseno.plantilla !== 'tocador' && <DistanciasEquipos diseno={diseno} unidad={vista.unidad} />}
@@ -157,6 +161,14 @@ function Respaldo({ d }: { d: Diseno }) {
   const [x0, x1] = extremosPrincipal(d);
   const yTope = d.alto - (esCocina(d) ? d.cocina.espesorCubierta : 0);
   return <Panel x0={x0} x1={x1} y0={0} y1={yTope} z0={-d.espesor} z1={0} mat={m.frente} />;
+}
+
+/** Isla lisa: un panel liso cierra todo el frente (sobre el zócalo), sin puertas ni cajones. */
+function FrenteLiso({ d }: { d: Diseno }) {
+  const m = useMats();
+  const l = calcularLayout(d);
+  const [x0, x1] = extremosPrincipal(d);
+  return <Panel x0={x0} x1={x1} y0={d.zocalo} y1={l.yTope} z0={l.zFrente} z1={l.zFrente + l.espesorFrente} mat={m.frente} eje="x" />;
 }
 
 /** Esquina de la L o la U: módulo ciego bajo la cubierta del tramo principal, tapado por el primer módulo del lado. */

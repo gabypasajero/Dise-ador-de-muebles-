@@ -141,6 +141,11 @@ export interface Aereos {
   lados: Lados;
   /** "Cuadrado" con el base: sigue su forma y el largo de cada lado. Se apaga al cambiar el aéreo a mano. */
   cuadrado: boolean;
+  /**
+   * Solo los lados de la L o la U, sin aéreo en el tramo principal (cocina): cada lado llega hasta el
+   * muro principal y sus módulos llenan también la esquina.
+   */
+  sinPrincipal?: boolean;
 }
 
 /** Segundo tramo de una cocina en L (vista heredada de la versión 1, ver retornoDe). */
@@ -287,6 +292,8 @@ export interface MuebleAdicional {
    * piernas debajo. Sin dato, la cubierta lleva solo su vuelo normal.
    */
   voladizo?: Voladizo;
+  /** Isla lisa: sin puertas ni cajones, con el frente cerrado y liso (como el respaldo). */
+  liso?: boolean;
 }
 
 /** Cubierta de la isla más grande que el mueble, por lado (mm). */

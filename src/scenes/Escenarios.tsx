@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import {
   calcularLayout,
   calcularLayoutAereos,
+  calcularLayoutAereosLado,
   centroCuerpo,
   dimensionesTotales,
   disenoBase,
@@ -250,11 +251,13 @@ function EscenaCocina({ d }: { d: Diseno }) {
   const base = disenoBase(d);
   const [ex0, ex1] = extremosPrincipal(d).map((v) => v / 1000);
   const H = base.alto / 1000;
-  const la = calcularLayoutAereos(d);
+  // Sin aéreo principal, la cerámica llega hasta los aéreos de los lados.
+  const laPrincipal = calcularLayoutAereos(d);
+  const la = laPrincipal ?? (d.aereos.activo && d.aereos.sinPrincipal ? (calcularLayoutAereosLado(d, 'izq') ?? calcularLayoutAereosLado(d, 'der')) : null);
   const mural = la?.montaje === 'mural';
   // Los aéreos pueden ser más largos que el mueble base: el refrigerador va al lado de ambos.
-  const xa0 = la && mural ? Math.min(ex0, la.x0 / 1000) : ex0;
-  const xa1 = la && mural ? Math.max(ex1, la.x1 / 1000) : ex1;
+  const xa0 = laPrincipal && mural ? Math.min(ex0, laPrincipal.x0 / 1000) : ex0;
+  const xa1 = laPrincipal && mural ? Math.max(ex1, laPrincipal.x1 / 1000) : ex1;
   const caja = dimensionesTotales(d);
   const fondoTotal = caja.fondo / 1000;
   const mitad = Math.max(2.8, Math.max(-xa0, xa1) + 1.7);
@@ -276,13 +279,13 @@ function EscenaCocina({ d }: { d: Diseno }) {
   const lav = ubicados.find((u) => u.tipo === 'lavaplatos' && u.tramo === 'base');
   const campanasBase = ubicados.filter((u) => u.tipo === 'campana' && u.tramo === 'base').map((u) => u.x / 1000);
   const xLav = lav ? lav.x / 1000 : null;
-  const repisa = !la && xLav !== null && campanasBase.every((x) => Math.abs(xLav - x) > 0.85);
+  const repisa = !laPrincipal && xLav !== null && campanasBase.every((x) => Math.abs(xLav - x) > 0.85);
   // Refrigerador fuera de los muebles, al lado libre del tramo principal. En la U no cabe: los dos extremos
   // tienen muro y frente a las puntas taparía el mueble desde la cámara; se omite (y la planta también).
   let refri: { x: number; z: number; rotY: number } | null = null;
   let planta: [number, number, number] | null = null;
   // Con un aéreo sobre el refrigerador, el refrigerador va justo bajo ese mueble.
-  const sobreRefri = la && mural ? la.cuerpos.find((lc) => lc.cuerpo.tipo === 'refrigerador') : undefined;
+  const sobreRefri = laPrincipal && mural ? laPrincipal.cuerpos.find((lc) => lc.cuerpo.tipo === 'refrigerador') : undefined;
   // (ese refrigerador lo dibuja el propio mueble, en cualquier escenario).
   if (sobreRefri) {
     if (!conIzq) planta = [ex0 - 1.25, 0, 0.28];

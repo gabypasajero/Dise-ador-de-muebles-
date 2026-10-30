@@ -417,8 +417,8 @@ function Capturador() {
           gl.setSize(ancho, alto, false);
           gl.render(scene, camara);
           let lienzo: HTMLCanvasElement = gl.domElement;
-          // Isla con lado trasero: burbuja redonda con la vista desde atrás sobre la imagen principal.
-          const trasera = vistaTrasera(proyecto);
+          // Isla con puertas o cajones en un lado que no se ve en la foto: burbuja redonda con ese lado.
+          const trasera = vistaTrasera(proyecto, e.pos.clone().sub(e.objetivo));
           if (trasera) {
             const c = document.createElement('canvas');
             c.width = ancho;
@@ -475,22 +475,28 @@ function Capturador() {
  * Vista desde atrás de las islas que tienen lado trasero: sus piezas (frente y caras), sus esquinas
  * y la dirección opuesta a su frente, apenas desde arriba. null si ninguna isla tiene lado trasero.
  */
-function vistaTrasera(p: Diseno): { ids: Set<string>; puntos: THREE.Vector3[]; dir: THREE.Vector3 } | null {
-  const islas = (p.adicionales ?? []).filter((a) => a.tipo === 'isla' && !a.cara && p.adicionales!.some((x) => x.isla === a.id && x.cara === 'trasera'));
-  if (!islas.length) return null;
-  const ids = new Set<string>();
-  for (const a of islas) {
-    ids.add(a.id);
-    for (const x of p.adicionales ?? []) if (x.isla === a.id) ids.add(x.id);
-  }
-  const solo: Diseno = { ...p, adicionales: (p.adicionales ?? []).filter((a) => ids.has(a.id)) };
-  // Las esquinas de esas piezas (puntosAdicionales trae las de todos los adicionales del proyecto dado).
-  const puntos = puntosAdicionales(solo);
-  const g = (islas[0].giro * Math.PI) / 180;
+function vistaTrasera(p: Diseno, mirada: THREE.Vector3): { ids: Set<string>; puntos: THREE.Vector3[]; dir: THREE.Vector3 } | null {
+  const lista = p.adicionales ?? [];
+  const conFrentes = (d: Diseno) => d.cuerpos.some((c) => c.puertas > 0 || c.cajones > 0 || c.tipo === 'horno' || c.tipo === 'especiero');
   const el = 0.32;
-  // El frente de la isla mira a +z girado; desde atrás se mira en sentido contrario.
-  const dir = new THREE.Vector3(-Math.sin(g) * Math.cos(el), Math.sin(el), -Math.cos(g) * Math.cos(el));
-  return { ids, puntos, dir };
+  for (const a of lista) {
+    if (a.tipo !== 'isla' || a.cara) continue;
+    const g = (a.giro * Math.PI) / 180;
+    // El frente de la isla mira a +z girado; se ve en la foto si la cámara está de ese lado.
+    const frenteVisible = Math.sin(g) * mirada.x + Math.cos(g) * mirada.z > 0;
+    const trasera = lista.find((x) => x.isla === a.id && x.cara === 'trasera');
+    // Lado escondido con puertas o cajones: el frente (si la isla mira al muro) o el lado trasero.
+    const lado = !frenteVisible && !a.liso && conFrentes(a.diseno) ? 1 : frenteVisible && trasera && conFrentes(trasera.diseno) ? -1 : 0;
+    if (!lado) continue;
+    const ids = new Set<string>([a.id]);
+    for (const x of lista) if (x.isla === a.id) ids.add(x.id);
+    const solo: Diseno = { ...p, adicionales: lista.filter((x) => ids.has(x.id)) };
+    // Las esquinas de esas piezas (puntosAdicionales trae las de todos los adicionales del proyecto dado).
+    const puntos = puntosAdicionales(solo);
+    const dir = new THREE.Vector3(lado * Math.sin(g) * Math.cos(el), Math.sin(el), lado * Math.cos(g) * Math.cos(el));
+    return { ids, puntos, dir };
+  }
+  return null;
 }
 
 /** Dibuja la vista trasera como una burbuja redonda con borde blanco, abajo a la derecha, con su rótulo. */
@@ -518,7 +524,7 @@ function burbuja(g: CanvasRenderingContext2D, imagen: HTMLCanvasElement, ancho: 
   // Rótulo.
   const tam = Math.round(alto * 0.028);
   g.font = `800 ${tam}px Nunito, Arial, sans-serif`;
-  const texto = 'Vista trasera';
+  const texto = 'Vista del otro lado';
   const w = g.measureText(texto).width + tam * 1.4;
   const h = tam * 1.7;
   const x = cx - w / 2;
@@ -622,6 +628,7 @@ export function Visor3D() {
                   diseno={activo ? diseno : m.diseno}
                   materiales={materiales}
                   respaldo={m.respaldo}
+                  frenteLiso={m.frenteLiso}
                   cubiertaIsla={m.cubiertaIsla}
                   vista={activo ? { abierto, cotas, distancias, etiquetasFrentes, unidad, modulos } : { abierto, cotas: false, distancias: false, etiquetasFrentes: false, unidad, modulos: null }}
                 />

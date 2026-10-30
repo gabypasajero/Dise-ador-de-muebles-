@@ -228,7 +228,7 @@ export function dimensionesTotales(d: Diseno): { x0: number; x1: number; alto: n
     const r = d.lados?.[lado];
     if (r) fondo = Math.max(fondo, r.largo);
   }
-  if (d.aereos.activo && d.aereos.cuerpos.length) {
+  if (d.aereos.activo && (d.aereos.cuerpos.length || d.aereos.sinPrincipal)) {
     const la = calcularLayoutAereos(d);
     if (la) {
       x0 = Math.min(x0, la.x0);
@@ -237,7 +237,10 @@ export function dimensionesTotales(d: Diseno): { x0: number; x1: number; alto: n
     }
     for (const lado of LADOS) {
       const ra = ladoAereoActivo(d, lado);
-      if (ra) fondo = Math.max(fondo, ra.largo);
+      if (ra) {
+        fondo = Math.max(fondo, ra.largo);
+        alto = Math.max(alto, d.aereos.elevacion + d.aereos.alto);
+      }
     }
   }
   return { x0, x1, alto, fondo };
@@ -539,10 +542,18 @@ export function altoSuperior(tipo: 'campana' | 'nicho', alto: number): number {
   return Math.round(Math.max(200, Math.min(alto - 150, alto * proporcion)));
 }
 
+/**
+ * Lo que ocupa la esquina en cada lado del aéreo: el fondo del aéreo principal. Sin aéreo principal
+ * no hay esquina y los módulos del lado llegan hasta el muro principal.
+ */
+export function esquinaAereo(d: Diseno): number {
+  return d.aereos.sinPrincipal ? 0 : d.aereos.profundidad;
+}
+
 /** Largo útil (mm) de los módulos de un lado del aéreo: desde la esquina del aéreo principal. */
 export function largoUtilLadoAereo(d: Diseno, lado: LadoId): number {
   const r = d.aereos.lados?.[lado];
-  return r ? Math.max(0, r.largo - d.aereos.profundidad) : 0;
+  return r ? Math.max(0, r.largo - esquinaAereo(d)) : 0;
 }
 
 /** Lado del aéreo que existe y se dibuja (aéreos murales activos de cocina). */
@@ -651,7 +662,7 @@ export function transformAereoLado(d: Diseno, lado: LadoId): Transformacion | nu
   const r = d.aereos.lados?.[lado];
   if (!r) return null;
   const [x0, x1] = extremosPrincipal(d);
-  const z = d.aereos.profundidad + largoUtilLadoAereo(d, lado) / 2;
+  const z = esquinaAereo(d) + largoUtilLadoAereo(d, lado) / 2;
   return lado === 'der' ? { x: x1, z, rotY: -Math.PI / 2 } : { x: x0, z, rotY: Math.PI / 2 };
 }
 

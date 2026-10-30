@@ -523,11 +523,39 @@ const FORMAS: { valor: Forma; texto: string }[] = [
   { valor: 'U', texto: 'U' },
 ];
 
+type FormaAereosUI = Forma | 'cuadrado' | 'solo-izq' | 'solo-der' | 'solo-lados';
+
+/** Forma de los aéreos como se elige: cuadrada, lineal, L, U o solo en los lados (sin aéreo principal). */
+function formaAereosElegida(d: Diseno): FormaAereosUI {
+  const a = d.aereos;
+  if (a.sinPrincipal) {
+    const f = formaAereos(d);
+    return f === 'L-izq' ? 'solo-izq' : f === 'L-der' ? 'solo-der' : 'solo-lados';
+  }
+  return a.cuadrado ? 'cuadrado' : formaAereos(d);
+}
+
+function cambiarFormaAereos(d: Diseno, v: FormaAereosUI, set: (p: { tramoActivo: TramoId; moduloActivo: number }) => void) {
+  if (v === 'cuadrado') {
+    operar({ op: 'fijarAereosCuadrados', cuadrado: true }, 'forma-aereos');
+    return;
+  }
+  const solo = v === 'solo-izq' || v === 'solo-der' || v === 'solo-lados';
+  const forma: Forma = v === 'solo-izq' ? 'L-izq' : v === 'solo-der' ? 'L-der' : v === 'solo-lados' ? 'U' : v;
+  // Sin aéreo principal primero se pone la forma (los lados) y después se quita el principal.
+  if (!solo && d.aereos.sinPrincipal && !operar({ op: 'fijarAereoPrincipal', activo: true }, 'forma-aereos').ok) return;
+  if (!operar({ op: 'fijarFormaAereos', forma }, 'forma-aereos').ok) return;
+  if (solo) {
+    const r = operar({ op: 'fijarAereoPrincipal', activo: false }, 'forma-aereos');
+    if (r.ok) set({ tramoActivo: v === 'solo-der' ? 'aereos-der' : 'aereos-izq', moduloActivo: 0 });
+  }
+}
+
 /** Forma del mueble base y de los aéreos (solo la cocina). */
 function FormaCocina({ d }: { d: Diseno }) {
   const set = useApp((s) => s.set);
   const forma = formaBase(d);
-  const formaA = d.aereos.cuadrado ? 'cuadrado' : formaAereos(d);
+  const formaA = formaAereosElegida(d);
   const cambiarForma = (v: Forma) => {
     const antes = tramosDe(d);
     const r = operar({ op: 'fijarForma', forma: v });
@@ -552,8 +580,14 @@ function FormaCocina({ d }: { d: Diseno }) {
         <Segmentado
           etiqueta="Forma de los aéreos"
           valor={formaA}
-          onCambio={(v) => (v === 'cuadrado' ? operar({ op: 'fijarAereosCuadrados', cuadrado: true }) : operar({ op: 'fijarFormaAereos', forma: v }))}
-          opciones={[{ valor: 'cuadrado' as const, texto: 'Igual al mueble (cuadrado)', titulo: 'Siguen la forma y los largos del mueble base' }, ...FORMAS]}
+          onCambio={(v) => cambiarFormaAereos(d, v, set)}
+          opciones={[
+            { valor: 'cuadrado' as const, texto: 'Igual al mueble (cuadrado)', titulo: 'Siguen la forma y los largos del mueble base' },
+            ...FORMAS,
+            { valor: 'solo-izq' as const, texto: 'Solo lado izq.', titulo: 'Aéreo solo en el lado izquierdo, sin aéreo en el tramo principal' },
+            { valor: 'solo-der' as const, texto: 'Solo lado der.', titulo: 'Aéreo solo en el lado derecho, sin aéreo en el tramo principal' },
+            { valor: 'solo-lados' as const, texto: 'Solo los lados', titulo: 'Aéreo en los dos lados, sin aéreo en el tramo principal' },
+          ]}
         />
       )}
     </>

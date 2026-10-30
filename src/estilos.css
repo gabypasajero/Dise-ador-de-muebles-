@@ -4778,3 +4778,25 @@ h3 {
   padding: 4px 12px;
   cursor: pointer;
 }
+
+/* Isla: medidas de la base y de la cubierta por separado, y la isla lisa. */
+.medidas-isla,
+.isla-lisa {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--borde);
+}
+
+.medidas-isla-grupo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: flex-end;
+}
+
+.medidas-isla-grupo > strong {
+  flex-basis: 100%;
+  font-size: 0.85rem;
+}

@@ -139,6 +139,7 @@ export const OPERACIONES: DescripcionOperacion[] = [
   },
   { op: 'fijarLargoAereos', descripcion: 'Largo del aéreo principal (no en U ni en el compacto).', campos: { largo: mm('largo') }, ejemplo: { op: 'fijarLargoAereos', largo: 1800 } },
   { op: 'fijarAereosCuadrados', descripcion: 'Vuelve a cuadrar los aéreos con el base (misma forma y largos) o los deja libres.', campos: { cuadrado: { tipo: 'booleano', descripcion: 'cuadrados o libres' } }, ejemplo: { op: 'fijarAereosCuadrados', cuadrado: true } },
+  { op: 'fijarAereoPrincipal', descripcion: 'Con (true) o sin (false) aéreo en el tramo principal: sin él, el aéreo va solo en los lados de la L o la U (cada lado llega hasta el muro principal).', campos: { activo: { tipo: 'booleano', descripcion: 'con o sin aéreo principal' } }, ejemplo: { op: 'fijarAereoPrincipal', activo: false } },
   {
     op: 'fijarCocina',
     descripcion: 'Terminaciones de la cubierta: color de la grifería, copete, espesor y vuelo.',

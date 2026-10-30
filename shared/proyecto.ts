@@ -7,7 +7,7 @@ import { calcularLayoutAereos, dimensionesTotales, extremosPrincipal } from './l
 import { aplicarAjustes, ejecutar, formatear, precioDiseno, type Operacion, type PrecioAjustado } from './reglas';
 import { detalleCotizacion } from './resumen';
 import { precioCocina, precioIsla } from './tarifas';
-import type { CaraIsla, CatalogoMateriales, Diseno, LineaDetalle, MuebleAdicional, ProductoCatalogo, Unidad } from './tipos';
+import type { CaraIsla, CatalogoMateriales, Diseno, LineaDetalle, MuebleAdicional, ProductoCatalogo, Unidad, Voladizo } from './tipos';
 
 /** Medidas estándar de la isla (todas se pueden editar). */
 export const ISLA_ESTANDAR = { ancho: 1500, alto: 900, profundidad: 900 };
@@ -279,6 +279,8 @@ export interface MuebleProyecto {
   giro: number;
   /** Isla sin lado trasero: su respaldo queda a la vista, terminado. */
   respaldo: boolean;
+  /** Isla lisa: el frente va cerrado con un panel liso, sin puertas ni cajones. */
+  frenteLiso?: boolean;
   cara?: CaraIsla;
   /**
    * Frente de una isla con voladizo: la cubierta grande de toda la isla (frente, caras y lo que
@@ -316,6 +318,47 @@ function cubierta(isla: MuebleAdicional, lista: MuebleAdicional[]): Pick<MuebleP
   };
 }
 
+/** Medidas de una isla vista desde arriba (mm): la base (el mueble con sus caras) y la cubierta. */
+export interface MedidasIsla {
+  base: { largo: number; fondo: number };
+  cubierta: { largo: number; fondo: number };
+}
+
+const SIN_VOLADIZO: Voladizo = { frente: 0, trasero: 0, izq: 0, der: 0 };
+
+/** Base y cubierta de una isla: la base es el frente con sus costados y su lado trasero. */
+export function medidasIsla(p: Diseno, isla: MuebleAdicional): MedidasIsla {
+  const lista = p.adicionales ?? [];
+  const d = isla.diseno;
+  const caras = lista.filter((x) => x.isla === isla.id);
+  const fT = caras.find((x) => x.cara === 'trasera')?.diseno.profundidad ?? 0;
+  const sI = caras.find((x) => x.cara === 'izq')?.diseno.profundidad ?? 0;
+  const sD = caras.find((x) => x.cara === 'der')?.diseno.profundidad ?? 0;
+  const base = { largo: d.ancho + sI + sD, fondo: d.profundidad + fT };
+  const c = cubierta(isla, lista).cubiertaIsla;
+  // Sin voladizo la cubierta va al ras de los costados y sobresale su vuelo por delante.
+  return { base, cubierta: c ? { largo: c.x1 - c.x0, fondo: c.z1 - c.z0 } : { largo: base.largo, fondo: base.fondo + d.cocina.vueloCubierta } };
+}
+
+/**
+ * Voladizo para que la cubierta de la isla mida lo pedido (mm). El largo de más se reparte igual a
+ * cada costado; el fondo de más va atrás (donde se sientan), sin tocar lo que sobresale adelante.
+ */
+export function voladizoParaCubierta(p: Diseno, isla: MuebleAdicional, pedido: { largo?: number; fondo?: number }): Voladizo {
+  const v = { ...(isla.voladizo ?? SIN_VOLADIZO) };
+  const { base } = medidasIsla(p, isla);
+  const vuelo = isla.diseno.cocina.vueloCubierta;
+  const tope = (x: number) => Math.round(Math.max(0, Math.min(1500, x)));
+  if (pedido.largo != null) {
+    const extra = pedido.largo - base.largo;
+    const izq = tope(extra / 2);
+    v.izq = izq;
+    v.der = tope(extra - izq);
+  }
+  if (pedido.fondo != null) v.trasero = tope(pedido.fondo - base.fondo - Math.max(vuelo, v.frente));
+  return v;
+}
+
 /**
  * Todos los muebles del proyecto, el principal primero, cada uno donde se dibuja. En una isla (x, z)
  * es el centro de toda la isla: con lado trasero, el frente y la trasera quedan espalda con espalda,
@@ -328,7 +371,7 @@ export function mueblesProyecto(p: Diseno, nombrePrincipal = 'Mueble principal')
   for (const a of lista) {
     const base = { id: a.id, tipo: a.tipo, nombre: a.nombre, diseno: a.diseno };
     if (a.tipo !== 'isla' || (!a.cara && !lista.some((x) => x.isla === a.id) && !conVoladizo(a))) {
-      out.push({ ...base, x: a.x, z: a.z, giro: a.giro, respaldo: a.tipo === 'isla' });
+      out.push({ ...base, x: a.x, z: a.z, giro: a.giro, respaldo: a.tipo === 'isla', ...(a.tipo === 'isla' && a.liso ? { frenteLiso: true } : {}) });
       continue;
     }
     const isla = a.cara ? lista.find((x) => x.id === a.isla && !x.isla) : a;
@@ -346,7 +389,7 @@ export function mueblesProyecto(p: Diseno, nombrePrincipal = 'Mueble principal')
     else if (a.cara === 'der') [local, giro] = [[L / 2 + a.diseno.profundidad / 2, 0], 90];
     else [local, giro] = [[-L / 2 - a.diseno.profundidad / 2, 0], 270];
     const [dx, dz] = girarPlanta(local[0], local[1], isla.giro);
-    out.push({ ...base, x: Math.round(isla.x + dx), z: Math.round(isla.z + dz), giro: (isla.giro + giro) % 360, respaldo: !a.cara && !trasera, cara: a.cara, ...(a.cara ? {} : cubierta(a, lista)) });
+    out.push({ ...base, x: Math.round(isla.x + dx), z: Math.round(isla.z + dz), giro: (isla.giro + giro) % 360, respaldo: !a.cara && !trasera, cara: a.cara, ...(a.cara ? {} : cubierta(a, lista)), ...(!a.cara && a.liso ? { frenteLiso: true } : {}) });
   }
   return out;
 }
@@ -405,7 +448,7 @@ export function detalleProyecto(p: Diseno, producto: ProductoCatalogo | null, un
       etiqueta: a.nombre,
       valor: a.cara
         ? `${a.cara === 'trasera' ? 'Lado trasero' : NOMBRE_CARA[a.cara].charAt(0).toUpperCase() + NOMBRE_CARA[a.cara].slice(1)} de la isla, con sus puertas y cajones: ${formatear(d.ancho, unidad, false)} × ${formatear(d.alto, unidad, false)} × ${formatear(d.profundidad, unidad)}`
-        : `${NOMBRE_TIPO_ADICIONAL[a.tipo]} de ${formatear(d.ancho, unidad, false)} × ${formatear(d.alto, unidad, false)} × ${formatear(d.profundidad, unidad)} (ancho × alto × profundidad)${a.tipo === 'isla' && !(adicionales ?? []).some((x) => x.isla === a.id && x.cara === 'trasera') ? ', con respaldo terminado' : ''}`,
+        : `${NOMBRE_TIPO_ADICIONAL[a.tipo]} de ${formatear(d.ancho, unidad, false)} × ${formatear(d.alto, unidad, false)} × ${formatear(d.profundidad, unidad)} (ancho × alto × profundidad)${a.tipo === 'isla' && a.liso ? ', lisa: sin puertas ni cajones, frente cerrado' : ''}${a.tipo === 'isla' && !(adicionales ?? []).some((x) => x.isla === a.id && x.cara === 'trasera') ? ', con respaldo terminado' : ''}`,
     });
     if (!a.cara && conVoladizo(a)) {
       const v = a.voladizo!;

@@ -1,6 +1,6 @@
 // Tramos del mueble (principal, lados de la L/U y aéreos) y rol de cada módulo
 // para el reparto con largo fijo.
-import { esCocinaAdulta, esTramoAereo, ladoDeTramo } from './layout';
+import { esCocinaAdulta, esquinaAereo, esTramoAereo, ladoDeTramo } from './layout';
 import type { Limite } from './reparto';
 import type { Cuerpo, Diseno, Lado, Plantilla, Tramo, TramoAereo, TramoBase, TramoId } from './tipos';
 
@@ -71,7 +71,7 @@ export function tramosDe(d: Diseno): TramoId[] {
   if (d.lados?.izq) out.push('izq');
   if (d.lados?.der) out.push('der');
   if (d.aereos.activo) {
-    out.push('aereos');
+    if (!d.aereos.sinPrincipal) out.push('aereos');
     if (d.aereos.lados?.izq) out.push('aereos-izq');
     if (d.aereos.lados?.der) out.push('aereos-der');
   }
@@ -102,7 +102,7 @@ export function largoObjetivo(d: Diseno, t: TramoId): number {
     case 'aereos':
       return d.plantilla === 'compacto' ? d.ancho : d.aereos.cuerpos.reduce((s, c) => s + c.ancho, 0);
     default:
-      return Math.max(0, (ladoDe(d, t)?.largo ?? 0) - d.aereos.profundidad);
+      return Math.max(0, (ladoDe(d, t)?.largo ?? 0) - esquinaAereo(d));
   }
 }
 

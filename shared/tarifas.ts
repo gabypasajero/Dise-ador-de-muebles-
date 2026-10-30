@@ -124,13 +124,23 @@ export function largoAereo(d: Diseno): number {
 /** Precio oficial del aéreo (metros lineales × valor por metro + recargos por alto y por el mayor fondo de sus lados). null si no lleva. */
 export function precioAereo(d: Diseno): { valor: number; lineas: LineaPrecio[] } | null {
   const a = d.aereos;
-  if (d.plantilla !== 'cocina' || !a.activo || !a.cuerpos.length) return null;
+  if (d.plantilla !== 'cocina' || !a.activo || (!a.cuerpos.length && !a.sinPrincipal)) return null;
   const t = TARIFAS.aereo;
-  const fondos = [a.profundidad, ...LADOS.map((l) => ladoAereoActivo(d, l)?.profundidad ?? 0)];
+  const fondos = [a.sinPrincipal ? 0 : a.profundidad, ...LADOS.map((l) => ladoAereoActivo(d, l)?.profundidad ?? 0)];
   const fondo = Math.max(...fondos);
-  const lados = LADOS.filter((l) => ladoAereoActivo(d, l)).length;
-  const forma = lados === 2 ? 'en U' : lados === 1 ? 'en L' : 'lineal';
+  const activos = LADOS.filter((l) => ladoAereoActivo(d, l));
+  const lados = activos.length;
+  const forma = a.sinPrincipal
+    ? lados === 2
+      ? 'solo en los dos lados'
+      : `solo en el lado ${activos[0] === 'izq' ? 'izquierdo' : 'derecho'}`
+    : lados === 2
+      ? 'en U'
+      : lados === 1
+        ? 'en L'
+        : 'lineal';
   const largo = largoAereo(d);
+  if (!largo) return null;
   const lineas: LineaPrecio[] = [
     {
       concepto: 'Mueble aéreo',
@@ -200,7 +210,7 @@ export function lineasOpciones(d: Diseno, base?: Diseno): LineaPrecio[] {
     // Cada mueble por separado: el mueble base y, si lo lleva, el aéreo.
     const largo = largoCierreSuave(d);
     lineas.push(lineaUnidades('Cierre suave · mueble base', 1, valorCierreSuave(largo), `largo ${Math.round(largo / 10)} cm`));
-    const aereo = d.plantilla === 'cocina' && d.aereos.activo && d.aereos.cuerpos.length ? largoAereo(d) : 0;
+    const aereo = d.plantilla === 'cocina' && d.aereos.activo && (d.aereos.cuerpos.length || d.aereos.sinPrincipal) ? largoAereo(d) : 0;
     if (aereo) lineas.push(lineaUnidades('Cierre suave · aéreo', 1, valorCierreSuave(aereo), `largo ${Math.round(aereo / 10)} cm`));
   }
   if (d.tirador === 'sin' && base?.tirador !== 'sin') lineas.push(lineaUnidades('Sistema sin manilla', 1, TARIFAS.sinManilla, 'sin tiradores, apertura por perfil o push; una vez por mueble'));

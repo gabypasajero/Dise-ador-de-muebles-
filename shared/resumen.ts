@@ -233,11 +233,18 @@ export function detalleCotizacion(
     });
   }
   const la = calcularLayoutAereos(d);
-  if (la) {
+  if (d.aereos.activo && d.aereos.sinPrincipal) {
+    const a = d.aereos;
+    lineas.push({
+      etiqueta: 'Muebles aéreos',
+      valor: `solo en ${ladoAereoActivo(d, 'izq') && ladoAereoActivo(d, 'der') ? 'los dos lados' : ladoAereoActivo(d, 'izq') ? 'el lado izquierdo' : 'el lado derecho'} (sin aéreo en el tramo principal), alto ${formatear(a.alto, unidad)}, a ${formatear(a.elevacion, unidad)} del piso`,
+    });
+  }
+  if (la || (d.aereos.activo && d.aereos.sinPrincipal)) {
     const a = d.aereos;
     const compacto = d.plantilla === 'compacto';
     const formaA = formaDe({ izq: ladoAereoActivo(d, 'izq'), der: ladoAereoActivo(d, 'der') });
-    lineas.push({
+    if (la) lineas.push({
       etiqueta: compacto ? 'Mueble superior' : 'Muebles aéreos',
       valor: compacto
         ? `${formatear(la.x1 - la.x0, unidad, false)} × ${formatear(a.alto, unidad, false)} × ${formatear(a.profundidad, unidad)} sobre la cubierta, mueble base de ${formatear(a.elevacion, unidad)} de alto`
@@ -500,7 +507,7 @@ function seccionTramo(d: Diseno, t: TramoId, unidad: Unidad, ubic: EquipoUbicado
   } else if (t === 'aereos-izq' || t === 'aereos-der') {
     const lado = t === 'aereos-izq' ? 'izq' : 'der';
     const r = d.aereos.lados[lado]!;
-    lineas.push({ etiqueta: 'Medidas', valor: `largo desde el muro ${f(r.largo)} (con la esquina del aéreo principal), módulos ${f(largoUtilLadoAereo(d, lado))}, alto ${f(d.aereos.alto)}, fondo ${f(r.profundidad)}` });
+    lineas.push({ etiqueta: 'Medidas', valor: `largo desde el muro ${f(r.largo)} (${d.aereos.sinPrincipal ? 'sin aéreo principal: llega hasta el muro principal' : 'con la esquina del aéreo principal'}), módulos ${f(largoUtilLadoAereo(d, lado))}, alto ${f(d.aereos.alto)}, fondo ${f(r.profundidad)}` });
     lineas.push({ etiqueta: 'Orden', valor: lado === 'izq' ? 'cuelga del muro izquierdo; el aéreo 1 queda en la punta abierta y el último junto a la esquina' : 'cuelga del muro derecho; el aéreo 1 queda junto a la esquina' });
   } else {
     const la = calcularLayoutAereos(d);
@@ -715,11 +722,13 @@ export function fichaFabricacion(
       if (sec) secciones.push(sec);
     }
   }
-  const la = calcularLayoutAereos(d);
+  const sinPrincipal = !!(d.aereos.activo && d.aereos.sinPrincipal);
+  // Sin aéreo principal, la altura y el montaje se toman de un lado del aéreo.
+  const la = calcularLayoutAereos(d) ?? (sinPrincipal ? (calcularLayoutAereosLado(d, 'izq') ?? calcularLayoutAereosLado(d, 'der')) : null);
   if (la) {
     const a = d.aereos;
     const formaA = formaDe({ izq: ladoAereoActivo(d, 'izq'), der: ladoAereoActivo(d, 'der') });
-    const desde = la.x0 - x0;
+    const desde = sinPrincipal ? 0 : la.x0 - x0;
     const lb = calcularLayout(disenoBase(d));
     const sobreCubierta = la.y0 - (lb.yTope + lb.espesorCubierta);
     secciones.push({
@@ -730,7 +739,7 @@ export function fichaFabricacion(
           valor:
             d.plantilla === 'compacto'
               ? `apoyado sobre la cubierta con costados y respaldo, alto ${f(a.alto)}, fondo ${f(a.profundidad)}`
-              : `${FORMA[formaA]}, alto ${f(a.alto)}, fondo ${f(a.profundidad)}, borde inferior a ${f(a.elevacion)} del piso${a.cuadrado ? ', cuadrados con el mueble base' : ''}`,
+              : `${sinPrincipal ? `solo en ${formaA === 'U' ? 'los dos lados' : formaA === 'L-izq' ? 'el lado izquierdo' : 'el lado derecho'}, sin aéreo en el tramo principal` : FORMA[formaA]}, alto ${f(a.alto)}${sinPrincipal ? '' : `, fondo ${f(a.profundidad)}`}, borde inferior a ${f(a.elevacion)} del piso${a.cuadrado ? ', cuadrados con el mueble base' : ''}`,
         },
         {
           etiqueta: 'Montaje',
@@ -744,6 +753,7 @@ export function fichaFabricacion(
     });
     for (const t of ['aereos-izq', 'aereos', 'aereos-der'] as TramoId[]) {
       if (t !== 'aereos' && !ladoAereoActivo(d, t === 'aereos-izq' ? 'izq' : 'der')) continue;
+      if (t === 'aereos' && sinPrincipal) continue;
       const sec = seccionTramo(d, t, unidad, ubic);
       if (sec) secciones.push({ ...sec, titulo: t === 'aereos' ? (d.plantilla === 'compacto' ? 'Mueble superior · módulos' : 'Aéreo principal') : sec.titulo });
     }

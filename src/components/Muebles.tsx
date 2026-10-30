@@ -1,5 +1,5 @@
 import { NOMBRE_PLANTILLA } from '../../shared/catalogo';
-import { ladoEnLinea, mueblesProyecto, NOMBRE_CARA, posicionEnLinea, precioProyecto } from '../../shared/proyecto';
+import { conVoladizo, ladoEnLinea, medidasIsla, mueblesProyecto, NOMBRE_CARA, posicionEnLinea, precioProyecto, voladizoParaCubierta } from '../../shared/proyecto';
 import type { CaraIsla } from '../../shared/tipos';
 import { formatear, formatoPrecio } from '../../shared/reglas';
 import { adicionalActivo, proyectoDe, useApp } from '../store/useApp';
@@ -97,6 +97,10 @@ export function PestanaMuebles() {
         </div>
       )}
 
+      {activo?.tipo === 'isla' && !activo.cara && <IslaLisa />}
+
+      {activo?.tipo === 'isla' && !activo.cara && <MedidasIsla />}
+
       {activo?.tipo === 'isla' && <VoladizoIsla islaId={activo.isla ?? activo.id} />}
 
       {activo?.cara && <p className="tenue">Esta cara se mueve y gira con su isla: para ubicarla, elige la isla.</p>}
@@ -177,6 +181,82 @@ function EnLinea() {
 }
 
 const SIN_VOLADIZO = { frente: 0, trasero: 0, izq: 0, der: 0 };
+
+/**
+ * Isla lisa: sin puertas ni cajones, con el frente cerrado por un panel liso. Al volver a la isla
+ * con puertas, cada módulo vacío recibe sus puertas (2 desde 55 cm, si no 1).
+ */
+function IslaLisa() {
+  const s = useApp();
+  const activo = adicionalActivo(s);
+  if (!activo) return null;
+  const alternar = (liso: boolean) => {
+    s.cambiar(
+      (d) => ({
+        ...d,
+        cuerpos: d.cuerpos.map((c) =>
+          c.tipo !== 'frentes' ? c : liso ? { ...c, puertas: 0, cajones: 0 } : c.puertas || c.cajones ? c : { ...c, puertas: c.ancho >= 550 ? 2 : 1, repisas: Math.max(1, c.repisas) },
+        ),
+      }),
+      'isla-lisa',
+    );
+    s.ubicarMueble(activo.id, { liso });
+  };
+  return (
+    <div className="isla-lisa">
+      <Interruptor activo={!!activo.liso} onCambio={alternar} texto="Isla lisa: sin puertas ni cajones (frente cerrado y liso)" />
+      {activo.liso && <p className="tenue chico">El frente queda cerrado con un panel liso del color de los frentes. Para volver a ponerle puertas y cajones, apaga esta opción.</p>}
+    </div>
+  );
+}
+
+/**
+ * Medidas de la isla por separado: la base (el mueble) y la cubierta. Al cambiar la base, la cubierta
+ * conserva su medida (cambia lo que sobresale); al cambiar la cubierta, la base no se mueve.
+ */
+function MedidasIsla() {
+  const s = useApp();
+  const activo = adicionalActivo(s);
+  const proyecto = proyectoDe(s);
+  const isla = proyecto.adicionales?.find((a) => a.id === activo?.id);
+  if (!activo || !isla) return null;
+  const m = medidasIsla(proyecto, isla);
+  const paso = s.unidad === 'cm' ? 10 : 5;
+  const conservarCubierta = (pedido: { largo?: number; fondo?: number }) => {
+    if (!conVoladizo(isla)) return;
+    const p2 = proyectoDe(useApp.getState());
+    const i2 = p2.adicionales?.find((a) => a.id === isla.id);
+    if (i2) s.ubicarMueble(isla.id, { voladizo: voladizoParaCubierta(p2, i2, pedido) });
+  };
+  const cambiarBase = (que: 'largo' | 'fondo', mm: number) => {
+    const extra = que === 'largo' ? m.base.largo - s.diseno.ancho : m.base.fondo - s.diseno.profundidad;
+    const r =
+      que === 'largo'
+        ? s.operar({ op: 'fijarAncho', ancho: Math.round(mm - extra) }, 'isla-base-largo')
+        : s.operar({ op: 'fijarProfundidad', profundidad: Math.round(mm - extra) }, 'isla-base-fondo');
+    if (r.ok) conservarCubierta({ [que]: m.cubierta[que] });
+  };
+  const cambiarCubierta = (que: 'largo' | 'fondo', mm: number) => s.ubicarMueble(isla.id, { voladizo: voladizoParaCubierta(proyecto, isla, { [que]: Math.round(mm) }) });
+  return (
+    <div className="medidas-isla">
+      <span className="campo-etiqueta">Medidas de la isla, por separado</span>
+      <div className="medidas-isla-grupo">
+        <strong>Base (mueble)</strong>
+        <CampoMedida etiqueta="Largo" compacto valor={m.base.largo} unidad={s.unidad} paso={paso} onCambio={(mm) => cambiarBase('largo', mm)} />
+        <CampoMedida etiqueta="Fondo" compacto valor={m.base.fondo} unidad={s.unidad} paso={paso} onCambio={(mm) => cambiarBase('fondo', mm)} />
+        <CampoMedida etiqueta="Alto" compacto valor={s.diseno.alto} unidad={s.unidad} paso={paso} onCambio={(mm) => s.operar({ op: 'fijarAlto', alto: Math.round(mm) }, 'isla-base-alto')} />
+      </div>
+      <div className="medidas-isla-grupo">
+        <strong>Cubierta</strong>
+        <CampoMedida etiqueta="Largo" compacto valor={m.cubierta.largo} unidad={s.unidad} min={m.base.largo} paso={paso} onCambio={(mm) => cambiarCubierta('largo', mm)} />
+        <CampoMedida etiqueta="Fondo" compacto valor={m.cubierta.fondo} unidad={s.unidad} min={m.base.fondo} paso={paso} onCambio={(mm) => cambiarCubierta('fondo', mm)} />
+      </div>
+      <p className="tenue chico">
+        La cubierta más larga sobresale igual a cada costado; la más honda sobresale atrás, para sentarse. Al cambiar la base, la cubierta conserva su medida.
+      </p>
+    </div>
+  );
+}
 
 /** Cubierta de la isla más grande que el mueble, para sentarse alrededor: cuánto sobresale por cada lado. */
 function VoladizoIsla({ islaId }: { islaId: string }) {

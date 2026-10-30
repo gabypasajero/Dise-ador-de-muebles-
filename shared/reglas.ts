@@ -12,6 +12,7 @@ import {
   disenoLado,
   esCocina,
   esCocinaAdulta,
+  esquinaAereo,
   esTramoAereo,
   extremosPrincipal,
   formaDe,
@@ -663,7 +664,7 @@ export function posicionMinima(d: Diseno, tramo: Tramo = 'base'): number {
 export function maximoTramo(d: Diseno, tramo: Tramo): number {
   const t = resolverTramo(d, tramo) ?? 'base';
   if (t === 'izq' || t === 'der') return LIMITES_LADO.largo[1] - d.profundidad;
-  if (t === 'aereos-izq' || t === 'aereos-der') return LIMITES_AEREOS.ladoLargo[1] - d.aereos.profundidad;
+  if (t === 'aereos-izq' || t === 'aereos-der') return LIMITES_AEREOS.ladoLargo[1] - esquinaAereo(d);
   if (t === 'aereos') {
     if (d.plantilla === 'compacto') return d.ancho;
     const [x0, x1] = extremosPrincipal(d);
@@ -765,8 +766,9 @@ function modulosAereos(largo: number): Cuerpo[] {
 /** Lado nuevo del aéreo: del mismo largo que el lado del base (si lo hay). */
 function ladoAereoPorDefecto(d: Diseno, lado: LadoId): Lado {
   const a = d.aereos;
-  const largo = limitar(d.lados[lado]?.largo ?? Math.max(1200, a.profundidad + 600), [a.profundidad + ANCHO_MIN_CUERPO, LIMITES_AEREOS.ladoLargo[1]]);
-  return { largo, profundidad: a.profundidad, cuerpos: modulosAereos(largo - a.profundidad) };
+  const e = esquinaAereo(d);
+  const largo = limitar(d.lados[lado]?.largo ?? Math.max(1200, a.profundidad + 600), [e + ANCHO_MIN_CUERPO, LIMITES_AEREOS.ladoLargo[1]]);
+  return { largo, profundidad: a.profundidad, cuerpos: modulosAereos(largo - e) };
 }
 
 /** Aéreos apagados por defecto (o el mueble superior del compacto). */
@@ -805,7 +807,17 @@ function sincronizarAereos(d: Diseno, ctx: Ctx) {
     return;
   }
   a.montaje = 'mural';
-  if (a.activo && !a.cuerpos.length) Object.assign(a, aereosPorDefecto(d), { activo: true });
+  // Sin aéreo principal solo quedan los lados: si ya no hay lados, vuelve el principal.
+  if (a.sinPrincipal && !a.lados.izq && !a.lados.der) {
+    delete a.sinPrincipal;
+    const [x0, x1] = extremosPrincipal(d);
+    a.cuerpos = modulosAereos(Math.min(LIMITES_AEREOS.ancho[1], Math.round(x1 - x0)));
+  }
+  if (a.sinPrincipal) {
+    a.cuerpos = [];
+    a.cuadrado = false;
+  }
+  if (a.activo && !a.cuerpos.length && !a.sinPrincipal) Object.assign(a, aereosPorDefecto(d), { activo: true });
   if (a.activo && a.cuadrado) {
     for (const lado of LADOS) {
       const base = d.lados[lado];
@@ -818,20 +830,21 @@ function sincronizarAereos(d: Diseno, ctx: Ctx) {
     const r = a.lados[lado];
     if (!r) continue;
     const t: TramoAereo = lado === 'izq' ? 'aereos-izq' : 'aereos-der';
-    if (!r.cuerpos.length) r.cuerpos = modulosAereos(Math.max(ANCHO_MIN_CUERPO, r.largo - a.profundidad));
+    const e = esquinaAereo(d);
+    if (!r.cuerpos.length) r.cuerpos = modulosAereos(Math.max(ANCHO_MIN_CUERPO, r.largo - e));
     r.profundidad = limitar(Math.round(r.profundidad), LIMITES_AEREOS.profundidad);
     repararAnchos(d, t, ctx);
     const minimo = sumar(r.cuerpos.map((c) => limitesModulo(d, t, c).min));
     const base = d.lados[lado];
     if (a.activo && a.cuadrado && base) {
       // Cuadrado: el lado del aéreo mide lo mismo que el del base; si sus módulos no caben, sobra alguno.
-      r.largo = Math.max(base.largo, a.profundidad + ANCHO_MIN_CUERPO);
-      if (minimo > r.largo - a.profundidad) recortarAereos(d, t, r.largo - a.profundidad, ctx);
+      r.largo = Math.max(base.largo, e + ANCHO_MIN_CUERPO);
+      if (minimo > r.largo - e) recortarAereos(d, t, r.largo - e, ctx);
     } else {
-      r.largo = limitar(Math.round(r.largo), [Math.max(LIMITES_AEREOS.ladoLargo[0], a.profundidad + minimo), Math.max(LIMITES_AEREOS.ladoLargo[1], a.profundidad + minimo)]);
+      r.largo = limitar(Math.round(r.largo), [Math.max(LIMITES_AEREOS.ladoLargo[0], e + minimo), Math.max(LIMITES_AEREOS.ladoLargo[1], e + minimo)]);
     }
-    const objetivo = r.largo - a.profundidad;
-    if (largoTramo(d, t) !== objetivo && ajustarTramo(d, t, objetivo) !== 0) r.largo = a.profundidad + largoTramo(d, t);
+    const objetivo = r.largo - e;
+    if (largoTramo(d, t) !== objetivo && ajustarTramo(d, t, objetivo) !== 0) r.largo = e + largoTramo(d, t);
   }
   if (!a.cuerpos.length) return;
   // El largo del aéreo principal es la suma de sus módulos: se toma antes de corregir sus anchos.
@@ -1675,8 +1688,31 @@ function opFijarLado(out: Diseno, ctx: Ctx, lado: LadoId, cambios: CambiosLado) 
 function opActivarAereos(out: Diseno, activo: boolean) {
   if (out.plantilla === 'compacto') rechazar('El mueble superior del compacto va siempre.');
   if (out.plantilla !== 'cocina') rechazar('Solo el mueble de cocina lleva muebles aéreos.');
-  if (activo && !out.aereos.cuerpos.length) out.aereos = aereosPorDefecto(out);
+  if (activo && !out.aereos.cuerpos.length && !out.aereos.sinPrincipal) out.aereos = aereosPorDefecto(out);
   out.aereos.activo = activo;
+}
+
+/**
+ * Aéreo en el tramo principal o solo en los lados de la L o la U. Sin principal, cada lado llega
+ * hasta el muro principal (sus módulos llenan también la esquina).
+ */
+function opAereoPrincipal(out: Diseno, activo: boolean) {
+  if (out.plantilla !== 'cocina') rechazar('Solo los aéreos de cocina pueden ir solo en los lados.');
+  const a = out.aereos;
+  if (!a.activo) opActivarAereos(out, true);
+  if (!activo) {
+    if (!a.lados.izq && !a.lados.der) rechazar('Para dejar el aéreo solo en los lados, primero elige la forma del aéreo en L o en U.');
+    if (a.sinPrincipal) return;
+    // Cada lado conserva su largo desde el muro principal: sus módulos toman la esquina.
+    a.sinPrincipal = true;
+    a.cuerpos = [];
+    a.cuadrado = false;
+    return;
+  }
+  if (!a.sinPrincipal) return;
+  delete a.sinPrincipal;
+  const [x0, x1] = extremosPrincipal(out);
+  a.cuerpos = modulosAereos(Math.min(LIMITES_AEREOS.ancho[1], Math.round(x1 - x0)));
 }
 
 export type CambiosAereos = Partial<Pick<Aereos, 'alto' | 'profundidad' | 'elevacion' | 'alineacion'>>;
@@ -1730,10 +1766,10 @@ function opLadoAereo(out: Diseno, ctx: Ctx, lado: LadoId, cambios: CambiosLado) 
     const pedido = Math.round(cambios.largo);
     const max = LIMITES_AEREOS.ladoLargo[1];
     // Una campana no queda a medias: el largo se lleva al más cercano que la cubre o la deja fuera.
-    const minSinCampanas = Math.max(LIMITES_AEREOS.ladoLargo[0], a.profundidad + minimoSinCampanas(out, t));
+    const minSinCampanas = Math.max(LIMITES_AEREOS.ladoLargo[0], esquinaAereo(out) + minimoSinCampanas(out, t));
     const elegido = largoAereoSinCortarCampanas(out, t, pedido, [minSinCampanas, max]);
     soltarCampanas(out, t, elegido.fuera);
-    const min = Math.max(LIMITES_AEREOS.ladoLargo[0], a.profundidad + sumar(limitesDe(out, t, r.cuerpos).map((l) => l.min)));
+    const min = Math.max(LIMITES_AEREOS.ladoLargo[0], esquinaAereo(out) + sumar(limitesDe(out, t, r.cuerpos).map((l) => l.min)));
     const largo = limitar(elegido.largo, [min, max]);
     if (largo !== pedido) {
       const porCampana = largo === elegido.largo && elegido.largo !== limitar(pedido, [minSinCampanas, max]);
@@ -1742,12 +1778,14 @@ function opLadoAereo(out: Diseno, ctx: Ctx, lado: LadoId, cambios: CambiosLado) 
     if (largo !== r.largo) a.cuadrado = false;
     r.largo = largo;
   }
-  if (ajustarTramo(out, t, r.largo - a.profundidad, true, true) !== 0) r.largo = a.profundidad + largoTramo(out, t);
+  const e = esquinaAereo(out);
+  if (ajustarTramo(out, t, r.largo - e, true, true) !== 0) r.largo = e + largoTramo(out, t);
 }
 
 function opLargoAereos(out: Diseno, ctx: Ctx, largo: number) {
   const a = out.aereos;
   if (out.plantilla === 'compacto') rechazar('El mueble superior del compacto mide lo mismo que el base.');
+  if (a.sinPrincipal) rechazar('El aéreo va solo en los lados: activa el aéreo principal para darle su largo.');
   if (out.plantilla !== 'cocina' || !a.cuerpos.length) rechazar('Primero activa los muebles aéreos.');
   if (a.lados.izq && a.lados.der) rechazar('Con los aéreos en U el principal va de muro a muro: cambia el ancho del mueble.');
   const max = maximoTramo(out, 'aereos');
@@ -1824,6 +1862,7 @@ export type Operacion =
   | ({ op: 'fijarLadoAereo'; lado: LadoId } & CambiosLado)
   | { op: 'fijarLargoAereos'; largo: number }
   | { op: 'fijarAereosCuadrados'; cuadrado: boolean }
+  | { op: 'fijarAereoPrincipal'; activo: boolean }
   | { op: 'fijarCocina'; cambios: Partial<EquipamientoCocina> }
   | ({ op: 'fijarAcabados' } & CambiosAcabados);
 
@@ -1890,8 +1929,12 @@ function aplicar(d: Diseno, op: Operacion): Resultado {
       case 'fijarLargoAereos':
         return opLargoAereos(out, ctx, op.largo);
       case 'fijarAereosCuadrados':
+        // Cuadrar con el mueble vuelve a poner el aéreo principal.
+        if (op.cuadrado && out.plantilla === 'cocina') opAereoPrincipal(out, true);
         out.aereos.cuadrado = op.cuadrado && out.plantilla === 'cocina';
         return;
+      case 'fijarAereoPrincipal':
+        return opAereoPrincipal(out, op.activo);
       case 'fijarCocina':
         return opFijarCocina(out, op.cambios);
       case 'fijarAcabados':
@@ -2142,6 +2185,7 @@ export function normalizar(entrada: Diseno | DisenoGuardado): Diseno {
     cuerpos: cuerposAereos,
     lados: { izq: lado(ga.lados?.izq, numero(ga.profundidad, av.profundidad), 1200), der: lado(ga.lados?.der, numero(ga.profundidad, av.profundidad), 1200) },
     cuadrado: false,
+    ...(ga.sinPrincipal === true && p === 'cocina' ? { sinPrincipal: true } : {}),
   };
   const k = g.cocina ?? {};
   const out: Diseno = {
@@ -2203,7 +2247,7 @@ export function normalizar(entrada: Diseno | DisenoGuardado): Diseno {
     }
   }
   // Aéreos cuadrados: los de la versión 1 lo son si cubren justo el tramo principal lineal.
-  if (typeof ga.cuadrado === 'boolean') aereos.cuadrado = ga.cuadrado && p === 'cocina';
+  if (typeof ga.cuadrado === 'boolean') aereos.cuadrado = ga.cuadrado && p === 'cocina' && !aereos.sinPrincipal;
   else if (p === 'cocina') {
     const largo = sumar(aereos.cuerpos.map((c) => c.ancho));
     aereos.cuadrado = !lados.izq && !lados.der && (!aereos.cuerpos.length || Math.abs(largo - out.ancho) <= 1);
@@ -2274,6 +2318,7 @@ function normalizarAdicionales(x: unknown): MuebleAdicional[] {
       diseno: normalizar({ ...diseno, plantilla: 'cocina' }),
       ...(tipo === 'linea' && a.pegado === true ? { pegado: true } : {}),
       ...(tipo === 'isla' && !a.cara && a.voladizo && typeof a.voladizo === 'object' ? { voladizo: normalizarVoladizo(a.voladizo) } : {}),
+      ...(tipo === 'isla' && !a.cara && a.liso === true ? { liso: true } : {}),
       ...(tipo === 'isla' && (a.cara === 'trasera' || a.cara === 'izq' || a.cara === 'der') && typeof a.isla === 'string' ? { cara: a.cara, isla: a.isla } : {}),
     });
   }
