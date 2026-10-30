@@ -11,6 +11,8 @@ import {
   aperturaAjustable,
   calcularLayout,
   calcularLayoutAereos,
+  extremosPrincipal,
+  inicioAereoPrincipal,
   calcularLayoutAereosLado,
   calcularLayoutTocador,
   disenoBase,
@@ -47,7 +49,7 @@ import {
   type Resultado,
   type TramoId,
 } from '../../shared/reglas';
-import type { Cuerpo, Diseno, Encimera, Lavaplatos, Plantilla, Unidad } from '../../shared/tipos';
+import type { Cuerpo, Diseno, Encimera, LadoId, Lavaplatos, Plantilla, Unidad } from '../../shared/tipos';
 import { useApp, type Pestana } from '../store/useApp';
 import { CampoMedida, Contador, Interruptor, Segmentado, Selector } from './Controles';
 import { IcoAviso, IcoBasura, IcoDer, IcoIzq, IcoMas } from './Iconos';
@@ -735,7 +737,7 @@ function MedidasTramo({ d, tramo, unidad }: { d: Diseno; tramo: TramoId; unidad:
         {!a.cuadrado && forma === 'lineal' && (
           <Segmentado
             etiqueta="Alineación"
-            valor={a.alineacion}
+            valor={(a.desde != null ? '' : a.alineacion) as 'izq'}
             onCambio={(v) => operar({ op: 'fijarAereos', alineacion: v })}
             opciones={[
               { valor: 'izq', texto: 'Izquierda' },
@@ -744,6 +746,7 @@ function MedidasTramo({ d, tramo, unidad }: { d: Diseno; tramo: TramoId; unidad:
             ]}
           />
         )}
+        {!a.cuadrado && forma === 'lineal' && <MoverAereoPrincipal d={d} unidad={unidad} />}
         {!a.cuadrado && (
           <button type="button" className="boton secundario chico" onClick={() => operar({ op: 'fijarAereosCuadrados', cuadrado: true })}>
             Cuadrar con el mueble
@@ -784,10 +787,67 @@ function MedidasTramo({ d, tramo, unidad }: { d: Diseno; tramo: TramoId; unidad:
         max={LIMITES_AEREOS.profundidad[1]}
         onCambio={(mm) => operar({ op: 'fijarLadoAereo', lado, profundidad: mm }, `fondo-aereo-${lado}`)}
       />
+      <MoverLadoAereo d={d} lado={lado} unidad={unidad} />
       <p className="ayuda">
         {a.cuadrado ? `Largo ${formatear(la.largo, unidad)}, igual al lado del mueble. ` : ''}
         Alto {formatear(a.alto, unidad)} a {formatear(a.elevacion, unidad)} del piso, como el aéreo principal.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Lado del aéreo movido a lo largo de su muro, como la isla: pegado a la esquina, centrado o pegado a
+ * la punta del mueble de abajo, o corrido a mano.
+ */
+function MoverLadoAereo({ d, lado, unidad }: { d: Diseno; lado: LadoId; unidad: Unidad }) {
+  const la = d.aereos.lados[lado];
+  if (!la) return null;
+  const desde = la.desde ?? 0;
+  const base = d.lados[lado];
+  // Lo que puede correrse sin pasar la punta del mueble de abajo (sin mueble abajo, hasta 3 m).
+  const libre = base ? Math.max(0, base.largo - la.largo) : 3000;
+  const mover = (mm: number) => operar({ op: 'fijarLadoAereo', lado, desde: Math.max(0, Math.round(mm)) }, `mover-aereo-${lado}`);
+  const posicion = desde === 0 ? 'esquina' : base && Math.abs(desde - libre) <= 5 ? 'punta' : base && Math.abs(desde - libre / 2) <= 5 ? 'centro' : '';
+  return (
+    <div className="mover-aereo">
+      <Segmentado
+        etiqueta="Ubicación en el muro"
+        valor={posicion as 'esquina'}
+        onCambio={(v) => mover(v === 'esquina' ? 0 : v === 'centro' ? libre / 2 : libre)}
+        opciones={[
+          { valor: 'esquina' as const, texto: 'Pegado a la esquina' },
+          ...(base
+            ? [
+                { valor: 'centro' as const, texto: 'Centrado' },
+                { valor: 'punta' as const, texto: 'Pegado a la punta' },
+              ]
+            : []),
+        ]}
+      />
+      <CampoMedida etiqueta="Separación desde la esquina" compacto valor={desde} unidad={unidad} min={0} paso={unidad === 'cm' ? 50 : 10} onCambio={mover} />
+      <label className="deslizar-linea">
+        <span className="campo-etiqueta">Deslizar a lo largo del muro</span>
+        <input type="range" min={0} max={Math.max(libre, desde)} step={10} value={desde} onChange={(e) => mover(Number(e.target.value))} aria-label="Separación del aéreo desde la esquina" />
+      </label>
+    </div>
+  );
+}
+
+/** Aéreo principal (lineal) movido a mano a lo largo del muro, desde el extremo izquierdo del mueble. */
+function MoverAereoPrincipal({ d, unidad }: { d: Diseno; unidad: Unidad }) {
+  const [x0, x1] = extremosPrincipal(d);
+  const largo = largoTramo(d, 'aereos');
+  const desde = Math.round(inicioAereoPrincipal(d) - x0);
+  const libre = Math.max(0, Math.round(x1 - x0 - largo));
+  const mover = (mm: number) => operar({ op: 'fijarAereos', desde: Math.round(mm) }, 'mover-aereo');
+  return (
+    <div className="mover-aereo">
+      <CampoMedida etiqueta="Separación desde el borde izquierdo" compacto valor={desde} unidad={unidad} paso={unidad === 'cm' ? 50 : 10} onCambio={mover} />
+      <label className="deslizar-linea">
+        <span className="campo-etiqueta">Deslizar a lo largo del muro</span>
+        <input type="range" min={Math.min(0, desde)} max={Math.max(libre, desde)} step={10} value={desde} onChange={(e) => mover(Number(e.target.value))} aria-label="Separación del aéreo desde el borde izquierdo" />
+      </label>
     </div>
   );
 }

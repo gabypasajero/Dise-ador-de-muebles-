@@ -65,3 +65,33 @@ describe('aéreo solo en los lados', () => {
     expect(ejecutar(d, { op: 'fijarAereoPrincipal', activo: false }).ok).toBe(false);
   });
 });
+
+describe('mover el aéreo a lo largo del muro', () => {
+  it('el lado del aéreo se corre hacia la punta y se guarda', () => {
+    let d = op(enL(), { op: 'fijarAereoPrincipal', activo: false });
+    d = op(d, { op: 'fijarLadoAereo', lado: 'der', largo: 800 });
+    expect(d.lados.der!.largo).toBeGreaterThan(800);
+    const libre = d.lados.der!.largo - d.aereos.lados.der!.largo;
+    d = op(d, { op: 'fijarLadoAereo', lado: 'der', desde: libre });
+    expect(d.aereos.lados.der!.desde).toBe(libre);
+    const r = d.aereos.lados.der!;
+    const [, x1] = extremosPrincipal(d);
+    // La punta del aéreo queda justo sobre la punta del mueble de abajo.
+    expect(aMundoAereoLado(d, 'der', r.largo / 2, 0)).toEqual([x1, d.lados.der!.largo]);
+    expect(validarDiseno(d)).toEqual([]);
+    expect(recargar(d)).toEqual(d);
+    // Pegado a la esquina otra vez.
+    d = op(d, { op: 'fijarLadoAereo', lado: 'der', desde: 0 });
+    expect(d.aereos.lados.der!.desde).toBeUndefined();
+  });
+
+  it('el aéreo principal lineal se mueve libre y la alineación lo suelta', () => {
+    let d = op(activarAereos(fijarAncho(disenoLibre('cocina'), 2400), true), { op: 'fijarLargoAereos', largo: 1200 });
+    const [x0] = extremosPrincipal(d);
+    d = op(d, { op: 'fijarAereos', desde: 500 });
+    expect(calcularLayoutAereos(d)!.x0).toBe(x0 + 500);
+    expect(recargar(d)).toEqual(d);
+    d = op(d, { op: 'fijarAereos', alineacion: 'der' });
+    expect(d.aereos.desde).toBeUndefined();
+  });
+});

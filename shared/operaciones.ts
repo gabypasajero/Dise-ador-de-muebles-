@@ -127,14 +127,14 @@ export const OPERACIONES: DescripcionOperacion[] = [
   {
     op: 'fijarAereos',
     descripcion: 'Alto, fondo, altura desde el piso y alineación de los aéreos.',
-    campos: { alto: mm('alto', true), profundidad: mm('fondo (también el de sus lados)', true), elevacion: mm('borde inferior desde el piso', true), alineacion: { tipo: 'opcion', valores: ['izq', 'centro', 'der'], opcional: true, descripcion: 'alineación del aéreo principal más corto que el base' } },
+    campos: { alto: mm('alto', true), profundidad: mm('fondo (también el de sus lados)', true), elevacion: mm('borde inferior desde el piso', true), alineacion: { tipo: 'opcion', valores: ['izq', 'centro', 'der'], opcional: true, descripcion: 'alineación del aéreo principal más corto que el base' }, desde: mm('aéreo principal lineal movido a mano: dónde parte, desde el extremo izquierdo del mueble', true) },
     ejemplo: { op: 'fijarAereos', alto: 700 },
   },
   { op: 'fijarFormaAereos', descripcion: 'Forma de los aéreos (deja de seguir al base).', campos: { forma: { tipo: 'opcion', valores: FORMAS, descripcion: 'forma' } }, ejemplo: { op: 'fijarFormaAereos', forma: 'L-izq' } },
   {
     op: 'fijarLadoAereo',
-    descripcion: 'Largo exterior o fondo de un lado de los aéreos (deja de ser cuadrado si cambia el largo).',
-    campos: { lado: { tipo: 'opcion', valores: LADOS, descripcion: 'lado' }, largo: mm('largo exterior', true), profundidad: mm('fondo', true) },
+    descripcion: 'Largo exterior, fondo o ubicación a lo largo de su muro de un lado de los aéreos (deja de ser cuadrado si cambia el largo o se corre).',
+    campos: { lado: { tipo: 'opcion', valores: LADOS, descripcion: 'lado' }, largo: mm('largo exterior', true), profundidad: mm('fondo', true), desde: mm('cuánto se corre el lado del aéreo desde la esquina hacia la punta', true) },
     ejemplo: { op: 'fijarLadoAereo', lado: 'izq', largo: 1500 },
   },
   { op: 'fijarLargoAereos', descripcion: 'Largo del aéreo principal (no en U ni en el compacto).', campos: { largo: mm('largo') }, ejemplo: { op: 'fijarLargoAereos', largo: 1800 } },

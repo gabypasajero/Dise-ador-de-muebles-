@@ -13,6 +13,7 @@ import {
   disenoBase,
   disenoLado,
   extremosPrincipal,
+  desdeLadoAereo,
   esquinaAereo,
   ladoAereoActivo,
   largoUtilLado,
@@ -122,7 +123,8 @@ export function murosDe(d: Diseno): Muro[] {
       if (ladoAereoActivo(d, muro)) {
         la = calcularLayoutAereosLado(d, muro);
         const La = largoUtilLadoAereo(d, muro);
-        hA = muro === 'izq' ? (x) => x - Pa - La / 2 : (x) => x + Pa + La / 2;
+        const D = desdeLadoAereo(d, muro);
+        hA = muro === 'izq' ? (x) => x - Pa - D - La / 2 : (x) => x + Pa + D + La / 2;
         if (la && Pa > 0) esquinas.push(muro === 'izq' ? { h0: -Pa, h1: 0, y0: la.y0, y1: la.y1 } : { h0: 0, h1: Pa, y0: la.y0, y1: la.y1 });
       }
     }

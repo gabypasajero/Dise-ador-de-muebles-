@@ -238,7 +238,7 @@ export function dimensionesTotales(d: Diseno): { x0: number; x1: number; alto: n
     for (const lado of LADOS) {
       const ra = ladoAereoActivo(d, lado);
       if (ra) {
-        fondo = Math.max(fondo, ra.largo);
+        fondo = Math.max(fondo, ra.largo + desdeLadoAereo(d, lado));
         alto = Math.max(alto, d.aereos.elevacion + d.aereos.alto);
       }
     }
@@ -550,6 +550,11 @@ export function esquinaAereo(d: Diseno): number {
   return d.aereos.sinPrincipal ? 0 : d.aereos.profundidad;
 }
 
+/** Cuánto se corre un lado del aéreo a lo largo de su muro, desde la esquina hacia la punta (mm). */
+export function desdeLadoAereo(d: Diseno, lado: LadoId): number {
+  return Math.max(0, Math.round(d.aereos.lados?.[lado]?.desde ?? 0));
+}
+
 /** Largo útil (mm) de los módulos de un lado del aéreo: desde la esquina del aéreo principal. */
 export function largoUtilLadoAereo(d: Diseno, lado: LadoId): number {
   const r = d.aereos.lados?.[lado];
@@ -570,6 +575,7 @@ export function inicioAereoPrincipal(d: Diseno): number {
   const largo = a.cuerpos.reduce((s, c) => s + c.ancho, 0);
   const [sx0, sx1] = extremosPrincipal(d);
   const alineacion = a.lados?.izq ? 'izq' : a.lados?.der ? 'der' : a.alineacion;
+  if (!a.lados?.izq && !a.lados?.der && a.desde != null) return sx0 + a.desde;
   return alineacion === 'izq' ? sx0 : alineacion === 'der' ? sx1 - largo : (sx0 + sx1) / 2 - largo / 2;
 }
 
@@ -662,7 +668,7 @@ export function transformAereoLado(d: Diseno, lado: LadoId): Transformacion | nu
   const r = d.aereos.lados?.[lado];
   if (!r) return null;
   const [x0, x1] = extremosPrincipal(d);
-  const z = esquinaAereo(d) + largoUtilLadoAereo(d, lado) / 2;
+  const z = esquinaAereo(d) + desdeLadoAereo(d, lado) + largoUtilLadoAereo(d, lado) / 2;
   return lado === 'der' ? { x: x1, z, rotY: -Math.PI / 2 } : { x: x0, z, rotY: Math.PI / 2 };
 }
 

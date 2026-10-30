@@ -824,7 +824,10 @@ function sincronizarAereos(d: Diseno, ctx: Ctx) {
       if (base && !a.lados[lado]) a.lados[lado] = ladoAereoPorDefecto(d, lado);
       else if (!base && a.lados[lado]) a.lados[lado] = null;
       else if (base && a.lados[lado]) a.lados[lado]!.largo = base.largo;
+      // Cuadrado: cada lado parte en la esquina, igual que el del mueble.
+      if (a.lados[lado]) delete a.lados[lado]!.desde;
     }
+    delete a.desde;
   }
   for (const lado of LADOS) {
     const r = a.lados[lado];
@@ -1666,6 +1669,8 @@ function opFijarForma(out: Diseno, ctx: CtxOp, pedida: Forma | LadoId | null) {
 export interface CambiosLado {
   largo?: number;
   profundidad?: number;
+  /** Solo lados del aéreo: cuánto se corre desde la esquina hacia la punta (mm). */
+  desde?: number;
 }
 
 function opFijarLado(out: Diseno, ctx: Ctx, lado: LadoId, cambios: CambiosLado) {
@@ -1715,13 +1720,21 @@ function opAereoPrincipal(out: Diseno, activo: boolean) {
   a.cuerpos = modulosAereos(Math.min(LIMITES_AEREOS.ancho[1], Math.round(x1 - x0)));
 }
 
-export type CambiosAereos = Partial<Pick<Aereos, 'alto' | 'profundidad' | 'elevacion' | 'alineacion'>>;
+export type CambiosAereos = Partial<Pick<Aereos, 'alto' | 'profundidad' | 'elevacion' | 'alineacion' | 'desde'>>;
 
 function opFijarAereos(out: Diseno, cambios: CambiosAereos) {
   const a = out.aereos;
   if (cambios.alto != null) a.alto = cambios.alto;
   if (cambios.elevacion != null) a.elevacion = cambios.elevacion;
-  if (cambios.alineacion) a.alineacion = cambios.alineacion;
+  // Elegir una alineación suelta el movimiento libre; mover a mano lo deja donde se pidió.
+  if (cambios.alineacion) {
+    a.alineacion = cambios.alineacion;
+    delete a.desde;
+  }
+  if (cambios.desde != null) {
+    a.desde = Math.round(cambios.desde);
+    a.cuadrado = false;
+  }
   if (cambios.profundidad != null) {
     a.profundidad = cambios.profundidad;
     // El fondo de los aéreos es común: sus lados lo siguen (cada lado se puede cambiar aparte).
@@ -1762,6 +1775,12 @@ function opLadoAereo(out: Diseno, ctx: Ctx, lado: LadoId, cambios: CambiosLado) 
   const t: TramoAereo = lado === 'izq' ? 'aereos-izq' : 'aereos-der';
   if (!r) rechazar(`Los aéreos no tienen lado ${lado === 'izq' ? 'izquierdo' : 'derecho'}: cambia su forma.`);
   if (cambios.profundidad != null) r.profundidad = limitar(Math.round(cambios.profundidad), LIMITES_AEREOS.profundidad);
+  if (cambios.desde != null) {
+    const d0 = Math.max(0, Math.round(cambios.desde));
+    if (d0) r.desde = d0;
+    else delete r.desde;
+    if (d0) a.cuadrado = false;
+  }
   if (cambios.largo != null) {
     const pedido = Math.round(cambios.largo);
     const max = LIMITES_AEREOS.ladoLargo[1];
@@ -2165,7 +2184,14 @@ export function normalizar(entrada: Diseno | DisenoGuardado): Diseno {
     return out;
   };
   const lado = (l: { largo?: number; profundidad?: number; cuerpos?: Partial<Cuerpo>[] } | null | undefined, fondo: number, largo: number): Lado | null =>
-    l ? { largo: Math.round(numero(l.largo, largo)), profundidad: Math.round(numero(l.profundidad, fondo)), cuerpos: (l.cuerpos ?? []).map(limpiar) } : null;
+    l
+      ? {
+          largo: Math.round(numero(l.largo, largo)),
+          profundidad: Math.round(numero(l.profundidad, fondo)),
+          cuerpos: (l.cuerpos ?? []).map(limpiar),
+          ...(numero((l as { desde?: number }).desde, 0) > 0 ? { desde: Math.round(numero((l as { desde?: number }).desde, 0)) } : {}),
+        }
+      : null;
   const profundidad = numero(g.profundidad, defecto.profundidad);
   const r = g.retorno ?? null;
   const lados = {
@@ -2186,6 +2212,7 @@ export function normalizar(entrada: Diseno | DisenoGuardado): Diseno {
     lados: { izq: lado(ga.lados?.izq, numero(ga.profundidad, av.profundidad), 1200), der: lado(ga.lados?.der, numero(ga.profundidad, av.profundidad), 1200) },
     cuadrado: false,
     ...(ga.sinPrincipal === true && p === 'cocina' ? { sinPrincipal: true } : {}),
+    ...(typeof ga.desde === 'number' && Number.isFinite(ga.desde) ? { desde: Math.round(ga.desde) } : {}),
   };
   const k = g.cocina ?? {};
   const out: Diseno = {

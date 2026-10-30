@@ -115,6 +115,11 @@ export interface Lado {
   largo: number;
   profundidad: number;
   cuerpos: Cuerpo[];
+  /**
+   * Solo en los lados del aéreo: cuánto se corre (mm) a lo largo de su muro, desde la esquina (o desde
+   * el muro principal si no hay aéreo principal) hacia la punta. 0 o sin dato: pegado a la esquina.
+   */
+  desde?: number;
 }
 
 export interface Lados {
@@ -135,6 +140,11 @@ export interface Aereos {
   elevacion: number;
   /** Alineación del aéreo principal cuando es más corto que el base (sin lados). */
   alineacion: 'izq' | 'centro' | 'der';
+  /**
+   * Aéreo principal movido a mano (sin lados): dónde parte (mm) medido desde el extremo izquierdo del
+   * mueble base. Sin dato manda la alineación.
+   */
+  desde?: number;
   /** Módulos del aéreo principal. */
   cuerpos: Cuerpo[];
   /** Lados del aéreo en L o U (solo cocina). */

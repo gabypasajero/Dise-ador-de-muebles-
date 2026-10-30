@@ -6,6 +6,7 @@ import {
   calcularLayout,
   calcularLayoutAereos,
   calcularLayoutAereosLado,
+  desdeLadoAereo,
   centroCuerpo,
   dimensionesTotales,
   disenoBase,
@@ -270,7 +271,7 @@ function EscenaCocina({ d }: { d: Diseno }) {
   const geoAz = useGeo(() => planoUV(anchoAz, altoAz), [anchoAz, altoAz]);
   // Cada lado de la L o la U (o del aéreo) se apoya en su muro lateral, en el extremo del tramo principal.
   const muro = (lado: LadoId) => !!(d.lados?.[lado] || ladoAereoActivo(d, lado));
-  const largoLado = (lado: LadoId) => Math.max(d.lados?.[lado]?.largo ?? 0, ladoAereoActivo(d, lado)?.largo ?? 0) / 1000;
+  const largoLado = (lado: LadoId) => Math.max(d.lados?.[lado]?.largo ?? 0, ladoAereoActivo(d, lado) ? ladoAereoActivo(d, lado)!.largo + desdeLadoAereo(d, lado) : 0) / 1000;
   const conIzq = muro('izq');
   const conDer = muro('der');
   const xMuroIzq = conIzq ? ex0 : -mitad;
