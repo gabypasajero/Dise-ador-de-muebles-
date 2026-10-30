@@ -399,18 +399,25 @@ export function mueblesProyecto(p: Diseno, nombrePrincipal = 'Mueble principal')
  * costados), el mueble en línea como una cocina. Una cara de la isla ya va en el metro de la isla:
  * suma solo sus equipos y especieros (las opciones del mueble se cobran una vez, en la isla).
  */
-export function precioAdicional(a: Pick<MuebleAdicional, 'tipo' | 'diseno' | 'cara'>, largoIsla?: number): PrecioAjustado | null {
+export function precioAdicional(a: Pick<MuebleAdicional, 'tipo' | 'diseno' | 'cara' | 'voladizo'>, largoIsla?: number): PrecioAjustado | null {
   const p = precioBaseAdicional(a, largoIsla);
   return aplicarAjustes({ total: p.total, metodo: 'oficial', lineas: p.lineas }, a.diseno.ajustesPrecio);
 }
 
 /** El precio calculado (sin las correcciones del vendedor) de un mueble adicional. */
-export function precioBaseAdicional(a: Pick<MuebleAdicional, 'tipo' | 'diseno' | 'cara'>, largoIsla?: number): { total: number; lineas: ReturnType<typeof precioCocina>['lineas'] } {
+export function precioBaseAdicional(a: Pick<MuebleAdicional, 'tipo' | 'diseno' | 'cara' | 'voladizo'>, largoIsla?: number): { total: number; lineas: ReturnType<typeof precioCocina>['lineas'] } {
   if (a.cara) {
     const lineas = precioCocina(a.diseno).lineas.filter((l) => !l.concepto.startsWith('Mueble base') && !l.concepto.startsWith('Cierre suave') && l.concepto !== 'Sistema sin manilla');
     return { total: lineas.reduce((s, l) => s + l.valor, 0), lineas };
   }
-  return a.tipo === 'isla' ? precioIsla(a.diseno, largoIsla) : precioCocina(a.diseno);
+  if (a.tipo !== 'isla') return precioCocina(a.diseno);
+  const p = precioIsla(a.diseno, largoIsla);
+  if (!conVoladizo(a)) return p;
+  // La cubierta para sentarse todavía no tiene fórmula: va en $0 y el vendedor escribe su valor en el desglose.
+  const v = a.voladizo!;
+  const partes = [v.trasero && `atrás ${v.trasero / 10} cm`, v.frente && `adelante ${v.frente / 10} cm`, v.izq && `izquierda ${v.izq / 10} cm`, v.der && `derecha ${v.der / 10} cm`].filter(Boolean);
+  const lineas = [...p.lineas, { concepto: 'Cubierta para sentarse', detalle: `sobresale ${partes.join(', ')}; sin fórmula todavía: escribe su valor aquí`, cantidad: 1, unidad: 'unidad' as const, unitario: 0, valor: 0 }];
+  return { total: p.total, lineas };
 }
 
 /** Largo de la isla para el cobro: el frente más el fondo de sus costados. */

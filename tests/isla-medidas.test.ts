@@ -1,7 +1,7 @@
 // Isla: medidas de la base y de la cubierta por separado, e isla lisa (sin puertas ni cajones).
 import { describe, expect, it } from 'vitest';
 import { disenoLibre } from '../shared/catalogo';
-import { medidasIsla, mueblesProyecto, nuevoAdicional, voladizoParaCubierta } from '../shared/proyecto';
+import { medidasIsla, mueblesProyecto, nuevoAdicional, precioAdicional, voladizoParaCubierta } from '../shared/proyecto';
 import { normalizar } from '../shared/reglas';
 import type { Diseno, MuebleAdicional } from '../shared/tipos';
 
@@ -42,5 +42,17 @@ describe('isla lisa', () => {
     const n = normalizar(JSON.parse(JSON.stringify(p)));
     expect(n.adicionales![0].liso).toBe(true);
     expect(mueblesProyecto(n).find((m) => m.tipo === 'isla')!.frenteLiso).toBe(true);
+  });
+});
+
+describe('cubierta para sentarse en el desglose', () => {
+  it('va en $0 y el vendedor escribe su valor', () => {
+    const { isla } = conIsla({ voladizo: { frente: 0, trasero: 300, izq: 0, der: 0 } });
+    const p0 = precioAdicional(isla)!;
+    const linea = p0.lineas.find((l) => l.concepto === 'Cubierta para sentarse')!;
+    expect(linea.valor).toBe(0);
+    const conValor = precioAdicional({ ...isla, diseno: { ...isla.diseno, ajustesPrecio: { valores: { [linea.clave]: 90000 }, extras: [] } } })!;
+    expect(conValor.total).toBe(p0.total + 90000);
+    expect(precioAdicional(conIsla().isla)!.lineas.some((l) => l.concepto === 'Cubierta para sentarse')).toBe(false);
   });
 });
