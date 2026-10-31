@@ -241,24 +241,44 @@ describe('precio oficial de la cocina', () => {
     expect(precioCocina(u).lineas.find((l) => l.concepto === 'Mueble aéreo')!.detalle).toContain('en U');
   });
 
-  it('el aéreo suma por alto y por fondo sobre la base de 60 × 30 cm (el fondo mayor de sus lados)', () => {
+  it('el aéreo suma por alto aparte y el fondo va dentro del valor por metro (el fondo mayor de sus lados)', () => {
     const a = activarAereos(full(), true);
-    const extra = (d: Diseno) => valor(d, 'Aéreo: alto adicional') + valor(d, 'Aéreo: fondo adicional');
-    expect(extra(a)).toBe(0);
-    expect(extra(fijarAereos(a, { alto: 650 }))).toBe(10000);
-    expect(extra(fijarAereos(a, { alto: 700 }))).toBe(15000);
-    expect(extra(fijarAereos(a, { alto: 750 }))).toBe(25000);
-    expect(extra(fijarAereos(a, { alto: 800 }))).toBe(30000);
-    expect(extra(fijarAereos(a, { alto: 680 }))).toBe(15000);
-    expect(extra(fijarAereos(a, { alto: 710 }))).toBe(25000);
+    const alto = (d: Diseno) => valor(d, 'Aéreo: alto adicional');
+    /** Lo que el fondo suma a cada metro del aéreo (sobre los $130.000 base). */
+    const porFondo = (d: Diseno) => precioCocina(d).lineas.find((l) => l.concepto === 'Mueble aéreo')!.unitario - 130000;
+    expect(alto(a) + porFondo(a)).toBe(0);
+    expect(alto(fijarAereos(a, { alto: 650 }))).toBe(10000);
+    expect(alto(fijarAereos(a, { alto: 700 }))).toBe(15000);
+    expect(alto(fijarAereos(a, { alto: 750 }))).toBe(25000);
+    expect(alto(fijarAereos(a, { alto: 800 }))).toBe(30000);
+    expect(alto(fijarAereos(a, { alto: 680 }))).toBe(15000);
+    expect(alto(fijarAereos(a, { alto: 710 }))).toBe(25000);
     // Bajo la base no hay descuento.
-    expect(extra(fijarAereos(a, { alto: 400, profundidad: 250 }))).toBe(0);
-    expect(extra(fijarAereos(a, { profundidad: 350 }))).toBe(10000);
-    expect(extra(fijarAereos(a, { alto: 700, profundidad: 400 }))).toBe(15000 + 15000);
+    expect(alto(fijarAereos(a, { alto: 400, profundidad: 250 })) + porFondo(fijarAereos(a, { alto: 400, profundidad: 250 }))).toBe(0);
+    expect(porFondo(fijarAereos(a, { profundidad: 350 }))).toBe(10000);
+    expect(porFondo(fijarAereos(a, { profundidad: 400 }))).toBe(15000);
+    expect(valor(fijarAereos(a, { profundidad: 400 }), 'Aéreo: fondo adicional')).toBe(0);
     // En L se usa el fondo mayor de sus lados.
     const l = fijarLadoAereo(activarAereos(fijarForma(full(), 'izq'), true), 'izq', { profundidad: 450 });
     expect(l.aereos.profundidad).toBe(300);
-    expect(valor(l, 'Aéreo: fondo adicional')).toBe(15000 + 10000);
+    expect(porFondo(l)).toBe(15000 + 10000);
+  });
+
+  it('fondo 40 cm: 2 m de aéreo × (130.000 + 15.000) = 290.000', () => {
+    let d = fijarAereos(activarAereos(fijarAncho(full(), 2000), true), { profundidad: 400 });
+    d = ejecutar(d, { op: 'fijarLargoAereos', largo: 2000 }).diseno;
+    const l = precioCocina(d).lineas.find((x) => x.concepto === 'Mueble aéreo')!;
+    expect(l).toMatchObject({ cantidad: 2, unitario: 145000, valor: 290000 });
+    expect(l.detalle).toContain('$130.000 + $15.000 por fondo 40 cm');
+  });
+
+  it('mueble de 1,80 m o más con aéreo: adicional de 40.000, una vez', () => {
+    const conAereo = (ancho: number) => activarAereos(fijarAncho(full(), ancho), true);
+    expect(valor(conAereo(1800), 'Adicional mueble con aéreo')).toBe(40000);
+    expect(valor(conAereo(2400), 'Adicional mueble con aéreo')).toBe(40000);
+    expect(valor(conAereo(1790), 'Adicional mueble con aéreo')).toBe(0);
+    // Sin aéreo no se cobra.
+    expect(valor(fijarAncho(full(), 2400), 'Adicional mueble con aéreo')).toBe(0);
   });
 
   it('el compacto y los demás muebles del catálogo valen el precio de la tienda con sus medidas', () => {

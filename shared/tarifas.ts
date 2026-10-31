@@ -57,6 +57,11 @@ export const TARIFAS = {
     /** Si quedan 5 cm sueltos. */
     resto5Cm: 10000,
   },
+  /**
+   * Mueble con aéreo cuyo mueble base mide 1,80 m o más (largo completo, con los lados de la L o U):
+   * se suma un adicional una vez (la dueña lo pidió así).
+   */
+  adicionalConAereo: { desdeCm: 180, valor: 40000 },
 };
 
 /** Nombre de cada modelo de lavaplatos tal como se lee: «simple», «riñonera», «de pozo»… */
@@ -121,7 +126,7 @@ export function largoAereo(d: Diseno): number {
   return a.cuerpos.reduce((s, c) => s + c.ancho, 0) + LADOS.reduce((s, l) => s + (ladoAereoActivo(d, l)?.largo ?? 0), 0);
 }
 
-/** Precio oficial del aéreo (metros lineales × valor por metro + recargos por alto y por el mayor fondo de sus lados). null si no lleva. */
+/** Precio oficial del aéreo: metros lineales × valor por metro (con el recargo por fondo incluido) + recargo por alto. null si no lleva. */
 export function precioAereo(d: Diseno): { valor: number; lineas: LineaPrecio[] } | null {
   const a = d.aereos;
   if (d.plantilla !== 'cocina' || !a.activo || (!a.cuerpos.length && !a.sinPrincipal)) return null;
@@ -141,32 +146,28 @@ export function precioAereo(d: Diseno): { valor: number; lineas: LineaPrecio[] }
         : 'lineal';
   const largo = largoAereo(d);
   if (!largo) return null;
+  // El recargo por fondo va dentro del valor por metro (la dueña lo pidió así): fondo 40 cm → 130.000 + 15.000.
+  const extraFondo = excesoAereo(fondo, t.fondoBaseCm);
+  const porFondo = extraFondo > 0 ? recargoAereo(extraFondo) : 0;
+  const metro = t.base + porFondo;
   const lineas: LineaPrecio[] = [
     {
       concepto: 'Mueble aéreo',
-      detalle: `${forma}, ${fmtM(largo)}${lados ? ' (cada lado a su largo completo)' : ''} × ${fmtPesos(t.base)} por metro (alto ${t.altoBaseCm} cm y fondo ${t.fondoBaseCm} cm incluidos)`,
+      detalle: `${forma}, ${fmtM(largo)}${lados ? ' (cada lado a su largo completo)' : ''} × ${fmtPesos(metro)} por metro (${
+        porFondo
+          ? `${fmtPesos(t.base)} + ${fmtPesos(porFondo)} por fondo ${fmtCm(fondo)}${lados ? ', el mayor de sus lados' : ''}; alto ${t.altoBaseCm} cm incluido`
+          : `alto ${t.altoBaseCm} cm y fondo ${t.fondoBaseCm} cm incluidos`
+      })`,
       cantidad: largo / 1000,
       unidad: 'm',
-      unitario: t.base,
-      valor: Math.round((largo * t.base) / 1000),
+      unitario: metro,
+      valor: Math.round((largo * metro) / 1000),
     },
   ];
   const extraAlto = excesoAereo(a.alto, t.altoBaseCm);
   if (extraAlto > 0) {
     const v = recargoAereo(extraAlto);
     lineas.push({ concepto: 'Aéreo: alto adicional', detalle: `alto ${fmtCm(a.alto)}: ${fmtCm(extraAlto)} sobre ${t.altoBaseCm} cm`, cantidad: cm(extraAlto), unidad: 'cm', unitario: v, valor: v });
-  }
-  const extraFondo = excesoAereo(fondo, t.fondoBaseCm);
-  if (extraFondo > 0) {
-    const v = recargoAereo(extraFondo);
-    lineas.push({
-      concepto: 'Aéreo: fondo adicional',
-      detalle: `fondo ${fmtCm(fondo)}${lados ? ' (el mayor de sus lados)' : ''}: ${fmtCm(extraFondo)} sobre ${t.fondoBaseCm} cm`,
-      cantidad: cm(extraFondo),
-      unidad: 'cm',
-      unitario: v,
-      valor: v,
-    });
   }
   return { valor: lineas.reduce((s, l) => s + l.valor, 0), lineas };
 }
@@ -270,7 +271,13 @@ export function precioCocina(d: Diseno): PrecioCocina {
   if (campanas) lineas.push(lineaUnidades('Campana', campanas, TARIFAS.campana));
   lineas.push(...lineasOpciones(d));
   const aereo = precioAereo(d);
-  if (aereo) lineas.push(...aereo.lineas);
+  if (aereo) {
+    lineas.push(...aereo.lineas);
+    // Mueble base de 1,80 m o más con aéreo: un adicional, una vez.
+    const largoBase = Math.round(x1 - x0) + LADOS.reduce((s, l) => s + (d.lados?.[l]?.largo ?? 0), 0);
+    const ad = TARIFAS.adicionalConAereo;
+    if (largoBase >= ad.desdeCm * 10) lineas.push(lineaUnidades('Adicional mueble con aéreo', 1, ad.valor, `mueble base de ${fmtM(largoBase)} (desde ${fmtM(ad.desdeCm * 10)}) con aéreo`));
+  }
   return { total: lineas.reduce((s, l) => s + l.valor, 0), lineas };
 }
 
