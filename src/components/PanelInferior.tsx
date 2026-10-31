@@ -412,8 +412,9 @@ export function PanelInferior() {
             )}
           </span>
           <strong className="precio" title={lados.length > 0 ? `Con ${lados.join(' y ')}` : undefined}>
-            {cotizacion
-              ? formatoPrecio(cotizacion.venta?.valor ?? cotizacion.valor)
+            {/* Una venta muestra lo vendido; una cotización en edición, el total actual del desglose. */}
+            {cotizacion?.venta
+              ? formatoPrecio(cotizacion.venta.valor)
               : totalProyecto
                 ? formatoPrecio(totalProyecto.total)
                 : precio

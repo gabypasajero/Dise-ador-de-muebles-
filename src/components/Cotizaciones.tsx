@@ -38,7 +38,7 @@ function Estado({ estado }: { estado: EstadoCotizacion }) {
 }
 
 /** Campo de dinero en pesos con separador de miles. */
-function CampoPesos({ valor, onCambio, etiqueta, ayuda }: { valor: number; onCambio: (n: number) => void; etiqueta: string; ayuda?: string }) {
+function CampoPesos({ valor, onCambio, etiqueta, ayuda, extra }: { valor: number; onCambio: (n: number) => void; etiqueta: string; ayuda?: string; extra?: React.ReactNode }) {
   return (
     <label>
       {etiqueta}
@@ -53,6 +53,7 @@ function CampoPesos({ valor, onCambio, etiqueta, ayuda }: { valor: number; onCam
         />
       </span>
       {ayuda && <small className="tenue">{ayuda}</small>}
+      {extra && <small>{extra}</small>}
     </label>
   );
 }
@@ -529,7 +530,10 @@ export function ModalRegistrarCotizacion() {
   const referencial = precio?.total ?? null;
   const [cliente, setCliente] = useState<Cliente>(actual?.cliente ?? { nombre: '', telefono: '', email: '', direccion: '' });
   const [observaciones, setObservaciones] = useState(actual?.observaciones ?? '');
-  const [valor, setValor] = useState<number>(actual?.valor ?? referencial ?? 0);
+  // Al actualizar una cotización se parte del total actual del desglose (con lo que se editó a mano);
+  // el valor guardado antes queda a la vista para volver a él si se había acordado otro.
+  const [valor, setValor] = useState<number>(referencial ?? actual?.valor ?? 0);
+  const valorGuardado = actual && actual.valor !== valor ? actual.valor : null;
   const [fecha, setFecha] = useState(actual?.fecha ?? hoy());
   const [marca, setMarca] = useState<Marca>(() => (actual ? marcaDe(actual) : ultimaMarca(s.usuario?.id)));
   // La imagen del mueble se toma una vez al abrir (el diseño no cambia mientras se registra).
@@ -634,6 +638,16 @@ export function ModalRegistrarCotizacion() {
               etiqueta={varios ? 'Valor del proyecto' : 'Valor mueble'}
               valor={valor}
               onCambio={setValor}
+              extra={
+                valorGuardado != null ? (
+                  <span className="valor-guardado">
+                    Valor guardado antes: {formatoPrecio(valorGuardado)}{' '}
+                    <button type="button" className="enlace" onClick={() => setValor(valorGuardado)}>
+                      Usar ese valor
+                    </button>
+                  </span>
+                ) : undefined
+              }
               ayuda={
                 precio
                   ? 'partes' in precio
