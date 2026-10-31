@@ -304,6 +304,11 @@ export interface MuebleAdicional {
   voladizo?: Voladizo;
   /** Isla lisa: sin puertas ni cajones, con el frente cerrado y liso (como el respaldo). */
   liso?: boolean;
+  /**
+   * Isla: medidas de la cubierta dadas a mano. Quedan fijas: si cambia lo que sobresale por un lado o
+   * se agrega o quita una cara, se ajusta el mueble base y la cubierta conserva su medida.
+   */
+  cubiertaFija?: { largo?: boolean; fondo?: boolean };
 }
 
 /** Cubierta de la isla más grande que el mueble, por lado (mm). */

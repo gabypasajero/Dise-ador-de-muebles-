@@ -139,7 +139,8 @@ export interface Limites {
 }
 
 export const LIMITES: Record<Plantilla, Limites> = {
-  cocina: { ancho: [400, SIN_TOPE], alto: [700, SIN_TOPE], profundidad: [450, SIN_TOPE] },
+  // Sin fondo mínimo práctico (la dueña lo pidió así): la base de una isla se achica lo que pida su cubierta.
+  cocina: { ancho: [400, SIN_TOPE], alto: [700, SIN_TOPE], profundidad: [200, SIN_TOPE] },
   compacto: { ancho: [600, SIN_TOPE], alto: [1500, SIN_TOPE], profundidad: [350, SIN_TOPE] },
   'cocina-infantil': { ancho: [500, SIN_TOPE], alto: [800, SIN_TOPE], profundidad: [250, SIN_TOPE] },
   closet: { ancho: [400, SIN_TOPE], alto: [1200, SIN_TOPE], profundidad: [300, SIN_TOPE] },
@@ -2346,6 +2347,9 @@ function normalizarAdicionales(x: unknown): MuebleAdicional[] {
       ...(tipo === 'linea' && a.pegado === true ? { pegado: true } : {}),
       ...(tipo === 'isla' && !a.cara && a.voladizo && typeof a.voladizo === 'object' ? { voladizo: normalizarVoladizo(a.voladizo) } : {}),
       ...(tipo === 'isla' && !a.cara && a.liso === true ? { liso: true } : {}),
+      ...(tipo === 'isla' && !a.cara && a.cubiertaFija && typeof a.cubiertaFija === 'object' && (a.cubiertaFija.largo === true || a.cubiertaFija.fondo === true)
+        ? { cubiertaFija: { ...(a.cubiertaFija.largo === true ? { largo: true } : {}), ...(a.cubiertaFija.fondo === true ? { fondo: true } : {}) } }
+        : {}),
       ...(tipo === 'isla' && (a.cara === 'trasera' || a.cara === 'izq' || a.cara === 'der') && typeof a.isla === 'string' ? { cara: a.cara, isla: a.isla } : {}),
     });
   }

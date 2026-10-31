@@ -289,31 +289,55 @@ export interface MuebleProyecto {
   cubiertaIsla?: { x0: number; x1: number; z0: number; z1: number };
 }
 
-/** Si la isla tiene cubierta más grande que el mueble (algún lado con voladizo). */
+/** Isla de trabajo: la cubierta sobresale 5 cm por los cuatro lados del mueble base. */
+export const VUELO_ISLA = 50;
+/** Lado para sentarse: la cubierta sobresale 30 cm (recomendado; se puede editar). */
+export const VUELO_SENTARSE = 300;
+/** Desde esta medida un lado se considera «para sentarse». */
+const MINIMO_SENTARSE = 150;
+
+const VOLADIZO_ISLA: Voladizo = { frente: VUELO_ISLA, trasero: VUELO_ISLA, izq: VUELO_ISLA, der: VUELO_ISLA };
+
+/** Cuánto sobresale la cubierta de la isla por cada lado (sin dato: 5 cm por los cuatro lados). */
+export function voladizoIsla(a: Pick<MuebleAdicional, 'voladizo'>): Voladizo {
+  return a.voladizo ?? VOLADIZO_ISLA;
+}
+
+/** Lados de la isla con espacio para sentarse (la cubierta sobresale 15 cm o más). */
+export function ladosParaSentarse(a: Pick<MuebleAdicional, 'voladizo'>): (keyof Voladizo)[] {
+  const v = voladizoIsla(a);
+  return (['trasero', 'frente', 'izq', 'der'] as const).filter((k) => v[k] >= MINIMO_SENTARSE);
+}
+
+/** Si la isla tiene algún lado para sentarse. */
 export function conVoladizo(a: Pick<MuebleAdicional, 'voladizo'>): boolean {
-  const v = a.voladizo;
-  return !!v && (v.frente > 0 || v.trasero > 0 || v.izq > 0 || v.der > 0);
+  return ladosParaSentarse(a).length > 0;
+}
+
+/** Profundidad de las caras de la isla: lado trasero y costados. */
+function carasIsla(isla: MuebleAdicional, lista: MuebleAdicional[]) {
+  const caras = lista.filter((x) => x.isla === isla.id);
+  return {
+    fT: caras.find((x) => x.cara === 'trasera')?.diseno.profundidad ?? 0,
+    sI: caras.find((x) => x.cara === 'izq')?.diseno.profundidad ?? 0,
+    sD: caras.find((x) => x.cara === 'der')?.diseno.profundidad ?? 0,
+  };
 }
 
 /**
- * Cubierta grande de una isla con voladizo, en las coordenadas de su frente: cubre el frente, el lado
- * trasero y los costados, y sobresale lo pedido por cada lado.
+ * Cubierta de la isla, en las coordenadas de su frente: una sola pieza sobre el frente, el lado
+ * trasero y los costados, que sobresale lo indicado por cada lado (5 cm, o más donde se sientan).
  */
 function cubierta(isla: MuebleAdicional, lista: MuebleAdicional[]): Pick<MuebleProyecto, 'cubiertaIsla'> {
-  if (!conVoladizo(isla)) return {};
-  const v = isla.voladizo!;
+  const v = voladizoIsla(isla);
   const d = isla.diseno;
-  const caras = lista.filter((x) => x.isla === isla.id);
-  const fT = caras.find((x) => x.cara === 'trasera')?.diseno.profundidad ?? 0;
-  const sI = caras.find((x) => x.cara === 'izq')?.diseno.profundidad ?? 0;
-  const sD = caras.find((x) => x.cara === 'der')?.diseno.profundidad ?? 0;
-  const vuelo = d.cocina.vueloCubierta;
+  const { fT, sI, sD } = carasIsla(isla, lista);
   return {
     cubiertaIsla: {
-      x0: -d.ancho / 2 - sI - Math.max(vuelo, v.izq),
-      x1: d.ancho / 2 + sD + Math.max(vuelo, v.der),
-      z0: -fT - Math.max(fT ? vuelo : 0, v.trasero),
-      z1: d.profundidad + Math.max(vuelo, v.frente),
+      x0: -d.ancho / 2 - sI - v.izq,
+      x1: d.ancho / 2 + sD + v.der,
+      z0: -fT - v.trasero,
+      z1: d.profundidad + v.frente,
     },
   };
 }
@@ -324,39 +348,46 @@ export interface MedidasIsla {
   cubierta: { largo: number; fondo: number };
 }
 
-const SIN_VOLADIZO: Voladizo = { frente: 0, trasero: 0, izq: 0, der: 0 };
-
 /** Base y cubierta de una isla: la base es el frente con sus costados y su lado trasero. */
 export function medidasIsla(p: Diseno, isla: MuebleAdicional): MedidasIsla {
   const lista = p.adicionales ?? [];
   const d = isla.diseno;
-  const caras = lista.filter((x) => x.isla === isla.id);
-  const fT = caras.find((x) => x.cara === 'trasera')?.diseno.profundidad ?? 0;
-  const sI = caras.find((x) => x.cara === 'izq')?.diseno.profundidad ?? 0;
-  const sD = caras.find((x) => x.cara === 'der')?.diseno.profundidad ?? 0;
-  const base = { largo: d.ancho + sI + sD, fondo: d.profundidad + fT };
-  const c = cubierta(isla, lista).cubiertaIsla;
-  // Sin voladizo la cubierta va al ras de los costados y sobresale su vuelo por delante.
-  return { base, cubierta: c ? { largo: c.x1 - c.x0, fondo: c.z1 - c.z0 } : { largo: base.largo, fondo: base.fondo + d.cocina.vueloCubierta } };
+  const { fT, sI, sD } = carasIsla(isla, lista);
+  const c = cubierta(isla, lista).cubiertaIsla!;
+  return { base: { largo: d.ancho + sI + sD, fondo: d.profundidad + fT }, cubierta: { largo: c.x1 - c.x0, fondo: c.z1 - c.z0 } };
 }
 
 /**
- * Voladizo para que la cubierta de la isla mida lo pedido (mm). El largo de más se reparte igual a
- * cada costado; el fondo de más va atrás (donde se sientan), sin tocar lo que sobresale adelante.
+ * Medidas del frente de la isla (su ancho y su fondo) para que la cubierta mida lo pedido con lo que
+ * sobresale por cada lado: la base se ajusta a la cubierta, no al revés.
  */
-export function voladizoParaCubierta(p: Diseno, isla: MuebleAdicional, pedido: { largo?: number; fondo?: number }): Voladizo {
-  const v = { ...(isla.voladizo ?? SIN_VOLADIZO) };
-  const { base } = medidasIsla(p, isla);
-  const vuelo = isla.diseno.cocina.vueloCubierta;
-  const tope = (x: number) => Math.round(Math.max(0, Math.min(1500, x)));
-  if (pedido.largo != null) {
-    const extra = pedido.largo - base.largo;
-    const izq = tope(extra / 2);
-    v.izq = izq;
-    v.der = tope(extra - izq);
+export function baseParaCubierta(p: Diseno, isla: MuebleAdicional, cubiertaPedida: { largo?: number; fondo?: number }, v: Voladizo = voladizoIsla(isla)): { ancho?: number; profundidad?: number } {
+  const { fT, sI, sD } = carasIsla(isla, p.adicionales ?? []);
+  return {
+    ...(cubiertaPedida.largo != null ? { ancho: Math.round(cubiertaPedida.largo - v.izq - v.der - sI - sD) } : {}),
+    ...(cubiertaPedida.fondo != null ? { profundidad: Math.round(cubiertaPedida.fondo - v.frente - v.trasero - fT) } : {}),
+  };
+}
+
+/**
+ * Después de cambiar lo que sobresale o las caras de una isla: si su cubierta se fijó a mano, el
+ * mueble base se ajusta para que la cubierta vuelva a medir lo de antes.
+ */
+export function mantenerCubierta(p: Diseno, islaId: string, antes: MedidasIsla['cubierta']): Diseno {
+  const isla = p.adicionales?.find((a) => a.id === islaId && a.tipo === 'isla' && !a.cara);
+  const fija = isla?.cubiertaFija;
+  if (!isla || !fija || (!fija.largo && !fija.fondo)) return p;
+  const objetivo = baseParaCubierta(p, isla, { ...(fija.largo ? { largo: antes.largo } : {}), ...(fija.fondo ? { fondo: antes.fondo } : {}) });
+  let d = isla.diseno;
+  if (objetivo.ancho != null && objetivo.ancho !== d.ancho) {
+    const r = ejecutar(d, { op: 'fijarAncho', ancho: objetivo.ancho });
+    if (r.ok) d = r.diseno;
   }
-  if (pedido.fondo != null) v.trasero = tope(pedido.fondo - base.fondo - Math.max(vuelo, v.frente));
-  return v;
+  if (objetivo.profundidad != null && objetivo.profundidad !== d.profundidad) {
+    const r = ejecutar(d, { op: 'fijarProfundidad', profundidad: objetivo.profundidad });
+    if (r.ok) d = r.diseno;
+  }
+  return d === isla.diseno ? p : { ...p, adicionales: p.adicionales!.map((a) => (a.id === islaId ? { ...a, diseno: d } : a)) };
 }
 
 /**
@@ -370,8 +401,8 @@ export function mueblesProyecto(p: Diseno, nombrePrincipal = 'Mueble principal')
   const out: MuebleProyecto[] = [{ id: null, tipo: 'principal', nombre: nombrePrincipal, diseno: principal, x: 0, z: 0, giro: 0, respaldo: false }];
   for (const a of lista) {
     const base = { id: a.id, tipo: a.tipo, nombre: a.nombre, diseno: a.diseno };
-    if (a.tipo !== 'isla' || (!a.cara && !lista.some((x) => x.isla === a.id) && !conVoladizo(a))) {
-      out.push({ ...base, x: a.x, z: a.z, giro: a.giro, respaldo: a.tipo === 'isla', ...(a.tipo === 'isla' && a.liso ? { frenteLiso: true } : {}) });
+    if (a.tipo !== 'isla') {
+      out.push({ ...base, x: a.x, z: a.z, giro: a.giro, respaldo: false });
       continue;
     }
     const isla = a.cara ? lista.find((x) => x.id === a.isla && !x.isla) : a;
@@ -411,19 +442,12 @@ export function precioBaseAdicional(a: Pick<MuebleAdicional, 'tipo' | 'diseno' |
     return { total: lineas.reduce((s, l) => s + l.valor, 0), lineas };
   }
   if (a.tipo !== 'isla') return precioCocina(a.diseno);
-  const p = precioIsla(a.diseno, largoIsla);
-  if (!conVoladizo(a)) return p;
-  // La cubierta para sentarse todavía no tiene fórmula: va en $0 y el vendedor escribe su valor en el desglose.
-  const v = a.voladizo!;
-  const partes = [v.trasero && `atrás ${v.trasero / 10} cm`, v.frente && `adelante ${v.frente / 10} cm`, v.izq && `izquierda ${v.izq / 10} cm`, v.der && `derecha ${v.der / 10} cm`].filter(Boolean);
-  const lineas = [...p.lineas, { concepto: 'Cubierta para sentarse', detalle: `sobresale ${partes.join(', ')}; sin fórmula todavía: escribe su valor aquí`, cantidad: 1, unidad: 'unidad' as const, unitario: 0, valor: 0 }];
-  return { total: p.total, lineas };
+  return precioIsla(a.diseno, largoIsla);
 }
 
-/** Largo de la isla para el cobro: el frente más el fondo de sus costados. */
+/** Largo de la isla para el cobro: el largo de su cubierta. */
 export function largoIsla(p: Diseno, isla: MuebleAdicional): number {
-  const caras = carasDe(p, isla.id);
-  return isla.diseno.ancho + (caras.izq?.diseno.profundidad ?? 0) + (caras.der?.diseno.profundidad ?? 0);
+  return medidasIsla(p, isla).cubierta.largo;
 }
 
 export interface PrecioProyecto {
@@ -457,10 +481,15 @@ export function detalleProyecto(p: Diseno, producto: ProductoCatalogo | null, un
         ? `${a.cara === 'trasera' ? 'Lado trasero' : NOMBRE_CARA[a.cara].charAt(0).toUpperCase() + NOMBRE_CARA[a.cara].slice(1)} de la isla, con sus puertas y cajones: ${formatear(d.ancho, unidad, false)} × ${formatear(d.alto, unidad, false)} × ${formatear(d.profundidad, unidad)}`
         : `${NOMBRE_TIPO_ADICIONAL[a.tipo]} de ${formatear(d.ancho, unidad, false)} × ${formatear(d.alto, unidad, false)} × ${formatear(d.profundidad, unidad)} (ancho × alto × profundidad)${a.tipo === 'isla' && a.liso ? ', lisa: sin puertas ni cajones, frente cerrado' : ''}${a.tipo === 'isla' && !(adicionales ?? []).some((x) => x.isla === a.id && x.cara === 'trasera') ? ', con respaldo terminado' : ''}`,
     });
-    if (!a.cara && conVoladizo(a)) {
-      const v = a.voladizo!;
-      const partes = [v.trasero && `atrás ${formatear(v.trasero, unidad)}`, v.frente && `adelante ${formatear(v.frente, unidad)}`, v.izq && `izquierda ${formatear(v.izq, unidad)}`, v.der && `derecha ${formatear(v.der, unidad)}`].filter(Boolean);
-      lineas.push({ etiqueta: `${a.nombre} · Cubierta para sentarse`, valor: `Cubierta más grande que el mueble, sobresale ${partes.join(', ')}` });
+    if (a.tipo === 'isla' && !a.cara) {
+      const m = medidasIsla(p, a);
+      const v = voladizoIsla(a);
+      const nombres = { trasero: 'atrás', frente: 'adelante', izq: 'a la izquierda', der: 'a la derecha' } as const;
+      const sentarse = ladosParaSentarse(a).map((k) => `${nombres[k]} ${formatear(v[k], unidad)}`);
+      lineas.push({
+        etiqueta: `${a.nombre} · Cubierta`,
+        valor: `${formatear(m.cubierta.largo, unidad, false)} × ${formatear(m.cubierta.fondo, unidad)} (largo × fondo)${sentarse.length ? `, con espacio para sentarse: sobresale ${sentarse.join(', ')}` : ', sobresale 5 cm por cada lado'}`,
+      });
     }
     for (const l of detalleCotizacion(d, null, unidad, materiales)) {
       if (l.etiqueta === 'Modelo base' || l.etiqueta === 'Medidas') continue;

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { clasificarProducto, disenoInicial, disenoLibre } from '../../shared/catalogo';
 import { cuerposDe, ejecutar, normalizar, tramosDe, type Operacion, type Resultado, type TramoId } from '../../shared/reglas';
-import { acomodarCaras, agregarCara, alinearEnLinea, disenoIsla, disenoLinea, nuevoAdicional, ordenarEnLinea, quitarCara } from '../../shared/proyecto';
+import { acomodarCaras, agregarCara, alinearEnLinea, disenoIsla, disenoLinea, mantenerCubierta, medidasIsla, nuevoAdicional, ordenarEnLinea, quitarCara } from '../../shared/proyecto';
 import type { CaraIsla, CatalogoMateriales, Cotizacion, Diseno, Escenario, MuebleAdicional, Plantilla, ProductoCatalogo, Unidad, Usuario } from '../../shared/tipos';
 import { obtenerCatalogo, obtenerMateriales, type RespuestaCatalogo } from '../datos/catalogo';
 import { backend } from '../datos';
@@ -99,7 +99,7 @@ interface Estado {
   quitarMueble: (id: string) => void;
   /** Cambia la ubicación (x, z en mm), el giro o el nombre de un mueble adicional. */
   /** Cambia la ubicación (al moverlo a mano se suelta del principal), el giro, el nombre o si va pegado al principal. */
-  ubicarMueble: (id: string, cambios: Partial<Pick<MuebleAdicional, 'x' | 'z' | 'giro' | 'nombre' | 'pegado' | 'voladizo' | 'liso'>>) => void;
+  ubicarMueble: (id: string, cambios: Partial<Pick<MuebleAdicional, 'x' | 'z' | 'giro' | 'nombre' | 'pegado' | 'voladizo' | 'liso' | 'cubiertaFija'>>) => void;
   /** Agrega (o quita, si ya está) el lado trasero o un costado de la isla que se edita. */
   alternarCara: (cara: CaraIsla) => void;
   /** Usa los colores del mueble que se edita en todos los muebles del proyecto. */
@@ -342,6 +342,13 @@ export const useApp = create<Estado>((set, get) => ({
 
   operar(op, grupo) {
     const r = ejecutar(get().diseno, op);
+    // Editar a mano el largo o el fondo del mueble base de una isla suelta esa medida de la cubierta:
+    // desde ahí la cubierta sigue al mueble y conserva lo que sobresale.
+    const isla = adicionalActivo(get());
+    if (r.ok && isla?.tipo === 'isla' && !isla.cara && isla.cubiertaFija && (op.op === 'fijarAncho' || op.op === 'fijarProfundidad') && grupo !== 'isla-cubierta') {
+      const eje = op.op === 'fijarAncho' ? 'largo' : 'fondo';
+      if (isla.cubiertaFija[eje]) get().ubicarMueble(isla.id, { cubiertaFija: { ...isla.cubiertaFija, [eje]: false } });
+    }
     if (!r.ok) {
       set({ rechazo: { id: ++idRechazo, motivo: r.motivo ?? 'No se pudo hacer ese cambio.' } });
       return r;
@@ -463,7 +470,11 @@ export const useApp = create<Estado>((set, get) => ({
     if (!activo || activo.tipo !== 'isla') return;
     const islaId = activo.isla ?? activo.id;
     const existente = proyecto.adicionales?.find((a) => a.isla === islaId && a.cara === cara);
-    const nuevo = existente ? quitarCara(proyecto, existente.id) : agregarCara(proyecto, islaId, cara);
+    const isla = proyecto.adicionales?.find((a) => a.id === islaId);
+    const antes = isla ? medidasIsla(proyecto, isla).cubierta : null;
+    const cambiado = existente ? quitarCara(proyecto, existente.id) : agregarCara(proyecto, islaId, cara);
+    // Con la cubierta fijada a mano, la cara nueva achica (o la que se quita agranda) el mueble base.
+    const nuevo = antes ? mantenerCubierta(cambiado, islaId, antes) : cambiado;
     // Se sigue editando la isla (o la cara, si se agregó): queda a la vista lo que se cambió.
     const destino = existente ? islaId : (nuevo.adicionales?.find((a) => a.isla === islaId && a.cara === cara)?.id ?? islaId);
     set({ diseno: nuevo, ...SIN_ADICIONAL });

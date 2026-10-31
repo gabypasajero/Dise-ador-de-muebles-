@@ -1,7 +1,7 @@
-// Isla: medidas de la base y de la cubierta por separado, e isla lisa (sin puertas ni cajones).
+// Isla: manda la cubierta (la base se ajusta a ella), se cobra por su largo, e isla lisa.
 import { describe, expect, it } from 'vitest';
 import { disenoLibre } from '../shared/catalogo';
-import { medidasIsla, mueblesProyecto, nuevoAdicional, precioAdicional, voladizoParaCubierta } from '../shared/proyecto';
+import { baseParaCubierta, largoIsla, mantenerCubierta, medidasIsla, mueblesProyecto, nuevoAdicional, precioAdicional, voladizoIsla, VUELO_SENTARSE } from '../shared/proyecto';
 import { normalizar } from '../shared/reglas';
 import type { Diseno, MuebleAdicional } from '../shared/tipos';
 
@@ -11,28 +11,39 @@ const conIsla = (cambios: Partial<MuebleAdicional> = {}): { p: Diseno; isla: Mue
   return { p: { ...p0, adicionales: [isla] }, isla };
 };
 
-describe('medidas de la isla', () => {
-  it('la cubierta se pide con su medida y la base no cambia', () => {
+describe('medidas de la isla: manda la cubierta', () => {
+  it('isla de trabajo: la cubierta sobresale 5 cm por los cuatro lados', () => {
     const { p, isla } = conIsla();
-    const antes = medidasIsla(p, isla);
-    const v = voladizoParaCubierta(p, isla, { largo: antes.base.largo + 600, fondo: antes.base.fondo + 400 });
-    const isla2 = { ...isla, voladizo: v };
-    const p2 = { ...p, adicionales: [isla2] };
-    const m = medidasIsla(p2, isla2);
-    expect(m.base).toEqual(antes.base);
-    expect(m.cubierta.largo).toBe(antes.base.largo + 600);
-    expect(m.cubierta.fondo).toBe(antes.base.fondo + 400);
-    expect(v.izq).toBe(300);
-    expect(v.der).toBe(300);
+    const m = medidasIsla(p, isla);
+    expect(m.cubierta.largo).toBe(m.base.largo + 100);
+    expect(m.cubierta.fondo).toBe(m.base.fondo + 100);
   });
 
-  it('al cambiar la base, el voladizo se recalcula para conservar la cubierta', () => {
-    const { p, isla } = conIsla({ voladizo: { frente: 0, trasero: 300, izq: 200, der: 200 } });
-    const cub = medidasIsla(p, isla).cubierta;
-    const isla2 = { ...isla, diseno: { ...isla.diseno, ancho: isla.diseno.ancho - 200 } };
-    const p2 = { ...p, adicionales: [isla2] };
-    const isla3 = { ...isla2, voladizo: voladizoParaCubierta(p2, isla2, { largo: cub.largo }) };
-    expect(medidasIsla({ ...p, adicionales: [isla3] }, isla3).cubierta.largo).toBe(cub.largo);
+  it('cubierta de 180 × 80: la base queda de 170 × 70, y con asientos atrás de 30 cm, de 170 × 45', () => {
+    const { p, isla } = conIsla();
+    expect(baseParaCubierta(p, isla, { largo: 1800, fondo: 800 })).toEqual({ ancho: 1700, profundidad: 700 });
+    const v = { ...voladizoIsla(isla), trasero: VUELO_SENTARSE };
+    expect(baseParaCubierta(p, isla, { largo: 1800, fondo: 800 }, v)).toEqual({ ancho: 1700, profundidad: 450 });
+  });
+
+  it('con la cubierta fijada, al cambiar lo que sobresale se ajusta la base y la cubierta no cambia', () => {
+    const { p, isla } = conIsla({ cubiertaFija: { largo: true, fondo: true } });
+    const antes = medidasIsla(p, isla).cubierta;
+    const isla2 = { ...isla, voladizo: { ...voladizoIsla(isla), trasero: 250 } };
+    const p2 = mantenerCubierta({ ...p, adicionales: [isla2] }, isla.id, antes);
+    const isla3 = p2.adicionales![0];
+    expect(medidasIsla(p2, isla3).cubierta).toEqual(antes);
+    expect(isla3.diseno.profundidad).toBe(isla.diseno.profundidad - 200);
+  });
+
+  it('la isla se cobra por el largo de su cubierta', () => {
+    const { p, isla } = conIsla();
+    const largo = largoIsla(p, isla);
+    expect(largo).toBe(medidasIsla(p, isla).cubierta.largo);
+    const precio = precioAdicional(isla, largo)!;
+    expect(precio.lineas[0].cantidad).toBeCloseTo(largo / 1000);
+    expect(precio.lineas[0].detalle).toContain('largo de cubierta');
+    expect(precio.lineas.some((l) => l.concepto === 'Cubierta para sentarse')).toBe(false);
   });
 });
 
@@ -42,17 +53,5 @@ describe('isla lisa', () => {
     const n = normalizar(JSON.parse(JSON.stringify(p)));
     expect(n.adicionales![0].liso).toBe(true);
     expect(mueblesProyecto(n).find((m) => m.tipo === 'isla')!.frenteLiso).toBe(true);
-  });
-});
-
-describe('cubierta para sentarse en el desglose', () => {
-  it('va en $0 y el vendedor escribe su valor', () => {
-    const { isla } = conIsla({ voladizo: { frente: 0, trasero: 300, izq: 0, der: 0 } });
-    const p0 = precioAdicional(isla)!;
-    const linea = p0.lineas.find((l) => l.concepto === 'Cubierta para sentarse')!;
-    expect(linea.valor).toBe(0);
-    const conValor = precioAdicional({ ...isla, diseno: { ...isla.diseno, ajustesPrecio: { valores: { [linea.clave]: 90000 }, extras: [] } } })!;
-    expect(conValor.total).toBe(p0.total + 90000);
-    expect(precioAdicional(conIsla().isla)!.lineas.some((l) => l.concepto === 'Cubierta para sentarse')).toBe(false);
   });
 });

@@ -130,7 +130,8 @@ describe('isla con caras (lado trasero y costados)', () => {
     expect(m.find((x) => x.cara === 'izq')!.giro).toBe(270);
     const r = precioProyecto(t, null, null);
     const pi = r.partes.find((x) => x.id === isla.id)!.precio!;
-    expect(pi.lineas[0]).toMatchObject({ concepto: 'Isla', cantidad: 2.4 });
+    // Se cobra el largo de la cubierta: la base con sus costados (2,4 m) más 5 cm a cada lado.
+    expect(pi.lineas[0]).toMatchObject({ concepto: 'Isla', cantidad: 2.5 });
     // Las caras no vuelven a cobrar el metro de la isla.
     expect(r.partes.find((x) => x.id === der.id)!.precio!.total).toBe(0);
   });
@@ -213,9 +214,10 @@ describe('cubierta de la isla para sentarse', () => {
     t = agregarCara(t, isla.id, 'trasera');
     const m = mueblesProyecto(t).find((x) => x.id === isla.id)!;
     const trasera = t.adicionales!.find((a) => a.cara === 'trasera')!;
-    expect(m.cubiertaIsla).toEqual({ x0: -750 - isla.diseno.cocina.vueloCubierta, x1: 750 + 250, z0: -trasera.diseno.profundidad - 300, z1: 450 + isla.diseno.cocina.vueloCubierta });
+    // Sobresale exactamente lo indicado por cada lado.
+    expect(m.cubiertaIsla).toEqual({ x0: -750, x1: 750 + 250, z0: -trasera.diseno.profundidad - 300, z1: 450 });
     const n = normalizar(JSON.parse(JSON.stringify(t)));
     expect(n.adicionales!.find((a) => a.id === isla.id)!.voladizo).toEqual(isla.voladizo);
-    expect(detalleProyecto(t, null, 'cm', null).find((l) => l.etiqueta === 'Isla · Cubierta para sentarse')?.valor).toContain('atrás 30 cm');
+    expect(detalleProyecto(t, null, 'cm', null).find((l) => l.etiqueta === 'Isla · Cubierta')?.valor).toContain('con espacio para sentarse: sobresale atrás 30 cm, a la derecha 25 cm');
   });
 });

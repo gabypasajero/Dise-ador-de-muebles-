@@ -1,6 +1,6 @@
 import { NOMBRE_PLANTILLA } from '../../shared/catalogo';
-import { conVoladizo, ladoEnLinea, medidasIsla, mueblesProyecto, NOMBRE_CARA, posicionEnLinea, precioProyecto, voladizoParaCubierta } from '../../shared/proyecto';
-import type { CaraIsla } from '../../shared/tipos';
+import { baseParaCubierta, ladoEnLinea, medidasIsla, mueblesProyecto, NOMBRE_CARA, posicionEnLinea, precioProyecto, voladizoIsla, VUELO_ISLA, VUELO_SENTARSE } from '../../shared/proyecto';
+import type { CaraIsla, Voladizo } from '../../shared/tipos';
 import { formatear, formatoPrecio } from '../../shared/reglas';
 import { adicionalActivo, proyectoDe, useApp } from '../store/useApp';
 import { CampoMedida, Interruptor, Segmentado } from './Controles';
@@ -101,8 +101,6 @@ export function PestanaMuebles() {
 
       {activo?.tipo === 'isla' && !activo.cara && <MedidasIsla />}
 
-      {activo?.tipo === 'isla' && <VoladizoIsla islaId={activo.isla ?? activo.id} />}
-
       {activo?.cara && <p className="tenue">Esta cara se mueve y gira con su isla: para ubicarla, elige la isla.</p>}
 
       {activo && !activo.cara && (
@@ -180,8 +178,6 @@ function EnLinea() {
   );
 }
 
-const SIN_VOLADIZO = { frente: 0, trasero: 0, izq: 0, der: 0 };
-
 /**
  * Isla lisa: sin puertas ni cajones, con el frente cerrado por un panel liso. Al volver a la isla
  * con puertas, cada módulo vacío recibe sus puertas (2 desde 55 cm, si no 1).
@@ -211,8 +207,10 @@ function IslaLisa() {
 }
 
 /**
- * Medidas de la isla por separado: la base (el mueble) y la cubierta. Al cambiar la base, la cubierta
- * conserva su medida (cambia lo que sobresale); al cambiar la cubierta, la base no se mueve.
+ * Medidas de la isla: manda la cubierta. Se escribe su largo y su fondo, y el mueble base se ajusta
+ * solo dejando lo que sobresale por cada lado (5 cm, o 30 cm donde se sientan). Lo que se escribe a
+ * mano queda fijo: si cambia lo que sobresale, se ajusta el mueble base y la cubierta no se mueve.
+ * Si se edita el mueble base, la cubierta lo sigue y conserva lo que sobresale.
  */
 function MedidasIsla() {
   const s = useApp();
@@ -221,50 +219,29 @@ function MedidasIsla() {
   const isla = proyecto.adicionales?.find((a) => a.id === activo?.id);
   if (!activo || !isla) return null;
   const m = medidasIsla(proyecto, isla);
+  const v = voladizoIsla(isla);
+  const fija = isla.cubiertaFija ?? {};
   const paso = s.unidad === 'cm' ? 10 : 5;
-  const conservarCubierta = (pedido: { largo?: number; fondo?: number }) => {
-    if (!conVoladizo(isla)) return;
-    const p2 = proyectoDe(useApp.getState());
-    const i2 = p2.adicionales?.find((a) => a.id === isla.id);
-    if (i2) s.ubicarMueble(isla.id, { voladizo: voladizoParaCubierta(p2, i2, pedido) });
+  /** Lleva el frente de la isla (sin sus caras) a las medidas pedidas. */
+  const ajustarBase = (b: { ancho?: number; profundidad?: number }) => {
+    if (b.ancho != null && b.ancho !== s.diseno.ancho) s.operar({ op: 'fijarAncho', ancho: b.ancho }, 'isla-cubierta');
+    if (b.profundidad != null && b.profundidad !== s.diseno.profundidad) s.operar({ op: 'fijarProfundidad', profundidad: b.profundidad }, 'isla-cubierta');
+  };
+  const cambiarCubierta = (que: 'largo' | 'fondo', mm: number) => {
+    ajustarBase(baseParaCubierta(proyecto, isla, { [que]: Math.round(mm) }));
+    s.ubicarMueble(isla.id, { cubiertaFija: { ...fija, [que]: true } });
+  };
+  const cambiarVoladizo = (cambios: Partial<Voladizo>) => {
+    const nuevo = { ...v, ...cambios };
+    // Con la cubierta fijada, lo que sobresale de más lo pierde el mueble base.
+    ajustarBase(baseParaCubierta(proyecto, isla, { ...(fija.largo ? { largo: m.cubierta.largo } : {}), ...(fija.fondo ? { fondo: m.cubierta.fondo } : {}) }, nuevo));
+    s.ubicarMueble(isla.id, { voladizo: nuevo });
   };
   const cambiarBase = (que: 'largo' | 'fondo', mm: number) => {
     const extra = que === 'largo' ? m.base.largo - s.diseno.ancho : m.base.fondo - s.diseno.profundidad;
-    const r =
-      que === 'largo'
-        ? s.operar({ op: 'fijarAncho', ancho: Math.round(mm - extra) }, 'isla-base-largo')
-        : s.operar({ op: 'fijarProfundidad', profundidad: Math.round(mm - extra) }, 'isla-base-fondo');
-    if (r.ok) conservarCubierta({ [que]: m.cubierta[que] });
+    if (que === 'largo') s.operar({ op: 'fijarAncho', ancho: Math.round(mm - extra) }, 'isla-base-largo');
+    else s.operar({ op: 'fijarProfundidad', profundidad: Math.round(mm - extra) }, 'isla-base-fondo');
   };
-  const cambiarCubierta = (que: 'largo' | 'fondo', mm: number) => s.ubicarMueble(isla.id, { voladizo: voladizoParaCubierta(proyecto, isla, { [que]: Math.round(mm) }) });
-  return (
-    <div className="medidas-isla">
-      <span className="campo-etiqueta">Medidas de la isla, por separado</span>
-      <div className="medidas-isla-grupo">
-        <strong>Base (mueble)</strong>
-        <CampoMedida etiqueta="Largo" compacto valor={m.base.largo} unidad={s.unidad} paso={paso} onCambio={(mm) => cambiarBase('largo', mm)} />
-        <CampoMedida etiqueta="Fondo" compacto valor={m.base.fondo} unidad={s.unidad} paso={paso} onCambio={(mm) => cambiarBase('fondo', mm)} />
-        <CampoMedida etiqueta="Alto" compacto valor={s.diseno.alto} unidad={s.unidad} paso={paso} onCambio={(mm) => s.operar({ op: 'fijarAlto', alto: Math.round(mm) }, 'isla-base-alto')} />
-      </div>
-      <div className="medidas-isla-grupo">
-        <strong>Cubierta</strong>
-        <CampoMedida etiqueta="Largo" compacto valor={m.cubierta.largo} unidad={s.unidad} min={m.base.largo} paso={paso} onCambio={(mm) => cambiarCubierta('largo', mm)} />
-        <CampoMedida etiqueta="Fondo" compacto valor={m.cubierta.fondo} unidad={s.unidad} min={m.base.fondo} paso={paso} onCambio={(mm) => cambiarCubierta('fondo', mm)} />
-      </div>
-      <p className="tenue chico">
-        La cubierta más larga sobresale igual a cada costado; la más honda sobresale atrás, para sentarse. Al cambiar la base, la cubierta conserva su medida.
-      </p>
-    </div>
-  );
-}
-
-/** Cubierta de la isla más grande que el mueble, para sentarse alrededor: cuánto sobresale por cada lado. */
-function VoladizoIsla({ islaId }: { islaId: string }) {
-  const s = useApp();
-  const isla = proyectoDe(s).adicionales?.find((a) => a.id === islaId);
-  if (!isla) return null;
-  const v = isla.voladizo ?? SIN_VOLADIZO;
-  const fijar = (cambios: Partial<typeof v>) => s.ubicarMueble(islaId, { voladizo: { ...v, ...cambios } });
   const lados = [
     { k: 'trasero', texto: 'Atrás' },
     { k: 'frente', texto: 'Adelante' },
@@ -272,25 +249,44 @@ function VoladizoIsla({ islaId }: { islaId: string }) {
     { k: 'der', texto: 'Derecha' },
   ] as const;
   return (
-    <div className="voladizo-isla">
-      <span className="campo-etiqueta">Cubierta más grande para sentarse (cuánto sobresale del mueble)</span>
-      <div className="voladizo-isla-campos">
+    <div className="medidas-isla">
+      <span className="campo-etiqueta">Medidas de la isla: manda la cubierta</span>
+      <div className="medidas-isla-grupo">
+        <strong>Cubierta</strong>
+        <CampoMedida etiqueta={`Largo${fija.largo ? ' · fijado' : ''}`} compacto valor={m.cubierta.largo} unidad={s.unidad} paso={paso} onCambio={(mm) => cambiarCubierta('largo', mm)} />
+        <CampoMedida etiqueta={`Fondo${fija.fondo ? ' · fijado' : ''}`} compacto valor={m.cubierta.fondo} unidad={s.unidad} paso={paso} onCambio={(mm) => cambiarCubierta('fondo', mm)} />
+      </div>
+      <div className="medidas-isla-grupo">
+        <strong>Espacio para sentarse: la cubierta sobresale {VUELO_SENTARSE / 10} cm por ese lado</strong>
+        <div className="caras-isla-botones">
+          {lados.map((l) => {
+            const on = v[l.k] >= 150;
+            return (
+              <button key={l.k} type="button" className={`boton ${on ? 'primario' : 'secundario'} chico`} aria-pressed={on} onClick={() => cambiarVoladizo({ [l.k]: on ? VUELO_ISLA : VUELO_SENTARSE })}>
+                {on ? '✓ ' : '＋ '}
+                {l.texto}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="medidas-isla-grupo">
+        <strong>Cuánto sobresale la cubierta del mueble, por lado</strong>
         {lados.map((l) => (
-          <CampoMedida key={l.k} etiqueta={l.texto} compacto valor={v[l.k]} unidad={s.unidad} min={0} max={1500} paso={s.unidad === 'cm' ? 50 : 10} onCambio={(mm) => fijar({ [l.k]: Math.round(mm) })} />
+          <CampoMedida key={l.k} etiqueta={l.texto} compacto valor={v[l.k]} unidad={s.unidad} min={0} paso={s.unidad === 'cm' ? 50 : 10} onCambio={(mm) => cambiarVoladizo({ [l.k]: Math.max(0, Math.round(mm)) })} />
         ))}
       </div>
-      <div className="voladizo-isla-rapidos">
-        <button type="button" className="boton secundario chico" onClick={() => fijar({ trasero: 300 })}>
-          Barra atrás de 30 cm
-        </button>
-        <button type="button" className="boton secundario chico" onClick={() => fijar({ izq: 300, der: 300 })}>
-          30 cm en los costados
-        </button>
-        <button type="button" className="boton fantasma chico" onClick={() => s.ubicarMueble(islaId, { voladizo: { ...SIN_VOLADIZO } })}>
-          Sin voladizo
-        </button>
+      <div className="medidas-isla-grupo">
+        <strong>Mueble base (se ajusta a la cubierta)</strong>
+        <CampoMedida etiqueta="Largo" compacto valor={m.base.largo} unidad={s.unidad} paso={paso} onCambio={(mm) => cambiarBase('largo', mm)} />
+        <CampoMedida etiqueta="Fondo" compacto valor={m.base.fondo} unidad={s.unidad} paso={paso} onCambio={(mm) => cambiarBase('fondo', mm)} />
+        <CampoMedida etiqueta="Alto" compacto valor={s.diseno.alto} unidad={s.unidad} paso={paso} onCambio={(mm) => s.operar({ op: 'fijarAlto', alto: Math.round(mm) }, 'isla-base-alto')} />
       </div>
-      <p className="tenue chico">Para sentarse cómodo se recomiendan 25 a 30 cm de voladizo (las piernas quedan bajo la cubierta).</p>
+      <p className="tenue chico">
+        Isla de trabajo: la cubierta sobresale {VUELO_ISLA / 10} cm por los cuatro lados. Donde se sientan sobresale {VUELO_SENTARSE / 10} cm (se recomiendan 25 a 30 cm). La medida de
+        cubierta que escribes queda fija y el mueble base se ajusta a ella; si cambias el mueble base, la cubierta lo sigue y conserva lo que sobresale. La isla se cobra por el largo de su
+        cubierta.
+      </p>
     </div>
   );
 }

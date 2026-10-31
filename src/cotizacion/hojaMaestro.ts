@@ -25,6 +25,7 @@ import {
 } from '../../shared/layout';
 import { formatear, NOMBRE_LAVAPLATOS, normalizar } from '../../shared/reglas';
 import { fichaFabricacion, formatoFecha, type FichaFabricacion, type SeccionFicha, type TablaFicha } from '../../shared/resumen';
+import { medidasIsla, voladizoIsla } from '../../shared/proyecto';
 import type { CatalogoMateriales, Cliente, Diseno, LadoId, LineaDetalle, ProductoCatalogo, TramoId, Unidad } from '../../shared/tipos';
 import { A4, COLORES_MARCA, colorTexto, dibujarCabecera, dibujarImagen, dibujarLogo, fuente, GRIS, latin1, LINEA, MARGEN, nombreArchivo, TEXTO, type Rgb } from './pdf';
 import { MARCAS, type Marca } from './marcas';
@@ -610,14 +611,16 @@ export function contenidoHoja(
     try {
       const fa = fichaFabricacion(a.diseno, null, unidad, materiales, { numero: opciones.numero ?? undefined, cliente: opciones.cliente });
       ficha.secciones.push(...fa.secciones.map((sec) => ({ ...sec, titulo: `${a.nombre} · ${sec.titulo}` })));
-      const v = a.voladizo;
-      if (!a.cara && v && (v.frente || v.trasero || v.izq || v.der)) {
+      if (a.tipo === 'isla' && !a.cara) {
+        const v = voladizoIsla(a);
+        const mi = medidasIsla(d, a);
         const f = (mm: number) => formatear(mm, unidad);
         ficha.secciones.push({
-          titulo: `${a.nombre} · Cubierta para sentarse`,
+          titulo: `${a.nombre} · Cubierta`,
           lineas: [
-            { etiqueta: 'Voladizo', valor: `Atrás ${f(v.trasero)} · adelante ${f(v.frente)} · izquierda ${f(v.izq)} · derecha ${f(v.der)}` },
-            { etiqueta: 'Cubierta', valor: 'Una sola pieza sobre toda la isla (frente, lado trasero y costados), más grande que el mueble para sentarse alrededor.' },
+            { etiqueta: 'Medidas', valor: `${f(mi.cubierta.largo)} de largo × ${f(mi.cubierta.fondo)} de fondo, una sola pieza sobre toda la isla (frente, lado trasero y costados)` },
+            { etiqueta: 'Sobresale del mueble', valor: `atrás ${f(v.trasero)} · adelante ${f(v.frente)} · izquierda ${f(v.izq)} · derecha ${f(v.der)}` },
+            { etiqueta: 'Mueble base', valor: `${f(mi.base.largo)} de largo × ${f(mi.base.fondo)} de fondo` },
           ],
         });
       }

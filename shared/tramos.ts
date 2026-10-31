@@ -25,7 +25,7 @@ export const ANCHO_POR_PUERTA = 350;
 export const SIN_TOPE = 20000;
 
 /** Lados de la L o U del mueble base: largo exterior (desde el muro principal) y fondo. */
-export const LIMITES_LADO = { largo: [900, SIN_TOPE] as [number, number], profundidad: [450, SIN_TOPE] as [number, number] };
+export const LIMITES_LADO = { largo: [900, SIN_TOPE] as [number, number], profundidad: [200, SIN_TOPE] as [number, number] };
 export const LIMITES_AEREOS = {
   alto: [300, SIN_TOPE] as [number, number],
   profundidad: [250, SIN_TOPE] as [number, number],

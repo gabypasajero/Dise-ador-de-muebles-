@@ -278,12 +278,13 @@ export function precioCocina(d: Diseno): PrecioCocina {
  * Precio de una isla: su largo en metros × la tarifa de isla (en vez del metro lineal por fondo del
  * mueble base), más sus equipos, especieros y opciones como cualquier cocina.
  */
+/** Precio de la isla: el largo de su cubierta (mm) por el valor del metro de isla, más sus equipos y opciones. */
 export function precioIsla(d: Diseno, largo = d.ancho): PrecioCocina {
   const p = precioCocina(d);
   const resto = p.lineas.filter((l) => !l.concepto.startsWith('Mueble base'));
   const isla: LineaPrecio = {
     concepto: 'Isla',
-    detalle: `${fmtM(largo)}${largo !== d.ancho ? ' (con los costados)' : ''} × ${fmtPesos(TARIFAS.isla)} por metro`,
+    detalle: `${fmtM(largo)} de largo de cubierta × ${fmtPesos(TARIFAS.isla)} por metro`,
     cantidad: largo / 1000,
     unidad: 'm',
     unitario: TARIFAS.isla,
