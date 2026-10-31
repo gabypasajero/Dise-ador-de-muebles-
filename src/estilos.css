@@ -3796,6 +3796,9 @@ h3 {
   width: min(460px, 92vw);
   max-height: 60dvh;
   overflow-y: auto;
+  overflow-x: hidden;
+  /* La barra del precio no corta líneas; el desglose sí: cada detalle se lee completo. */
+  white-space: normal;
   background: var(--panel);
   border: 1px solid var(--borde);
   border-radius: 12px;
@@ -4799,4 +4802,51 @@ h3 {
 .medidas-isla-grupo > strong {
   flex-basis: 100%;
   font-size: 0.85rem;
+}
+
+/*
+ * Desglose grande, casi a pantalla completa (tablet y escritorio): nombre, detalle y valor se leen
+ * completos sin deslizar el cuadro hacia el lado; si hay muchos ítems, se baja.
+ */
+@media (min-width: 761px) {
+  .app .barra-simple .desglose-lista {
+    position: fixed;
+    left: auto;
+    right: 12px;
+    bottom: 60px;
+    width: min(900px, calc(100vw - 24px));
+    max-height: calc(100dvh - 140px);
+    padding: 14px 18px;
+    /* Sobre el menú flotante, bajo los avisos y las ventanas. */
+    z-index: 35;
+  }
+}
+
+.desglose-lista {
+  white-space: normal;
+}
+
+.desglose-lista table {
+  table-layout: auto;
+}
+
+.desglose-lista th {
+  width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.desglose-lista th span {
+  white-space: normal;
+}
+
+/* Los nombres de los muebles del proyecto también se leen completos. */
+.desglose-proyecto li span:first-child {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* Con el desglose abierto, el panel de abajo queda sobre el menú flotante para que nada lo tape. */
+.panel-inferior:has(.desglose-lista) {
+  z-index: 35;
 }
