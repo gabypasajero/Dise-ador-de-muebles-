@@ -101,7 +101,36 @@ function MontoEditable({ valor, etiqueta, onGuardar }: { valor: number; etiqueta
   );
 }
 
-function TablaDesglose({ precio, lineasBase, cambiar }: { precio: PrecioAjustado; lineasBase: Parameters<typeof limpiarAjustes>[1]; cambiar: (f: (d: Diseno) => Diseno, grupo?: string) => void }) {
+/**
+ * Desglose de cada mueble del proyecto (el principal, cada isla y cada mueble en línea; una cara de la
+ * isla solo si suma algo), con sus líneas calculadas y las correcciones del vendedor.
+ */
+function desglosesProyecto(proyecto: Diseno, producto: Parameters<typeof precioDiseno>[1], disenoBase: Diseno | null, nombrePrincipal: string) {
+  const { adicionales, ...principal } = proyecto;
+  const out: { id: string | null; nombre: string; precio: PrecioAjustado; lineasBase: Parameters<typeof limpiarAjustes>[1] }[] = [];
+  const calcP = precioDiseno(principal, producto, disenoBase);
+  const pP = aplicarAjustes(calcP, principal.ajustesPrecio);
+  if (calcP && pP) out.push({ id: null, nombre: nombrePrincipal, precio: pP, lineasBase: calcP.lineas });
+  for (const a of adicionales ?? []) {
+    const calc = { metodo: 'oficial' as const, ...precioBaseAdicional(a, a.tipo === 'isla' && !a.cara ? largoIsla(proyecto, a) : undefined) };
+    const p = aplicarAjustes(calc, a.diseno.ajustesPrecio);
+    if (!p || (a.cara && !p.lineas.length && !p.extras.length)) continue;
+    out.push({ id: a.id, nombre: a.nombre, precio: p, lineasBase: calc.lineas });
+  }
+  return out;
+}
+
+function TablaDesglose({
+  precio,
+  lineasBase,
+  cambiar,
+  etiquetaTotal = 'Total',
+}: {
+  precio: PrecioAjustado;
+  lineasBase: Parameters<typeof limpiarAjustes>[1];
+  cambiar: (f: (d: Diseno) => Diseno, grupo?: string) => void;
+  etiquetaTotal?: string;
+}) {
   const [concepto, setConcepto] = useState('');
   const [monto, setMonto] = useState('');
   const fijar = (f: (a: AjustesPrecio) => AjustesPrecio) =>
@@ -173,7 +202,7 @@ function TablaDesglose({ precio, lineasBase, cambiar }: { precio: PrecioAjustado
         </tbody>
         <tfoot>
           <tr>
-            <th scope="row">Total{precio.ajustado && <span>Calculado: {formatoPrecio(precio.totalCalculado)}</span>}</th>
+            <th scope="row">{etiquetaTotal}{precio.ajustado && <span>Calculado: {formatoPrecio(precio.totalCalculado)}</span>}</th>
             <td>{formatoPrecio(precio.total)}</td>
           </tr>
         </tfoot>
@@ -398,21 +427,37 @@ export function PanelInferior() {
               </button>
               {verDesglose && (
                 <div className="desglose-lista" role="region" aria-label="Desglose del precio">
-                  {totalProyecto && (
-                    <div className="desglose-proyecto">
-                      <strong>Proyecto: {formatoPrecio(totalProyecto.total)}</strong>
-                      <ul>
-                        {totalProyecto.partes.map((x) => (
-                          <li key={x.id ?? 'principal'} className={x.id === muebleActivo ? 'activa' : ''}>
+                  {totalProyecto ? (
+                    <>
+                      <div className="desglose-proyecto">
+                        <strong>Proyecto: {formatoPrecio(totalProyecto.total)}</strong>
+                        <ul>
+                          {totalProyecto.partes.map((x) => (
+                            <li key={x.id ?? 'principal'}>
+                              <span>{x.nombre}</span>
+                              <span>{x.precio ? formatoPrecio(x.precio.total) : 'Sin referencia'}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      {/* El desglose completo de cada mueble del proyecto, cada uno editable, sin tener que elegirlo. */}
+                      {desglosesProyecto(proyecto, producto, disenoBase, nombrePrincipal).map((x) => (
+                        <section key={x.id ?? 'principal'} className="desglose-mueble" aria-label={`Desglose de ${x.nombre}`}>
+                          <h4>
                             <span>{x.nombre}</span>
-                            <span>{x.precio ? formatoPrecio(x.precio.total) : 'Sin referencia'}</span>
-                          </li>
-                        ))}
-                      </ul>
-                      <p className="tenue chico">Abajo, el desglose editable de {adicional ? adicional.nombre : nombrePrincipal}. Para otro mueble, elígelo en «Muebles».</p>
-                    </div>
+                            <span>{formatoPrecio(x.precio.total)}</span>
+                          </h4>
+                          <TablaDesglose precio={x.precio} lineasBase={x.lineasBase} etiquetaTotal={`Subtotal ${x.nombre}`} cambiar={(f, grupo) => useApp.getState().cambiarMueble(x.id, f, grupo)} />
+                        </section>
+                      ))}
+                      <p className="desglose-total-proyecto">
+                        <span>Total del proyecto</span>
+                        <span>{formatoPrecio(totalProyecto.total)}</span>
+                      </p>
+                    </>
+                  ) : (
+                    <TablaDesglose precio={precio} lineasBase={calculado!.lineas} cambiar={cambiar} />
                   )}
-                  <TablaDesglose precio={precio} lineasBase={calculado!.lineas} cambiar={cambiar} />
                 </div>
               )}
             </div>

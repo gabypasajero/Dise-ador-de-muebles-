@@ -4850,3 +4850,39 @@ h3 {
 .panel-inferior:has(.desglose-lista) {
   z-index: 35;
 }
+
+/* Desglose del proyecto: una sección por mueble, todas a la vista. */
+.desglose-mueble {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 2px solid var(--borde-fuerte);
+}
+
+.desglose-mueble h4 {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 4px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--acento-suave);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.desglose-mueble h4 span:last-child {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.desglose-total-proyecto {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px 0 2px;
+  padding-top: 10px;
+  border-top: 2px solid var(--acento);
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--acento);
+}

@@ -83,6 +83,8 @@ interface Estado {
   elegirProducto: (p: ProductoCatalogo) => void;
   empezarLibre: (plantilla: Plantilla) => void;
   cambiar: (f: (d: Diseno) => Diseno, grupo?: string) => void;
+  /** Cambia el diseño de un mueble del proyecto (null: el principal), se esté editando o no (p. ej. su desglose). */
+  cambiarMueble: (id: string | null, f: (d: Diseno) => Diseno, grupo?: string) => void;
   /**
    * Ejecuta una operación del motor: si se hace entra al historial (deshacer) y muestra sus
    * avisos; si se rechaza, guarda el motivo para mostrarlo sin tocar el diseño.
@@ -337,6 +339,24 @@ export const useApp = create<Estado>((set, get) => ({
         set({ principal: acomodado, ...(propio && propio !== get().diseno ? { diseno: propio } : {}) });
       }
     }
+    guardarActual(get());
+  },
+
+  cambiarMueble(id, f, grupo) {
+    const s = get();
+    if (id === s.muebleActivo) {
+      s.cambiar(f, grupo);
+      return;
+    }
+    const enAdicional = (p: Diseno): Diseno => ({ ...p, adicionales: (p.adicionales ?? []).map((a) => (a.id === id ? { ...a, diseno: f(a.diseno) } : a)) });
+    // Editando el principal, el diseño es el proyecto completo: el cambio se deshace como cualquier otro.
+    if (!s.muebleActivo) {
+      s.cambiar(enAdicional, grupo);
+      return;
+    }
+    // Editando un adicional, el principal (con los demás adicionales) está guardado aparte.
+    const principal = s.principal!;
+    set({ principal: id === null ? { ...f(principal), adicionales: principal.adicionales } : enAdicional(principal) });
     guardarActual(get());
   },
 
